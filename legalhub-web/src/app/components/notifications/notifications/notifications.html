@@ -1,0 +1,302 @@
+<!-- ══ TOPBAR ══ -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center space-x-3">
+    <div class="relative w-96">
+      <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+      <input type="text" placeholder="Search notifications..."
+        class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
+    </div>
+    <button class="flex items-center space-x-2 px-4 py-3 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+      <i class="fa-solid fa-sliders"></i>
+      <span>Filters</span>
+    </button>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto bg-gray-50">
+
+  <!-- ══ PAGE HEADER ══ -->
+  <section class="px-8 pt-6 pb-5">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Notifications Center</h1>
+        <p class="text-base text-gray-500 mt-1">
+          @if (totalUnread > 0) {
+            <span class="text-amber-600 font-semibold">{{ totalUnread }} unread</span>
+            <span class="text-gray-400"> · {{ allNotifications().length }} total</span>
+          } @else {
+            <span>All caught up · {{ allNotifications().length }} notifications</span>
+          }
+        </p>
+      </div>
+      <div class="flex items-center space-x-3">
+        <!-- WEB-NOTIF-04 — Mark all as read -->
+        <button (click)="markAllRead()"
+          [disabled]="totalUnread === 0"
+          class="flex items-center space-x-2 px-5 py-2.5 border border-gray-300 bg-white rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          <i class="fa-solid fa-check-double text-gray-500"></i>
+          <span class="text-gray-700 font-medium">Mark all read</span>
+          @if (totalUnread > 0) {
+            <span class="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">{{ totalUnread }}</span>
+          }
+        </button>
+        <!-- WEB-NOTIF-05 — Settings -->
+        <button (click)="showSettings.set(!showSettings())"
+          class="flex items-center space-x-2 px-5 py-2.5 rounded-lg border transition-colors font-medium"
+          [ngClass]="showSettings() ? 'bg-amber-500 text-white border-amber-500' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'">
+          <i class="fa-solid fa-cog"></i>
+          <span>Settings</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ WEB-NOTIF-05 — SETTINGS PANEL ══ -->
+  @if (showSettings()) {
+    <section class="px-8 pb-5">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
+          <h2 class="text-lg font-bold text-gray-900">Notification Settings</h2>
+          <button (click)="showSettings.set(false)" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-200 transition-colors">
+            <i class="fa-solid fa-times"></i>
+          </button>
+        </div>
+        <div class="p-6">
+
+          <!-- Alert Triggers -->
+          <p class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Alert Triggers</p>
+          <div class="grid grid-cols-3 gap-4 mb-8">
+            @for (group of settingGroups; track group.label) {
+              <div class="rounded-xl border border-gray-200 overflow-hidden">
+                <div class="flex items-center space-x-3 px-4 py-3 border-b border-gray-100"
+                  [ngClass]="group.iconBg">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-black/70">
+                    <i [ngClass]="[group.icon, group.iconColor, 'text-sm']"></i>
+                  </div>
+                  <span class="text-sm font-bold" [ngClass]="group.iconColor">{{ group.label }}</span>
+                </div>
+                <div class="divide-y divide-gray-50 px-4">
+                  @for (item of group.items; track item.key) {
+                    <div class="flex items-center justify-between py-3">
+                      <span class="text-sm text-gray-600">{{ item.label }}</span>
+                      <label class="relative inline-flex items-center cursor-pointer ml-3 flex-shrink-0">
+                        <input type="checkbox" [checked]="getSetting(item.key)" (change)="toggleSetting(item.key)" class="sr-only peer">
+                        <div class="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                      </label>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Delivery Channels — colorful cards -->
+          <p class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Delivery Channels</p>
+          <div class="grid grid-cols-4 gap-4">
+            @for (ch of channels; track ch.key) {
+              <div class="rounded-xl p-5 border-2 transition-all"
+                [ngClass]="getSetting(ch.key)
+                  ? [ch.activeBg, ch.activeBorder]
+                  : 'bg-gray-50 border-gray-200'">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="w-11 h-11 rounded-xl flex items-center justify-center"
+                    [ngClass]="getSetting(ch.key) ? ch.iconBgActive : 'bg-white'">
+                    <i [ngClass]="[ch.icon, 'text-lg', getSetting(ch.key) ? ch.iconColorActive : 'text-gray-400']"></i>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" [checked]="getSetting(ch.key)" (change)="toggleSetting(ch.key)" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all"
+                      [ngClass]="getSetting(ch.key) ? ch.toggleColor : 'bg-gray-200'"></div>
+                  </label>
+                </div>
+                <h4 class="font-bold mb-0.5"
+                  [ngClass]="getSetting(ch.key) ? ch.labelColor : 'text-gray-700'">{{ ch.label }}</h4>
+                <p class="text-sm" [ngClass]="getSetting(ch.key) ? ch.descColor : 'text-gray-400'">{{ ch.desc }}</p>
+              </div>
+            }
+          </div>
+
+          <div class="flex justify-end mt-6 pt-4 border-t border-gray-100">
+            <button (click)="showSettings.set(false)"
+              class="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold transition-colors">
+              Save Settings
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  }
+
+  <!-- ══ FILTERS ══ -->
+  <section class="px-8 pb-5">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+
+      <!-- WEB-NOTIF-01 — Category tabs with per-category colors -->
+      <div class="flex items-center px-4 pt-4 pb-3 gap-2 border-b border-gray-100 overflow-x-auto">
+        @for (f of filterLabels; track f.value) {
+          <button (click)="setFilter(f.value)"
+            class="flex items-center space-x-2 px-4 py-2.5 rounded-xl font-semibold transition-all whitespace-nowrap"
+            [ngClass]="activeFilter() === f.value
+              ? f.activeCls
+              : 'text-gray-500 hover:bg-gray-100 bg-gray-50'">
+            <i [ngClass]="[f.icon, activeFilter() === f.value ? '' : f.iconInactive]"></i>
+            <span>{{ f.label }}</span>
+            @if (f.value !== 'all' && countUnread(f.value) > 0) {
+              <span class="text-xs font-bold px-2 py-0.5 rounded-full"
+                [ngClass]="activeFilter() === f.value ? 'bg-white/30 text-white' : f.badgeCls">
+                {{ countUnread(f.value) }}
+              </span>
+            }
+          </button>
+        }
+      </div>
+
+      <!-- WEB-NOTIF-02 + 03 -->
+      <div class="flex items-center justify-between px-4 py-3">
+        <div class="flex items-center space-x-2">
+          @for (opt of priorityOptions; track opt.value) {
+            <button (click)="selectedPriority.set(opt.value)"
+              class="px-4 py-2 rounded-lg font-medium transition-colors border text-sm"
+              [ngClass]="selectedPriority() === opt.value
+                ? opt.activeCls
+                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'">
+              {{ opt.label }}
+            </button>
+          }
+        </div>
+        <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-1 bg-gray-100 rounded-xl p-1">
+            @for (opt of periodOptions; track opt.value) {
+              <button (click)="selectedPeriod.set(opt.value)"
+                class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                [ngClass]="selectedPeriod() === opt.value
+                  ? 'bg-white text-gray-900 shadow-sm font-semibold'
+                  : 'text-gray-500 hover:text-gray-700'">
+                {{ opt.label }}
+              </button>
+            }
+          </div>
+          <span class="text-sm text-gray-400 font-medium">{{ filteredNotifications().length }} result{{ filteredNotifications().length !== 1 ? 's' : '' }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ NOTIFICATION LIST ══ -->
+  <section class="px-8 pb-8">
+
+    @if (loading()) {
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm py-20 flex flex-col items-center text-center">
+        <div class="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-gray-400 font-medium">Loading notifications…</p>
+      </div>
+    }
+
+    @if (!loading() && filteredNotifications().length === 0) {
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm py-20 flex flex-col items-center text-center">
+        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+          <i class="fa-solid fa-bell-slash text-gray-400 text-2xl"></i>
+        </div>
+        <p class="text-lg font-semibold text-gray-700">No notifications</p>
+        <p class="text-gray-400 mt-1">Try adjusting your filters</p>
+      </div>
+    }
+
+    @if (!loading()) { @for (group of groupedNotifications(); track group.label) {
+      <div class="flex items-center space-x-3 mb-3 mt-1">
+        <span class="text-sm font-bold text-gray-400 uppercase tracking-wider">{{ group.label }}</span>
+        <div class="flex-1 h-px bg-gray-200"></div>
+        <span class="text-sm text-gray-400 font-medium">{{ group.items.length }}</span>
+      </div>
+
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-5">
+        @for (n of group.items; track n.id; let last = $last) {
+          <div
+            class="flex items-start px-5 py-4 transition-colors cursor-pointer group relative"
+            [ngClass]="{
+              'bg-white hover:bg-gray-50': n.read,
+              'hover:bg-opacity-60': !n.read,
+              'border-b border-gray-100': !last
+            }"
+            [style.background-color]="!n.read ? catConfig[n.category].unreadBg : ''"
+            (click)="markRead(n.id)">
+
+            <!-- Priority bar -->
+            <div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+              [ngClass]="prioConfig[n.priority].bar"></div>
+
+            <!-- Category icon — larger, more colorful -->
+            <div class="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm"
+              [ngClass]="catConfig[n.category].iconBg">
+              <i [ngClass]="[catConfig[n.category].icon, catConfig[n.category].iconColor, 'text-base']"></i>
+            </div>
+
+            <!-- Content -->
+            <div class="flex-1 min-w-0 ml-4">
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex-1 min-w-0">
+
+                  <div class="flex items-center gap-2 mb-1">
+                    @if (!n.read) {
+                      <span class="w-2 h-2 rounded-full flex-shrink-0" [ngClass]="catConfig[n.category].dot"></span>
+                    }
+                    <h3 class="font-semibold text-gray-900 truncate"
+                      [ngClass]="n.read ? 'text-gray-600' : 'text-gray-900'">
+                      {{ n.title }}
+                    </h3>
+                    @if (n.priority !== 'normal') {
+                      <span class="text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0"
+                        [ngClass]="prioConfig[n.priority].badge">
+                        {{ prioConfig[n.priority].label }}
+                      </span>
+                    }
+                  </div>
+
+                  <p class="text-sm text-gray-500 leading-relaxed mb-2">{{ n.body }}</p>
+
+                  <div class="flex items-center gap-2">
+                    <!-- Category pill — colored -->
+                    <span class="text-xs px-2.5 py-1 rounded-full font-semibold"
+                      [ngClass]="[catConfig[n.category].pillBg, catConfig[n.category].pillText]">
+                      <i [ngClass]="[catConfig[n.category].icon, 'mr-1', 'text-xs']"></i>
+                      {{ catConfig[n.category].label }}
+                    </span>
+                    <span class="text-gray-300">·</span>
+                    <span class="text-sm text-gray-400">{{ n.meta }}</span>
+                    <span class="text-gray-300">·</span>
+                    <span class="text-sm text-gray-400">{{ timeAgo(n.time) }}</span>
+                  </div>
+                </div>
+
+                <!-- Hover actions -->
+                <div class="flex items-center space-x-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5">
+                  @if (n.actionLabel) {
+                    <button (click)="$event.stopPropagation()"
+                      class="px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors text-white"
+                      [ngClass]="catConfig[n.category].actionBtn">
+                      {{ n.actionLabel }}
+                    </button>
+                  }
+                  @if (!n.read) {
+                    <button (click)="$event.stopPropagation(); markRead(n.id)"
+                      title="Mark as read"
+                      class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                      <i class="fa-solid fa-check text-sm"></i>
+                    </button>
+                  }
+                  <button (click)="$event.stopPropagation(); dismiss(n.id)"
+                    title="Dismiss"
+                    class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                    <i class="fa-solid fa-times text-sm"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    }
+    }
+
+  </section>
+</main>

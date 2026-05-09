@@ -1,0 +1,114 @@
+<aside class="w-72 bg-gradient-to-b from-slate-900 to-slate-800 text-white flex flex-col shadow-2xl h-screen overflow-hidden flex-shrink-0">
+
+  <!-- Header / Logo -->
+  <div class="p-6 border-b border-slate-700 shrink-0">
+    <div class="flex items-center space-x-3 mb-6">
+      <div class="w-10 h-10 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center shadow-lg">
+        <i class="fa-solid fa-scale-balanced text-white text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold">LegalFlow</h1>
+        <p class="text-xs text-slate-400">Practice Management</p>
+      </div>
+    </div>
+    <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-xs text-slate-400">Current Tenant</span>
+        <i class="fa-solid fa-chevron-down text-xs text-slate-400"></i>
+      </div>
+      <p class="text-sm font-semibold">{{ currentUser()?.firmName || 'My Firm' }}</p>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="flex-1 overflow-y-auto py-4 px-3 min-h-0 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-900 hover:scrollbar-thumb-slate-500">
+    @for (group of navGroups; track group.title) {
+      <div class="mb-6">
+        <div class="px-3 mb-2">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">{{ group.title }}</span>
+        </div>
+        @for (item of group.items; track item.route) {
+          <a
+            [routerLink]="item.route"
+            routerLinkActive="bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg"
+            [routerLinkActiveOptions]="{exact: item.route === '/dashboard'}"
+            class="flex items-center px-4 py-3 mb-1 rounded-lg text-slate-300 hover:bg-slate-700 transition-colors"
+          >
+            <i class="w-5" [ngClass]="item.icon"></i>
+            <span class="ml-3">{{ item.label }}</span>
+
+            <!-- Notifications — badge dynamique unreadCount -->
+            @if (item.label === 'Notifications' && unreadCount() > 0) {
+              <span class="ml-auto bg-amber-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                {{ unreadCount() > 99 ? '99+' : unreadCount() }}
+              </span>
+
+            <!-- Cases — badge dynamique casesCount -->
+            } @else if (item.label === 'Cases' && casesCount() > 0) {
+              <span class="ml-auto bg-amber-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                {{ casesCount() }}
+              </span>
+
+            <!-- Calendar — badge dynamique calendarCount -->
+            } @else if (item.label === 'Calendar' && calendarCount() > 0) {
+              <span class="ml-auto bg-amber-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                {{ calendarCount() }}
+              </span>
+
+            <!-- Badges statiques (ex: "New" sur AI Assistant) -->
+            } @else if (item.badge) {
+              <span class="ml-auto text-white text-xs px-2 py-1 rounded-full" [class]="item.badgeColor">
+                {{ item.badge }}
+              </span>
+            }
+
+          </a>
+        }
+      </div>
+    }
+  </nav>
+
+  <!-- Footer / User -->
+  <div class="p-4 border-t border-slate-700 shrink-0">
+
+    <!-- User info + logout -->
+    <div class="flex items-center space-x-3 mb-3">
+      <a routerLink="/profile" title="View profile"
+        class="flex items-center space-x-3 flex-1 min-w-0 group cursor-pointer">
+        <div class="flex-shrink-0">
+          @if (currentUser()?.avatar) {
+            <img [src]="currentUser()!.avatar" alt="User"
+              class="w-10 h-10 rounded-full border-2 border-amber-500 object-cover group-hover:border-amber-400 group-hover:opacity-90 transition-all">
+          } @else {
+            <div class="w-10 h-10 rounded-full border-2 border-amber-500 bg-amber-500 flex items-center justify-center group-hover:border-amber-400 group-hover:opacity-90 transition-all">
+              <i class="fa-solid fa-user text-white"></i>
+            </div>
+          }
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold truncate group-hover:text-amber-400 transition-colors">{{ currentUser()?.name }}</p>
+          <p class="text-xs text-slate-400 truncate">{{ currentUser()?.title }}</p>
+        </div>
+      </a>
+      <button (click)="logout()" title="Logout" class="flex-shrink-0 text-slate-400 hover:text-white transition-colors cursor-pointer">
+        <i class="fa-solid fa-right-from-bracket"></i>
+      </button>
+    </div>
+
+    <!-- Footer links: Profile + Help -->
+    <div class="flex flex-col gap-1">
+      <a routerLink="/profile" routerLinkActive="text-amber-400"
+        class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition-colors text-sm">
+        <i class="fa-solid fa-circle-user w-4 text-center"></i>
+        <span>Profile</span>
+      </a>
+      <a routerLink="/help" routerLinkActive="text-amber-400"
+        class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white transition-colors text-sm">
+        <i class="fa-solid fa-circle-question w-4 text-center"></i>
+        <span>Help Center</span>
+      </a>
+    </div>
+
+  </div>
+
+</aside>

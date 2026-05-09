@@ -1,0 +1,1155 @@
+<!-- TOPBAR -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center flex-1">
+      <button (click)="goBack()" class="mr-4 flex items-center space-x-2 text-gray-600 hover:text-amber-600 transition-colors">
+        <i class="fa-solid fa-arrow-left text-lg"></i>
+        <span class="text-sm font-medium">Back to Clients</span>
+      </button>
+      <div class="h-6 w-px bg-gray-300 mx-2"></div>
+      <div class="relative w-80">
+        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" placeholder="Search clients, cases, documents..."
+          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
+      </div>
+    </div>
+    <div class="flex items-center space-x-2">
+
+      <button (click)="openEditModal()" class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all">
+        <i class="fa-solid fa-edit mr-2"></i>Edit Client
+      </button>
+      <button (click)="exportPdf()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+        <i class="fa-solid fa-file-pdf mr-2 text-red-500"></i>Export PDF
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto">
+
+  @if (client()) {
+
+    <!-- CLIENT HERO -->
+    <section class="px-8 pt-6 pb-4 bg-white border-b border-gray-200">
+      <div class="flex items-start justify-between">
+        <div class="flex items-start space-x-6">
+          <div class="relative group">
+            <img [src]="avatarPreview() ?? client()!.avatar"
+                 [alt]="client()!.name"
+                 class="w-24 h-24 rounded-full border-4 border-gray-200 shadow-lg object-cover">
+            @if (isUploadingAvatar()) {
+              <div class="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+                <i class="fa-solid fa-spinner fa-spin text-white text-xl"></i>
+              </div>
+            }
+            <input #avatarInput type="file" accept="image/*" class="hidden"
+                   (change)="onAvatarSelected($event)">
+            <button (click)="triggerAvatarInput(avatarInput)"
+                    [disabled]="isUploadingAvatar()"
+                    class="absolute bottom-0 right-0 w-8 h-8 bg-amber-500 text-white rounded-full flex items-center justify-center hover:bg-amber-600 transition-colors shadow-lg disabled:opacity-60"
+                    title="Change photo">
+              <i class="fa-solid fa-camera text-sm"></i>
+            </button>
+          </div>
+          <div>
+            <div class="flex items-center space-x-3 mb-2">
+              <h1 class="text-3xl font-bold text-gray-900">{{ client()!.name }}</h1>
+              <span class="px-3 py-1 text-xs font-semibold rounded-full" [ngClass]="[client()!.statusBg, client()!.statusColor]">{{ client()!.status }}</span>
+              <span class="px-3 py-1 text-xs font-semibold rounded-full" [ngClass]="[client()!.typeBg, client()!.typeColor]">{{ client()!.type }}</span>
+            </div>
+            <div class="flex items-center space-x-6 text-sm text-gray-600 mb-3">
+              <span><i class="fa-solid fa-envelope mr-2 text-gray-400"></i>{{ client()!.email }}</span>
+              <span><i class="fa-solid fa-phone mr-2 text-gray-400"></i>{{ client()!.phone }}</span>
+              <span><i class="fa-solid fa-building mr-2 text-gray-400"></i>{{ client()!.company }}</span>
+            </div>
+            <div class="flex items-center space-x-4 text-xs">
+              <span class="text-gray-500">Client Since: <span class="font-semibold text-gray-900">{{ client()!.since }}</span></span>
+              <div class="h-4 w-px bg-gray-300"></div>
+              <span class="text-gray-500">Cases: <span class="font-semibold text-gray-900">{{ backendCases().length }}</span></span>
+              <div class="h-4 w-px bg-gray-300"></div>
+              <span class="text-gray-500">Invoices: <span class="font-semibold text-gray-900">{{ backendInvoices().length }}</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center space-x-3">
+          <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+            <i class="fa-solid fa-envelope mr-2"></i>Send Email
+          </button>
+          <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+            <i class="fa-solid fa-phone mr-2"></i>Call
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TABS -->
+    <section class="px-8 bg-white border-b border-gray-200">
+      <div class="flex items-center space-x-1">
+        @for (t of tabs; track t) {
+          <button (click)="setTab(t)"
+            class="px-6 py-4 text-sm font-medium transition-colors"
+            [ngClass]="activeTab() === t
+              ? 'text-amber-600 border-b-2 border-amber-600'
+              : 'text-gray-600 border-b-2 border-transparent hover:bg-gray-50 hover:border-gray-300'">
+            {{ t }}
+          </button>
+        }
+      </div>
+    </section>
+
+    <!-- QUICK STATS -->
+    <section class="px-8 py-6">
+      <div class="grid grid-cols-5 gap-6">
+        @for (s of dynamicStats(); track s.label) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+            <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4" [ngClass]="s.iconBg">
+              <i [ngClass]="[s.icon, s.iconColor]" class="text-xl"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 mb-1">{{ s.value }}</h3>
+            <p class="text-sm text-gray-600">{{ s.label }}</p>
+            <div class="mt-4 pt-4 border-t border-gray-100">
+              <p class="text-xs text-gray-500">{{ s.note }}</p>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- TAB CONTENT -->
+    @switch (activeTab()) {
+
+      <!-- ══════════════════════════════ OVERVIEW ══════════════════════════════ -->
+      @case ('Overview') {
+        <section class="px-8 pb-6">
+          <div class="grid grid-cols-3 gap-6">
+
+            <!-- LEFT 2/3 -->
+            <div class="col-span-2 space-y-6">
+
+              <!-- Active Cases (backend) -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 class="text-lg font-bold text-gray-900">Active Cases</h2>
+                    <p class="text-sm text-gray-600 mt-1">Current legal matters for this client</p>
+                  </div>
+                  <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+                    <i class="fa-solid fa-plus mr-2"></i>New Case
+                  </button>
+                </div>
+                <div class="p-6">
+                  @if (casesLoading()) {
+                    <div class="flex items-center justify-center py-12">
+                      <i class="fa-solid fa-spinner fa-spin text-amber-500 text-xl mr-3"></i>
+                      <span class="text-gray-500">Loading cases…</span>
+                    </div>
+                  } @else if (backendCases().length === 0) {
+                    <div class="text-center py-12">
+                      <i class="fa-solid fa-briefcase text-4xl text-gray-300 mb-3"></i>
+                      <p class="text-gray-500">No cases found for this client</p>
+                    </div>
+                  } @else {
+                    <div class="space-y-4">
+                      @for (c of backendCases().slice(0, 3); track c.id) {
+                        <div class="border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
+                          <div class="flex items-start justify-between mb-3">
+                            <div class="flex-1">
+                              <div class="flex items-center space-x-3 mb-2">
+                                <h3 class="text-base font-semibold text-gray-900">{{ c.title }}</h3>
+                                <span class="px-2 py-0.5 text-xs font-semibold rounded-full"
+                                      [ngClass]="[getCaseTypeInfo(c.case_type).bg, getCaseTypeInfo(c.case_type).color]">
+                                  {{ getCaseTypeInfo(c.case_type).label }}
+                                </span>
+                              </div>
+                              <p class="text-sm text-gray-600 mb-3">{{ c.description || 'No description provided.' }}</p>
+                              <div class="flex items-center space-x-6 text-sm text-gray-600">
+                                <span><i class="fa-solid fa-hashtag mr-2 text-gray-400"></i>{{ c.case_number }}</span>
+                                <span><i class="fa-solid fa-calendar mr-2 text-gray-400"></i>{{ formatDate(c.created_at) }}</span>
+                                @if (c.first_hearing_date) {
+                                  <span><i class="fa-solid fa-gavel mr-2 text-gray-400"></i>Hearing: {{ formatDate(c.first_hearing_date) }}</span>
+                                }
+                              </div>
+                            </div>
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full ml-4"
+                                  [ngClass]="[getCaseStatusInfo(c.status).bg, getCaseStatusInfo(c.status).color]">
+                              {{ getCaseStatusInfo(c.status).label }}
+                            </span>
+                          </div>
+                          <div class="flex items-center justify-between pt-4 border-t border-gray-100">
+                            <div class="flex items-center space-x-4">
+                              <button class="text-sm text-amber-600 hover:text-amber-700 font-medium">View Details</button>
+                            </div>
+                            <span class="text-xs px-2 py-1 rounded-full"
+                                  [ngClass]="c.priority === 'URGENT' ? 'bg-red-100 text-red-700' : c.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'">
+                              {{ c.priority || 'NORMAL' }}
+                            </span>
+                          </div>
+                        </div>
+                      }
+                      @if (backendCases().length > 3) {
+                        <div class="text-center pt-2">
+                          <button (click)="setTab('Cases')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
+                            View All {{ backendCases().length }} Cases <i class="fa-solid fa-arrow-right ml-1"></i>
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- Recent Documents (static preview) -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 class="text-lg font-bold text-gray-900">Recent Documents</h2>
+                    <p class="text-sm text-gray-600 mt-1">Latest uploaded files and legal documents</p>
+                  </div>
+                  <button (click)="upload.open()" class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+                    <i class="fa-solid fa-upload mr-2"></i>Upload Document
+                  </button>
+                </div>
+                <div class="p-6 space-y-3">
+                  @for (d of documents; track d.name) {
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                      <div class="flex items-center space-x-4">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="d.iconBg">
+                          <i [ngClass]="[d.icon, d.iconColor]"></i>
+                        </div>
+                        <div>
+                          <p class="text-sm font-semibold text-gray-900">{{ d.name }}</p>
+                          <div class="flex items-center space-x-4 mt-1">
+                            <span class="text-xs text-gray-600">{{ d.case }}</span>
+                            <span class="text-xs text-gray-500">{{ d.size }}</span>
+                            <span class="text-xs text-gray-500">{{ d.when }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flex items-center space-x-1">
+                        <button class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100"><i class="fa-solid fa-download"></i></button>
+                        <button class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100"><i class="fa-solid fa-eye"></i></button>
+                        <button class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100"><i class="fa-solid fa-share-nodes"></i></button>
+                      </div>
+                    </div>
+                  }
+                  <div class="mt-2 pt-4 border-t border-gray-100 text-center">
+                    <button (click)="setTab('Documents')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
+                      View All Documents <i class="fa-solid fa-arrow-right ml-1"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Payment History (backend) -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 class="text-lg font-bold text-gray-900">Payment History &amp; Invoices</h2>
+                    <p class="text-sm text-gray-600 mt-1">Billing records and payment tracking</p>
+                  </div>
+                  <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+                    <i class="fa-solid fa-plus mr-2"></i>New Invoice
+                  </button>
+                </div>
+                @if (invoicesLoading()) {
+                  <div class="flex items-center justify-center py-12">
+                    <i class="fa-solid fa-spinner fa-spin text-amber-500 text-xl mr-3"></i>
+                    <span class="text-gray-500">Loading invoices…</span>
+                  </div>
+                } @else if (backendInvoices().length === 0) {
+                  <div class="text-center py-12">
+                    <i class="fa-solid fa-file-invoice text-4xl text-gray-300 mb-3"></i>
+                    <p class="text-gray-500">No invoices found for this client</p>
+                  </div>
+                } @else {
+                  <div class="overflow-x-auto">
+                    <table class="w-full">
+                      <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Invoice #</th>
+                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Issue Date</th>
+                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Due Date</th>
+                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Amount</th>
+                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                          <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-gray-100">
+                        @for (inv of backendInvoices().slice(0, 5); track inv.id) {
+                          <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4"><p class="text-sm font-semibold text-gray-900">{{ inv.invoice_number }}</p></td>
+                            <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ formatDate(inv.issue_date) }}</p></td>
+                            <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ formatDate(inv.due_date) }}</p></td>
+                            <td class="px-6 py-4"><p class="text-sm font-semibold text-gray-900">{{ formatAmount(inv.total_amount, inv.currency) }}</p></td>
+                            <td class="px-6 py-4">
+                              <span class="text-xs px-2 py-1 rounded-full font-medium"
+                                    [ngClass]="[getInvoiceStatusInfo(inv.status).bg, getInvoiceStatusInfo(inv.status).color]">
+                                {{ getInvoiceStatusInfo(inv.status).label }}
+                              </span>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                              @if (inv.status === 'OVERDUE' || inv.status === 'PENDING') {
+                                <button class="text-amber-600 hover:text-amber-700 mr-3 text-sm font-medium">Send Reminder</button>
+                              } @else {
+                                <button class="text-gray-500 hover:text-gray-700 mr-3"><i class="fa-solid fa-download"></i></button>
+                              }
+                              <button class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-eye"></i></button>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                  @if (backendInvoices().length > 5) {
+                    <div class="p-6 border-t border-gray-100 flex items-center justify-between">
+                      <p class="text-sm text-gray-600">Showing 5 of {{ backendInvoices().length }} invoices</p>
+                      <button (click)="setTab('Payments')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All Invoices</button>
+                    </div>
+                  }
+                }
+              </div>
+
+              <!-- Communication Log (static) -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 class="text-lg font-bold text-gray-900">Communication Log</h2>
+                    <p class="text-sm text-gray-600 mt-1">Complete history of interactions</p>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"><i class="fa-solid fa-filter mr-2"></i>Filter</button>
+                    <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600"><i class="fa-solid fa-plus mr-2"></i>Add Note</button>
+                  </div>
+                </div>
+                <div class="p-6 space-y-6">
+                  @for (c of communications.slice(0, 3); track c.title) {
+                    <div class="flex items-start space-x-4">
+                      <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" [ngClass]="c.iconBg">
+                        <i [ngClass]="[c.icon, c.iconColor]"></i>
+                      </div>
+                      <div class="flex-1">
+                        <div class="flex items-start justify-between mb-2">
+                          <div>
+                            <p class="text-sm font-semibold text-gray-900">{{ c.title }}</p>
+                            <p class="text-xs text-gray-600 mt-0.5">{{ c.by }}</p>
+                          </div>
+                          <span class="text-xs text-gray-500 whitespace-nowrap ml-4">{{ c.when }}</span>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4"><p class="text-sm text-gray-700">{{ c.body }}</p></div>
+                        <div class="flex items-center space-x-3 mt-3">
+                          <span class="text-xs px-2 py-1 rounded-full" [ngClass]="c.tagBg">{{ c.tag }}</span>
+                          <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">{{ c.case }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                  <div class="text-center pt-2">
+                    <button (click)="setTab('Communication')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
+                      View Full Communication Log <i class="fa-solid fa-arrow-right ml-1"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- /col-span-2 -->
+
+            <!-- RIGHT SIDEBAR -->
+            <div class="space-y-6">
+
+              <!-- Contact Info -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Contact Information</h3>
+                <div class="space-y-4">
+                  <div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Email</label><p class="text-sm text-gray-900">{{ client()!.email }}</p></div>
+                  <div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Phone</label><p class="text-sm text-gray-900">{{ client()!.phone }}</p></div>
+                  <div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Address</label><p class="text-sm text-gray-900">{{ client()!.address || '—' }}</p></div>
+                  <div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Company</label><p class="text-sm text-gray-900">{{ client()!.company }}</p></div>
+                </div>
+              </div>
+
+              <!-- Assigned Team -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="text-lg font-bold text-gray-900">Assigned Team</h3>
+                  <button class="text-sm text-amber-600 hover:text-amber-700 font-medium"><i class="fa-solid fa-plus mr-1"></i>Add</button>
+                </div>
+                <div class="space-y-4">
+                  @for (m of team; track m.name; let last = $last) {
+                    <div class="flex items-center space-x-3" [ngClass]="!last ? 'pb-4 border-b border-gray-100' : ''">
+                      <img [src]="m.avatar" [alt]="m.name" class="w-10 h-10 rounded-full border-2" [ngClass]="m.border">
+                      <div class="flex-1">
+                        <p class="text-sm font-semibold text-gray-900">{{ m.name }}</p>
+                        <p class="text-xs text-gray-600">{{ m.role }}</p>
+                      </div>
+                      <button class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- Upcoming Events -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Upcoming Events</h3>
+                <div class="space-y-4">
+                  @for (e of events; track e.title; let last = $last) {
+                    <div class="flex items-start space-x-3" [ngClass]="!last ? 'pb-4 border-b border-gray-100' : ''">
+                      <div class="flex-shrink-0 w-12 h-12 rounded-lg flex flex-col items-center justify-center" [ngClass]="e.monthBg">
+                        <span class="text-xs font-semibold uppercase" [ngClass]="e.monthColor">{{ e.month }}</span>
+                        <span class="text-sm font-bold" [ngClass]="e.dayColor">{{ e.day }}</span>
+                      </div>
+                      <div class="flex-1">
+                        <p class="text-sm font-semibold text-gray-900">{{ e.title }}</p>
+                        <p class="text-xs text-gray-600 mt-0.5">{{ e.sub }}</p>
+                        <p class="text-xs text-gray-500 mt-0.5">{{ e.time }}</p>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- Tags -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="text-lg font-bold text-gray-900">Client Tags</h3>
+                  <button class="text-sm text-amber-600 hover:text-amber-700 font-medium"><i class="fa-solid fa-plus mr-1"></i>Add</button>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  @for (tag of client()!.tags; track tag) {
+                    <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">{{ tag }}</span>
+                  }
+                  @if (client()!.tags.length === 0) {
+                    <span class="text-sm text-gray-400">No tags yet</span>
+                  }
+                </div>
+              </div>
+
+              <!-- Quick Actions -->
+              <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-6 text-white">
+                <h3 class="text-lg font-bold mb-4">Quick Actions</h3>
+                <div class="space-y-3">
+                  <button class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 py-3 rounded-lg font-medium transition-colors text-left px-4"><i class="fa-solid fa-file-invoice mr-3"></i>Generate Invoice</button>
+                  <button class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 py-3 rounded-lg font-medium transition-colors text-left px-4"><i class="fa-solid fa-calendar-plus mr-3"></i>Schedule Meeting</button>
+                  <button (click)="upload.open()" class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 py-3 rounded-lg font-medium transition-colors text-left px-4"><i class="fa-solid fa-upload mr-3"></i>Upload Document</button>
+                  <button class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 py-3 rounded-lg font-medium transition-colors text-left px-4"><i class="fa-solid fa-plus mr-3"></i>Create New Case</button>
+                </div>
+              </div>
+
+            </div><!-- /right sidebar -->
+          </div><!-- /grid -->
+        </section>
+      }
+
+      <!-- ══════════════════════════════ CASES ══════════════════════════════ -->
+      @case ('Cases') {
+        <section class="px-8 pb-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-bold text-gray-900">All Cases</h2>
+                <p class="text-sm text-gray-600 mt-1">{{ backendCases().length }} case(s) for this client</p>
+              </div>
+              <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+                <i class="fa-solid fa-plus mr-2"></i>New Case
+              </button>
+            </div>
+            <div class="p-6">
+              @if (casesLoading()) {
+                <div class="flex items-center justify-center py-20">
+                  <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
+                  <span class="text-gray-500 text-lg">Loading cases…</span>
+                </div>
+              } @else if (backendCases().length === 0) {
+                <div class="text-center py-20">
+                  <i class="fa-solid fa-briefcase text-5xl text-gray-300 mb-4"></i>
+                  <p class="text-gray-500 text-lg font-medium">No cases found</p>
+                  <p class="text-gray-400 text-sm mt-1">This client has no cases yet.</p>
+                </div>
+              } @else {
+                <div class="space-y-4">
+                  @for (c of backendCases(); track c.id) {
+                    <div class="border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
+                      <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1">
+                          <div class="flex items-center space-x-3 mb-2">
+                            <h3 class="text-base font-semibold text-gray-900">{{ c.title }}</h3>
+                            <span class="px-2 py-0.5 text-xs font-semibold rounded-full"
+                                  [ngClass]="[getCaseTypeInfo(c.case_type).bg, getCaseTypeInfo(c.case_type).color]">
+                              {{ getCaseTypeInfo(c.case_type).label }}
+                            </span>
+                          </div>
+                          <p class="text-sm text-gray-600 mb-3">{{ c.description || 'No description provided.' }}</p>
+                          <div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-600">
+                            <span><i class="fa-solid fa-hashtag mr-2 text-gray-400"></i>{{ c.case_number }}</span>
+                            <span><i class="fa-solid fa-calendar mr-2 text-gray-400"></i>Opened: {{ formatDate(c.created_at) }}</span>
+                            @if (c.filing_date) {
+                              <span><i class="fa-solid fa-file-signature mr-2 text-gray-400"></i>Filed: {{ formatDate(c.filing_date) }}</span>
+                            }
+                            @if (c.first_hearing_date) {
+                              <span><i class="fa-solid fa-gavel mr-2 text-gray-400"></i>Hearing: {{ formatDate(c.first_hearing_date) }}</span>
+                            }
+                            @if (c.court_name) {
+                              <span><i class="fa-solid fa-landmark mr-2 text-gray-400"></i>{{ c.court_name }}</span>
+                            }
+                          </div>
+                        </div>
+                        <div class="flex flex-col items-end gap-2 ml-4">
+                          <span class="px-3 py-1 text-xs font-semibold rounded-full"
+                                [ngClass]="[getCaseStatusInfo(c.status).bg, getCaseStatusInfo(c.status).color]">
+                            {{ getCaseStatusInfo(c.status).label }}
+                          </span>
+                          <span class="text-xs px-2 py-1 rounded-full"
+                                [ngClass]="c.priority === 'URGENT' ? 'bg-red-100 text-red-700' : c.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' : c.priority === 'MEDIUM' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'">
+                            {{ c.priority || 'NORMAL' }}
+                          </span>
+                        </div>
+                      </div>
+                      <div class="flex items-center space-x-4 pt-4 border-t border-gray-100">
+                        <button class="text-sm text-amber-600 hover:text-amber-700 font-medium">
+                          <i class="fa-solid fa-eye mr-1"></i>View Details
+                        </button>
+                        <button class="text-sm text-gray-600 hover:text-gray-700 font-medium">
+                          <i class="fa-solid fa-folder mr-1"></i>Documents
+                        </button>
+                        @if (c.progress_percent != null) {
+                          <div class="flex items-center space-x-2 ml-auto">
+                            <span class="text-xs text-gray-500">Progress:</span>
+                            <div class="w-32 bg-gray-200 rounded-full h-2">
+                              <div class="h-2 rounded-full bg-amber-500" [style.width]="c.progress_percent + '%'"></div>
+                            </div>
+                            <span class="text-xs font-semibold text-gray-700">{{ c.progress_percent }}%</span>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- ══════════════════════════════ DOCUMENTS ══════════════════════════════ -->
+      @case ('Documents') {
+        <section class="px-8 pb-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-bold text-gray-900">All Documents</h2>
+                <p class="text-sm text-gray-600 mt-1">{{ backendDocuments().length }} document(s) across all cases</p>
+              </div>
+              <button (click)="upload.open()" class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+                <i class="fa-solid fa-upload mr-2"></i>Upload Document
+              </button>
+            </div>
+            <div class="p-6">
+              @if (docsLoading()) {
+                <div class="flex items-center justify-center py-20">
+                  <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
+                  <span class="text-gray-500 text-lg">Loading documents…</span>
+                </div>
+              } @else if (backendDocuments().length === 0) {
+                <div class="text-center py-20">
+                  <i class="fa-solid fa-folder-open text-5xl text-gray-300 mb-4"></i>
+                  <p class="text-gray-500 text-lg font-medium">No documents found</p>
+                  <p class="text-gray-400 text-sm mt-1">Upload a document to get started.</p>
+                  <button (click)="upload.open()" class="mt-4 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
+                    <i class="fa-solid fa-upload mr-2"></i>Upload First Document
+                  </button>
+                </div>
+              } @else {
+                <div class="space-y-3">
+                  @for (d of backendDocuments(); track d.id) {
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                      <div class="flex items-center space-x-4">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                             [ngClass]="getDocIconInfo(d.file_type).bg">
+                          <i [ngClass]="[getDocIconInfo(d.file_type).icon, getDocIconInfo(d.file_type).color]"></i>
+                        </div>
+                        <div>
+                          <p class="text-sm font-semibold text-gray-900">{{ d.file_name }}</p>
+                          <div class="flex items-center space-x-4 mt-1">
+                            <span class="text-xs text-gray-600">{{ d.case_file?.title || 'No case' }}</span>
+                            <span class="text-xs text-gray-500">{{ d.file_size_mb ? (d.file_size_mb | number:'1.1-2') + ' MB' : '—' }}</span>
+                            <span class="text-xs text-gray-500">{{ formatDate(d.created_at) }}</span>
+                            <span class="text-xs px-2 py-0.5 rounded-full"
+                                  [ngClass]="d.status === 'APPROVED' ? 'bg-green-100 text-green-700' : d.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">
+                              {{ d.status === 'APPROVED' ? 'Approved' : d.status === 'REJECTED' ? 'Rejected' : 'Pending Review' }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flex items-center space-x-1">
+                        <a [href]="d.storage_url" target="_blank"
+                           class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100">
+                          <i class="fa-solid fa-download"></i>
+                        </a>
+                        <a [href]="d.storage_url" target="_blank"
+                           class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100">
+                          <i class="fa-solid fa-eye"></i>
+                        </a>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- ══════════════════════════════ PAYMENTS ══════════════════════════════ -->
+      @case ('Payments') {
+        <section class="px-8 pb-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-bold text-gray-900">Payment History &amp; Invoices</h2>
+                <p class="text-sm text-gray-600 mt-1">{{ backendInvoices().length }} invoice(s) total</p>
+              </div>
+              <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+                <i class="fa-solid fa-plus mr-2"></i>New Invoice
+              </button>
+            </div>
+            @if (invoicesLoading()) {
+              <div class="flex items-center justify-center py-20">
+                <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
+                <span class="text-gray-500 text-lg">Loading invoices…</span>
+              </div>
+            } @else if (backendInvoices().length === 0) {
+              <div class="text-center py-20">
+                <i class="fa-solid fa-file-invoice text-5xl text-gray-300 mb-4"></i>
+                <p class="text-gray-500 text-lg font-medium">No invoices found</p>
+                <p class="text-gray-400 text-sm mt-1">Create an invoice for this client.</p>
+              </div>
+            } @else {
+              <!-- Summary bar -->
+              <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center space-x-8">
+                <div>
+                  <p class="text-xs text-gray-500 uppercase font-semibold">Total Invoiced</p>
+                  <p class="text-lg font-bold text-gray-900">
+                    {{ formatAmount(backendInvoices().reduce($any(0), $any(0)) || 0) }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-500 uppercase font-semibold">Paid</p>
+                  <p class="text-lg font-bold text-green-600">
+                    {{ formatAmount(backendInvoices().filter($any(i => i.status === 'PAID')).reduce($any(0), $any(0)) || 0) }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-500 uppercase font-semibold">Pending / Overdue</p>
+                  <p class="text-lg font-bold text-amber-600">
+                    {{ backendInvoices().filter($any(i => ['PENDING','OVERDUE'].includes(i.status))).length }} invoice(s)
+                  </p>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Invoice #</th>
+                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Issue Date</th>
+                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Due Date</th>
+                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Amount</th>
+                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                      <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    @for (inv of backendInvoices(); track inv.id) {
+                      <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4"><p class="text-sm font-semibold text-gray-900">{{ inv.invoice_number }}</p></td>
+                        <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ formatDate(inv.issue_date) }}</p></td>
+                        <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ formatDate(inv.due_date) }}</p></td>
+                        <td class="px-6 py-4"><p class="text-sm font-semibold text-gray-900">{{ formatAmount(inv.total_amount, inv.currency) }}</p></td>
+                        <td class="px-6 py-4">
+                          <span class="text-xs px-2 py-1 rounded-full font-medium"
+                                [ngClass]="[getInvoiceStatusInfo(inv.status).bg, getInvoiceStatusInfo(inv.status).color]">
+                            {{ getInvoiceStatusInfo(inv.status).label }}
+                          </span>
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                          @if (inv.status === 'OVERDUE' || inv.status === 'PENDING') {
+                            <button class="text-amber-600 hover:text-amber-700 mr-3 text-sm font-medium">Send Reminder</button>
+                          } @else {
+                            <button class="text-gray-500 hover:text-gray-700 mr-3"><i class="fa-solid fa-download"></i></button>
+                          }
+                          <button class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-eye"></i></button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </section>
+      }
+
+      <!-- ══════════════════════════════ COMMUNICATION ══════════════════════════════ -->
+      @case ('Communication') {
+        <section class="px-8 pb-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-bold text-gray-900">Communication Log</h2>
+                <p class="text-sm text-gray-600 mt-1">Complete history of interactions</p>
+              </div>
+              <div class="flex items-center space-x-2">
+                <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"><i class="fa-solid fa-filter mr-2"></i>Filter</button>
+                <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600"><i class="fa-solid fa-plus mr-2"></i>Add Entry</button>
+              </div>
+            </div>
+            <div class="p-6 space-y-6">
+              @for (c of communications; track c.title) {
+                <div class="flex items-start space-x-4">
+                  <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" [ngClass]="c.iconBg">
+                    <i [ngClass]="[c.icon, c.iconColor]"></i>
+                  </div>
+                  <div class="flex-1">
+                    <div class="flex items-start justify-between mb-2">
+                      <div>
+                        <p class="text-sm font-semibold text-gray-900">{{ c.title }}</p>
+                        <p class="text-xs text-gray-600 mt-0.5">{{ c.by }}</p>
+                      </div>
+                      <span class="text-xs text-gray-500 whitespace-nowrap ml-4">{{ c.when }}</span>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4"><p class="text-sm text-gray-700">{{ c.body }}</p></div>
+                    <div class="flex items-center space-x-3 mt-3">
+                      <span class="text-xs px-2 py-1 rounded-full" [ngClass]="c.tagBg">{{ c.tag }}</span>
+                      <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">{{ c.case }}</span>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- ══════════════════════════════ NOTES ══════════════════════════════ -->
+      @case ('Notes') {
+        <section class="px-8 pb-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-bold text-gray-900">Internal Notes</h2>
+                <p class="text-sm text-gray-600 mt-1">Private notes and observations for this client</p>
+              </div>
+              <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
+                <i class="fa-solid fa-plus mr-2"></i>Add Note
+              </button>
+            </div>
+            <div class="p-6 space-y-4">
+              @for (n of notes; track n.author) {
+                <div class="border border-gray-200 rounded-lg p-5">
+                  <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center space-x-3">
+                      <img [src]="n.avatar" [alt]="n.author" class="w-8 h-8 rounded-full">
+                      <div>
+                        <p class="text-sm font-semibold text-gray-900">{{ n.author }}</p>
+                        <p class="text-xs text-gray-500">{{ n.when }}</p>
+                      </div>
+                    </div>
+                    <button class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                  </div>
+                  <p class="text-sm text-gray-700">{{ n.body }}</p>
+                  <div class="mt-3"><span class="text-xs px-2 py-1 rounded-full" [ngClass]="n.tagBg">{{ n.tag }}</span></div>
+                </div>
+              }
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- ══════════════════════════════ ACTIVITY LOG ══════════════════════════════ -->
+      @case ('Activity Log') {
+        <section class="px-8 pb-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-bold text-gray-900">Activity Timeline</h2>
+                <p class="text-sm text-gray-600 mt-1">Complete chronological history</p>
+              </div>
+              <button (click)="exportPdf()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+                <i class="fa-solid fa-file-pdf mr-2 text-red-500"></i>Export Report
+              </button>
+            </div>
+            <div class="p-6">
+              <div class="relative">
+                <div class="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                <div class="space-y-8">
+                  @for (item of timeline; track item.title) {
+                    <div class="flex items-start space-x-4">
+                      <div class="relative z-10 flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg" [ngClass]="item.bg">
+                        <i [ngClass]="item.icon"></i>
+                      </div>
+                      <div class="flex-1 bg-gray-50 rounded-lg p-4">
+                        <div class="flex items-start justify-between mb-2">
+                          <div>
+                            <p class="text-sm font-semibold text-gray-900">{{ item.title }}</p>
+                            <p class="text-xs text-gray-600 mt-0.5">{{ item.desc }}</p>
+                          </div>
+                          <span class="text-xs text-gray-500 whitespace-nowrap ml-4">{{ item.when }}</span>
+                        </div>
+                        <span class="text-xs px-2 py-1 rounded-full" [ngClass]="item.tagBg">{{ item.tag }}</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      }
+
+    }<!-- /switch activeTab -->
+
+  }<!-- /if client() -->
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — EDIT CLIENT  (3 steps)
+══════════════════════════════════════════════════════════ -->
+@if (showEditModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0)"
+     (click)="closeEditModal()">
+
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
+       style="max-height:92vh"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid fa-user-pen text-amber-600"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Edit Client</h2>
+            <p class="text-xs text-gray-500">Update client profile — {{ client()!.name }}</p>
+          </div>
+        </div>
+        <button (click)="closeEditModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+      <!-- Progress -->
+      <div class="flex items-center justify-between mb-2 text-xs font-semibold">
+        <span class="text-gray-500">Progress</span>
+        <span class="text-gray-700">Step {{ editStep() }} of 3</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+        <div class="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300"
+             [style.width]="editProgressPct + '%'"></div>
+      </div>
+      <div class="flex items-center justify-between mt-1">
+        @for (sl of editStepLabels; track sl.label) {
+          <span class="text-xs font-medium transition-colors"
+                [ngClass]="sl.active ? 'text-amber-600 font-bold' : sl.done ? 'text-green-500' : 'text-gray-400'">
+            @if (sl.done) { <i class="fa-solid fa-check mr-1"></i> }
+            {{ sl.label }}
+          </span>
+        }
+      </div>
+    </div>
+
+    <!-- Scrollable Body -->
+    <div class="overflow-y-auto flex-1">
+
+      <!-- ════ STEP 1 — Identity ════ -->
+      @if (editStep() === 1) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Personal & Contact Info</h3>
+            <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
+          </div>
+
+          <!-- Avatar -->
+          <div class="flex items-center space-x-4">
+            <img [src]="client()!.avatar" [alt]="client()!.name" class="w-16 h-16 rounded-full border-2 border-amber-200 flex-shrink-0">
+            <button class="flex-1 bg-amber-50 text-amber-700 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center space-x-2 hover:bg-amber-100 transition-colors border border-amber-200">
+              <i class="fa-solid fa-camera"></i><span>Change Photo</span>
+            </button>
+          </div>
+
+          <!-- Full Name -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Full Name <span class="text-red-500">*</span></label>
+            <div class="relative">
+              <input type="text"
+                     [ngModel]="eF1().name" (ngModelChange)="eF1.update(v=>({...v,name:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Email + Phone -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Email <span class="text-red-500">*</span></label>
+              <div class="relative">
+                <input type="email"
+                       [ngModel]="eF1().email" (ngModelChange)="eF1.update(v=>({...v,email:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Phone</label>
+              <div class="relative">
+                <input type="tel"
+                       [ngModel]="eF1().phone" (ngModelChange)="eF1.update(v=>({...v,phone:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mobile + Company -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Mobile</label>
+              <div class="relative">
+                <input type="tel"
+                       [ngModel]="eF1().mobile" (ngModelChange)="eF1.update(v=>({...v,mobile:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-mobile absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Company</label>
+              <div class="relative">
+                <input type="text"
+                       [ngModel]="eF1().company" (ngModelChange)="eF1.update(v=>({...v,company:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Address + City -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Address</label>
+            <div class="relative">
+              <input type="text"
+                     [ngModel]="eF1().address" (ngModelChange)="eF1.update(v=>({...v,address:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">City / State / ZIP</label>
+              <input type="text"
+                     [ngModel]="eF1().city" (ngModelChange)="eF1.update(v=>({...v,city:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Tax ID</label>
+              <input type="text"
+                     [ngModel]="eF1().taxId" (ngModelChange)="eF1.update(v=>({...v,taxId:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 2 — Classification ════ -->
+      @if (editStep() === 2) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Classification & Assignment</h3>
+            <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+          </div>
+
+          <!-- Status -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Status</label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (st of statusList; track st) {
+                <button (click)="eF2.update(v=>({...v,status:st}))"
+                        class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
+                        [ngClass]="eF2().status === st
+                          ? (st==='Active' ? 'border-green-500 bg-green-50 text-green-700' : st==='Pending' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-red-500 bg-red-50 text-red-700')
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                  <i class="fa-solid fa-circle text-xs mr-1.5"
+                     [ngClass]="st==='Active' ? 'text-green-500' : st==='Pending' ? 'text-amber-500' : 'text-red-400'"></i>
+                  {{ st }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Client Type -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Type</label>
+            <div class="relative">
+              <select [ngModel]="eF2().type" (ngModelChange)="eF2.update(v=>({...v,type:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                @for (t of clientTypes; track t) { <option>{{ t }}</option> }
+              </select>
+              <i class="fa-solid fa-star absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+            </div>
+          </div>
+
+          <!-- Assigned Attorney -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Assigned Attorney</label>
+            <div class="relative">
+              <select [ngModel]="eF2().attorney" (ngModelChange)="eF2.update(v=>({...v,attorney:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                @for (a of attorneys; track a) { <option>{{ a }}</option> }
+              </select>
+              <i class="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+            </div>
+          </div>
+
+          <!-- Client Since -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Since</label>
+            <div class="relative">
+              <input type="text" placeholder="e.g., Jan 15, 2023"
+                     [ngModel]="eF2().since" (ngModelChange)="eF2.update(v=>({...v,since:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Tags -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Tags <span class="text-xs text-gray-400 font-normal">(comma separated)</span></label>
+            <div class="relative">
+              <input type="text" placeholder="e.g., Corporate Client, Real Estate"
+                     [ngModel]="eF2().tags" (ngModelChange)="eF2.update(v=>({...v,tags:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-tags absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+            @if (eF2().tags) {
+              <div class="flex flex-wrap gap-2 mt-2">
+                @for (tag of eF2().tags.split(','); track tag) {
+                  @if (tag.trim()) {
+                    <span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">{{ tag.trim() }}</span>
+                  }
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 3 — Notes & Preferences ════ -->
+      @if (editStep() === 3) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Notes & Preferences</h3>
+            <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+          </div>
+
+          <!-- Priority -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Priority</label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (p of ['Normal','High','VIP']; track p) {
+                <button (click)="eF3.update(v=>({...v,priority:p}))"
+                        class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
+                        [ngClass]="eF3().priority === p
+                          ? (p==='Normal' ? 'border-green-500 bg-green-50 text-green-700' : p==='High' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-purple-500 bg-purple-50 text-purple-700')
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                  <i class="fa-solid fa-circle text-xs mr-1.5"
+                     [ngClass]="p==='Normal' ? 'text-green-500' : p==='High' ? 'text-amber-500' : 'text-purple-500'"></i>
+                  {{ p }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Preferred Contact -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Preferred Contact Method</label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (m of [['Email','fa-envelope'],['Phone','fa-phone'],['In-Person','fa-users']]; track m[0]) {
+                <button (click)="eF3.update(v=>({...v,preferredContact:m[0]}))"
+                        class="border-2 rounded-xl py-3 text-xs font-semibold transition-all flex flex-col items-center space-y-1"
+                        [ngClass]="eF3().preferredContact === m[0]
+                          ? 'border-amber-500 bg-amber-50 text-amber-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                  <i [ngClass]="'fa-solid ' + m[1]"></i>
+                  <span>{{ m[0] }}</span>
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Internal Notes</label>
+            <textarea rows="5" placeholder="Notes about preferences, important details, special instructions..."
+                      [ngModel]="eF3().notes" (ngModelChange)="eF3.update(v=>({...v,notes:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
+          </div>
+
+          <!-- Summary card -->
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p class="text-xs font-semibold text-amber-700 uppercase mb-3">Summary of Changes</p>
+            <div class="space-y-1.5 text-xs text-gray-700">
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-user text-amber-500 w-4"></i>
+                <span>{{ eF1().name }}</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-envelope text-amber-500 w-4"></i>
+                <span>{{ eF1().email }}</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-star text-amber-500 w-4"></i>
+                <span>{{ eF2().type }} · {{ eF2().status }}</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-user-tie text-amber-500 w-4"></i>
+                <span>{{ eF2().attorney }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
+    </div><!-- /scrollable body -->
+
+    <!-- Sticky Footer -->
+    <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+      <button (click)="editStep() > 1 ? editPrev() : closeEditModal()"
+              class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+        @if (editStep() > 1) {
+          <i class="fa-solid fa-arrow-left mr-2"></i>Back
+        } @else {
+          <i class="fa-solid fa-times mr-2"></i>Cancel
+        }
+      </button>
+      <button (click)="editNext()"
+              [disabled]="editStep()===1 && !editStep1Valid || isSaving()"
+              class="flex-1 py-3.5 rounded-xl font-bold text-sm transition-all"
+              [ngClass]="(editStep()===1 && !editStep1Valid)
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'">
+        @if (isSaving()) {
+          <i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...
+        } @else if (editStep() === 3) {
+          <i class="fa-solid fa-check mr-2"></i>Save Changes
+        } @else {
+          Next <i class="fa-solid fa-arrow-right ml-2"></i>
+        }
+      </button>
+    </div>
+
+  </div><!-- /panel -->
+</div><!-- /backdrop -->
+<app-upload-modal />
+}

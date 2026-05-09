@@ -1,0 +1,215 @@
+@if (svc.showModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color:rgba(0,0,0,0.5)"
+     (click)="svc.close()">
+
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
+       style="max-height:92vh"
+       (click)="$event.stopPropagation()">
+
+    <!-- ── Header ── -->
+    <div class="px-6 py-5 border-b border-gray-100 flex-shrink-0 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+          <i class="fa-solid fa-cloud-arrow-up text-amber-600"></i>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Upload Files</h2>
+          <p class="text-xs text-gray-500">Add documents to your case files</p>
+        </div>
+      </div>
+      <button (click)="svc.close()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+        <i class="fa-solid fa-times text-lg"></i>
+      </button>
+    </div>
+
+    <!-- ── Body ── -->
+    <div class="overflow-y-auto flex-1">
+
+      @if (svc.isDone()) {
+        <!-- SUCCESS -->
+        <div class="flex flex-col items-center justify-center py-16 px-8 text-center">
+          <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-5">
+            <i class="fa-solid fa-check text-green-500 text-4xl"></i>
+          </div>
+          <h3 class="text-2xl font-bold text-gray-900 mb-2">Upload Complete!</h3>
+          <p class="text-gray-500 mb-1">
+            <span class="font-semibold text-gray-800">{{ svc.files().length }}</span>
+            file{{ svc.files().length > 1 ? 's' : '' }} uploaded successfully.
+          </p>
+          <p class="text-sm text-gray-400 mb-8">Linked to <span class="font-medium text-gray-700">{{ svc.selectedCase() }}</span></p>
+          <div class="flex items-center space-x-3">
+            <button (click)="svc.open(svc.acceptFilter)"
+                    class="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors">
+              <i class="fa-solid fa-plus mr-2"></i>Upload More
+            </button>
+            <button (click)="svc.close()"
+                    class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl text-sm font-semibold hover:shadow-md transition-all">
+              Done
+            </button>
+          </div>
+        </div>
+
+      } @else {
+        <div class="px-6 py-5 space-y-5">
+
+          <!-- Drop Zone -->
+          <div class="border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer"
+               [ngClass]="svc.isDragging() ? 'border-amber-500 bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-gray-50'"
+               (dragover)="onDragOver($event)"
+               (dragleave)="onDragLeave()"
+               (drop)="onDrop($event)"
+               (click)="openPicker()">
+            <input #fileInput type="file" multiple [accept]="svc.acceptFilter"
+                   class="hidden" (change)="onFileInput($event)">
+            <div class="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i class="fa-solid fa-cloud-arrow-up text-amber-500 text-2xl"></i>
+            </div>
+            <p class="text-base font-semibold text-gray-800 mb-1">
+              @if (svc.isDragging()) { Drop files here } @else { Drag &amp; drop files here }
+            </p>
+            <p class="text-sm text-gray-500 mb-3">or click to browse from your computer</p>
+            <span class="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full">
+              @if (svc.acceptFilter === '*') { All file types supported }
+              @else { Accepted: {{ svc.acceptFilter }} }
+            </span>
+          </div>
+
+          <!-- File list -->
+          @if (svc.files().length > 0) {
+            <div class="space-y-2">
+              <div class="flex items-center justify-between mb-1">
+                <p class="text-sm font-semibold text-gray-800">
+                  {{ svc.files().length }} file{{ svc.files().length > 1 ? 's' : '' }} selected
+                </p>
+                <button (click)="svc.files.set([])" class="text-xs text-red-500 hover:text-red-700">Remove all</button>
+              </div>
+              @for (f of svc.files(); track f.name; let i = $index) {
+                <div class="flex items-center space-x-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                  <i [ngClass]="svc.typeIcon[f.type]" class="text-xl flex-shrink-0"></i>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate">{{ f.name }}</p>
+                    <div class="flex items-center space-x-2 mt-1">
+                      <span class="text-xs text-gray-500">{{ f.size }}</span>
+                      @if (svc.isUploading() || f.done) {
+                        <div class="flex-1 bg-gray-200 rounded-full h-1.5">
+                          <div class="h-1.5 rounded-full transition-all duration-200"
+                               [ngClass]="f.done ? 'bg-green-500' : 'bg-amber-500'"
+                               [style.width]="f.progress + '%'"></div>
+                        </div>
+                        <span class="text-xs" [ngClass]="f.done ? 'text-green-600 font-semibold' : 'text-gray-500'">
+                          @if (f.done) { Done } @else { {{ f.progress }}% }
+                        </span>
+                      }
+                    </div>
+                  </div>
+                  @if (!svc.isUploading()) {
+                    <button (click)="svc.removeFile(i)" class="p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0">
+                      <i class="fa-solid fa-times"></i>
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Metadata -->
+          <div class="border-t border-gray-100 pt-5 space-y-4">
+            <h3 class="text-sm font-bold text-gray-800">File Details</h3>
+
+            <!-- Case (required) -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">
+                Link to Case <span class="text-red-500">*</span>
+              </label>
+              @if (svc.caseLocked()) {
+                <!-- Locked to current case (openForCase mode) -->
+                <div class="flex items-center space-x-3 bg-amber-50 border-2 border-amber-200 rounded-xl px-4 py-3">
+                  <i class="fa-solid fa-briefcase text-amber-500 flex-shrink-0"></i>
+                  <span class="text-sm font-semibold text-amber-800 truncate">{{ svc.selectedCase() }}</span>
+                  <span class="ml-auto text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-medium flex-shrink-0">Current case</span>
+                </div>
+              } @else {
+                <div class="relative">
+                  <select [ngModel]="svc.selectedCase()" (ngModelChange)="svc.selectedCase.set($event)"
+                          class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                    <option value="">Select a case</option>
+                    @for (c of svc.cases; track c) { <option>{{ c }}</option> }
+                  </select>
+                  <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                </div>
+              }
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <!-- Category -->
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Category</label>
+                <div class="relative">
+                  <select [ngModel]="svc.selectedCategory()" (ngModelChange)="svc.selectedCategory.set($event)"
+                          class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                    <option value="">Select category</option>
+                    @for (cat of svc.categories; track cat) { <option>{{ cat }}</option> }
+                  </select>
+                  <i class="fa-solid fa-tag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                </div>
+              </div>
+              <!-- Attorney -->
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Assigned To</label>
+                <div class="relative">
+                  <select [ngModel]="svc.selectedAttorney()" (ngModelChange)="svc.selectedAttorney.set($event)"
+                          class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                    <option value="">Select attorney</option>
+                    @for (a of svc.attorneys; track a) { <option>{{ a }}</option> }
+                  </select>
+                  <i class="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+              <textarea rows="3" placeholder="Brief description of the documents..."
+                        [ngModel]="svc.description()" (ngModelChange)="svc.description.set($event)"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none text-sm"></textarea>
+            </div>
+          </div>
+
+        </div>
+      }
+    </div>
+
+    <!-- ── Footer ── -->
+    @if (!svc.isDone()) {
+      <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+        <button (click)="svc.close()"
+                class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+          Cancel
+        </button>
+        <button (click)="svc.upload()"
+                [disabled]="!svc.isValid || svc.isUploading()"
+                class="flex-1 py-3.5 rounded-xl font-bold text-sm transition-all"
+                [ngClass]="svc.isValid && !svc.isUploading()
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+          @if (svc.isUploading()) {
+            <i class="fa-solid fa-spinner fa-spin mr-2"></i>Uploading...
+          } @else {
+            <i class="fa-solid fa-cloud-arrow-up mr-2"></i>
+            Upload {{ svc.files().length > 0 ? svc.files().length + ' file' + (svc.files().length > 1 ? 's' : '') : 'Files' }}
+          }
+        </button>
+      </div>
+      @if (svc.files().length > 0 && !svc.selectedCase()) {
+        <p class="text-xs text-red-500 text-center pb-3">Please select a case to continue</p>
+      }
+    }
+
+  </div>
+</div>
+}

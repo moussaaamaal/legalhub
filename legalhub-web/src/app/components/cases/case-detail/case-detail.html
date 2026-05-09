@@ -1,0 +1,1319 @@
+<!-- TOPBAR -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-4">
+      <button (click)="goBack()" class="mr-4 flex items-center space-x-2 text-gray-600 hover:text-amber-600 transition-colors">
+        <i class="fa-solid fa-arrow-left text-lg"></i>
+        <span class="text-sm font-medium">Back to Cases</span>
+      </button>
+    </div>
+    <div class="flex items-center space-x-3">
+      <div class="h-8 w-px bg-gray-300"></div>
+      @if (case()) {
+        <button (click)="openEditModal()" class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
+          <i class="fa-solid fa-pen-to-square"></i>
+          <span class="font-medium">Edit Case</span>
+        </button>
+      <button (click)="exportPdf()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+        <i class="fa-solid fa-file-pdf mr-2 text-red-500"></i>Export PDF
+      </button>
+      }
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto bg-gray-50">
+
+  <!-- Loading -->
+  @if (isLoading()) {
+    <div class="flex items-center justify-center h-64">
+      <div class="text-center">
+        <i class="fa-solid fa-spinner fa-spin text-4xl text-amber-500 mb-4 block"></i>
+        <p class="text-gray-500">Loading case...</p>
+      </div>
+    </div>
+  }
+
+  <!-- Error -->
+  @if (!isLoading() && errorMsg()) {
+    <div class="mx-8 mt-8 p-6 bg-red-50 border border-red-200 rounded-xl text-red-700">
+      <i class="fa-solid fa-circle-exclamation mr-2 text-lg"></i>{{ errorMsg() }}
+    </div>
+  }
+
+  @if (!isLoading() && case()) {
+
+  <!-- CASE HEADER -->
+  <section class="bg-white border-b border-gray-200 px-8 py-6">
+    <div class="flex items-start justify-between mb-6">
+      <div class="flex items-start space-x-5">
+        <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+             [ngClass]="typeBg(case()!.type)">
+          <i class="fa-solid fa-briefcase text-2xl" [ngClass]="typeColor(case()!.type)"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-3 mb-2">
+            <h1 class="text-2xl font-bold text-gray-900">{{ case()!.title }}</h1>
+            <span class="text-xs px-3 py-1.5 rounded-full font-semibold"
+                  [ngClass]="[statusBg(case()!.status), statusColor(case()!.status)]">
+              {{ statusLabel(case()!.status) }}
+            </span>
+            <span class="text-xs px-3 py-1.5 rounded-full font-semibold"
+                  [ngClass]="[typeBg(case()!.type), typeColor(case()!.type)]">
+              {{ typeLabel(case()!.type) }}
+            </span>
+            <span class="text-xs px-3 py-1.5 rounded-full font-semibold"
+                  [ngClass]="priorityClasses(case()!.priority)">
+              {{ priorityLabel(case()!.priority) }}
+            </span>
+          </div>
+          <div class="flex items-center space-x-6 text-sm text-gray-600">
+            <span><i class="fa-solid fa-hashtag mr-2 text-gray-400"></i>{{ case()!.caseNumber }}</span>
+            <span><i class="fa-solid fa-user mr-2 text-gray-400"></i>{{ case()!.client || '—' }}</span>
+            @if (case()!.court) {
+              <span><i class="fa-solid fa-landmark mr-2 text-gray-400"></i>{{ case()!.court }}</span>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button (click)="toggleFavorite()"
+                class="px-4 py-2 border rounded-lg text-sm transition-colors flex items-center"
+                [ngClass]="isFavorite()
+                  ? 'bg-amber-50 border-amber-300 text-amber-700'
+                  : 'border-gray-300 text-gray-600 hover:bg-gray-50'">
+          <i class="mr-2" [ngClass]="isFavorite() ? 'fa-solid fa-star text-amber-500' : 'fa-regular fa-star'"></i>
+          {{ isFavorite() ? 'Favorited' : 'Favorite' }}
+        </button>
+        <button (click)="copyLink()"
+                class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm flex items-center transition-colors"
+                [ngClass]="copied() ? 'bg-green-50 border-green-300 text-green-700' : 'text-gray-600'">
+          <i class="mr-2" [ngClass]="copied() ? 'fa-solid fa-check' : 'fa-solid fa-copy'"></i>
+          {{ copied() ? 'Copied!' : 'Copy Link' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Stat pills -->
+    <div class="grid grid-cols-5 gap-4">
+      <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-blue-600 font-semibold uppercase">Status</span>
+          <i class="fa-solid fa-circle-info text-blue-500"></i>
+        </div>
+        <p class="text-lg font-bold text-blue-900">{{ statusLabel(case()!.status) }}</p>
+      </div>
+      <div class="bg-green-50 rounded-xl p-4 border border-green-200">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-green-600 font-semibold uppercase">Priority</span>
+          <i class="fa-solid fa-flag text-green-500"></i>
+        </div>
+        <p class="text-base font-bold text-green-900 truncate">{{ priorityLabel(case()!.priority) }}</p>
+      </div>
+      <div class="bg-amber-50 rounded-xl p-4 border border-amber-200">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-amber-600 font-semibold uppercase">Next Hearing</span>
+          <i class="fa-solid fa-gavel text-amber-500"></i>
+        </div>
+        <p class="text-lg font-bold text-amber-900">{{ formatDate(case()!.nextHearing) }}</p>
+      </div>
+      <button (click)="setTab('Documents')"
+              class="bg-purple-50 rounded-xl p-4 border border-purple-200 text-left hover:bg-purple-100 transition-colors">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-purple-600 font-semibold uppercase">Documents</span>
+          <i class="fa-solid fa-folder text-purple-500"></i>
+        </div>
+        <p class="text-lg font-bold text-purple-900">{{ documents().length }}</p>
+      </button>
+      <button (click)="setTab('Tasks')"
+              class="bg-red-50 rounded-xl p-4 border border-red-200 text-left hover:bg-red-100 transition-colors">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-red-600 font-semibold uppercase">Tasks</span>
+          <i class="fa-solid fa-tasks text-red-500"></i>
+        </div>
+        <p class="text-lg font-bold text-red-900">{{ tasks().length }}</p>
+      </button>
+    </div>
+  </section>
+
+  <!-- TABS -->
+  <section class="bg-white border-b border-gray-200 px-8">
+    <div class="flex items-center space-x-1">
+      @for (tab of tabs; track tab) {
+        <button (click)="setTab(tab)"
+          class="px-4 py-3 text-sm font-medium transition-colors border-b-2"
+          [ngClass]="activeTab() === tab
+            ? 'text-amber-600 border-amber-600'
+            : 'text-gray-600 border-transparent hover:text-gray-900'">
+          {{ tab }}
+        </button>
+      }
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       TAB: OVERVIEW
+  ══════════════════════════════════════════ -->
+  @if (activeTab() === 'Overview') {
+    <div class="px-8 py-6">
+      <div class="grid grid-cols-3 gap-6">
+
+        <!-- LEFT -->
+        <div class="col-span-2 space-y-6">
+
+          <!-- Description -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 class="text-lg font-bold text-gray-900 mb-4">Case Description</h2>
+            <p class="text-gray-700 leading-relaxed">{{ case()!.description || 'No description provided.' }}</p>
+          </div>
+
+          <!-- Timeline (compact) -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-5">
+              <h2 class="text-lg font-bold text-gray-900">Recent Timeline</h2>
+              <button (click)="setTab('Timeline')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
+                View All ({{ timeline().length }})
+              </button>
+            </div>
+            @if (timeline().length === 0) {
+              <p class="text-sm text-gray-400 text-center py-4">No timeline events yet.</p>
+            }
+            <div class="space-y-4">
+              @for (item of timeline().slice(0, 4); track item.created_at) {
+                <div class="flex items-start space-x-4">
+                  <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-clock-rotate-left text-xs text-amber-600"></i>
+                  </div>
+                  <div class="flex-1">
+                    <div class="flex items-start justify-between">
+                      <p class="text-sm font-semibold text-gray-900">{{ item.action }}</p>
+                      <span class="text-xs text-gray-500 ml-4 whitespace-nowrap">{{ formatTimelineDate(item.created_at) }}</span>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- Documents (preview) -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-bold text-gray-900">Recent Documents</h2>
+              <button (click)="setTab('Documents')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
+            </div>
+            <div class="space-y-3">
+              @for (doc of documents().slice(0, 3); track doc.id) {
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                  <div class="flex items-center space-x-3 flex-1">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center" [ngClass]="doc.iconBg">
+                      <i class="fa-solid" [ngClass]="[doc.icon, doc.iconColor]"></i>
+                    </div>
+                    <div>
+                      <p class="text-sm font-medium text-gray-900">{{ doc.name }}</p>
+                      <p class="text-xs text-gray-600">Uploaded {{ doc.ago }} · {{ doc.size }}</p>
+                    </div>
+                  </div>
+                  <button class="text-gray-400 hover:text-gray-600 p-1">
+                    <i class="fa-solid fa-download"></i>
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+
+        </div><!-- /col-span-2 -->
+
+        <!-- RIGHT sidebar -->
+        <div class="space-y-6">
+
+          <!-- Participants -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 class="text-lg font-bold text-gray-900 mb-4">Participants</h2>
+            <div class="pt-2">
+              <p class="text-xs text-gray-600 font-semibold uppercase mb-3">Client</p>
+              <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <i class="fa-solid fa-user text-blue-600"></i>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">{{ case()!.client || '—' }}</p>
+                  <p class="text-xs text-gray-500">Client</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Summary widget -->
+          <div class="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between mb-4">
+              <div class="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                <i class="fa-solid fa-robot text-2xl"></i>
+              </div>
+              <span class="text-xs bg-white/20 px-3 py-1 rounded-full font-medium">AI Powered</span>
+            </div>
+            <h3 class="text-lg font-bold mb-2">Generate AI Summary</h3>
+            <p class="text-sm text-purple-100 mb-4">Get an instant AI-generated summary with key facts and strategic recommendations.</p>
+            @if (!showAiSummary()) {
+              <button (click)="generateAiSummary()"
+                      class="w-full bg-white text-purple-600 py-2.5 rounded-lg font-semibold hover:bg-purple-50 transition-colors">
+                <i class="fa-solid fa-sparkles mr-2"></i>Generate Summary
+              </button>
+            } @else if (aiSummaryLoading()) {
+              <div class="flex items-center justify-center py-2">
+                <i class="fa-solid fa-spinner fa-spin text-white mr-2"></i>
+                <span class="text-sm text-purple-100">Analyzing case...</span>
+              </div>
+            } @else {
+              <div class="bg-white/10 rounded-lg p-3 text-sm text-purple-100 leading-relaxed">
+                {{ aiSummaryText() }}
+              </div>
+              <button (click)="showAiSummary.set(false)"
+                      class="mt-3 w-full text-xs text-purple-200 hover:text-white underline">
+                Dismiss
+              </button>
+            }
+          </div>
+
+          <!-- Upcoming Hearing -->
+          @if (case()!.nextHearing) {
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <h2 class="text-lg font-bold text-gray-900 mb-4">Upcoming Hearing</h2>
+              <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p class="text-sm font-semibold text-gray-900 mb-1">Next Hearing</p>
+                @if (case()!.court) {
+                  <p class="text-xs text-gray-600">{{ case()!.court }}</p>
+                }
+                <div class="flex items-center space-x-2 text-xs text-gray-600 mt-3">
+                  <i class="fa-solid fa-calendar text-amber-500"></i>
+                  <span>{{ formatDate(case()!.nextHearing) }}</span>
+                </div>
+              </div>
+            </div>
+          }
+
+          <!-- Tasks quick view -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-bold text-gray-900">Active Tasks</h2>
+              <button (click)="setTab('Tasks')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
+            </div>
+            <div class="space-y-3">
+              @for (task of tasks().slice(0, 3); track task.id) {
+                <div class="flex items-start space-x-3">
+                  <input type="checkbox" [ngModel]="task.done" (ngModelChange)="toggleTask(task)"
+                         class="mt-1 rounded border-gray-300 accent-amber-500">
+                  <div class="flex-1">
+                    <p class="text-sm font-medium"
+                       [ngClass]="task.done ? 'text-gray-400 line-through' : 'text-gray-900'">{{ task.label }}</p>
+                    <p class="text-xs mt-0.5" [ngClass]="task.dueColor">{{ task.due }}</p>
+                  </div>
+                </div>
+              }
+            </div>
+            <button (click)="setTab('Tasks')"
+                    class="w-full mt-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              <i class="fa-solid fa-plus mr-2"></i>Add Task
+            </button>
+          </div>
+
+          <!-- Notes quick view -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-bold text-gray-900">Recent Notes</h2>
+              <button (click)="setTab('Notes')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
+            </div>
+            @if (notes().length === 0) {
+              <p class="text-sm text-gray-400 text-center py-3">No notes yet.</p>
+            }
+            <div class="space-y-3">
+              @for (note of notes().slice(0, 2); track note.id) {
+                <div class="p-3 bg-gray-50 rounded-lg border-l-4"
+                     [ngClass]="note.isVoice ? 'border-l-purple-400' : 'border-l-amber-300'">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <i class="fa-solid text-[10px]"
+                       [ngClass]="note.isVoice ? 'fa-microphone text-purple-500' : 'fa-pen-to-square text-amber-500'"></i>
+                    <span class="text-[10px] font-semibold"
+                          [ngClass]="note.isVoice ? 'text-purple-600' : 'text-amber-600'">
+                      {{ note.isVoice ? 'Voice note' : 'Written note' }}
+                    </span>
+                    <span class="text-[10px] text-gray-400 ml-auto">{{ formatNoteDate(note.createdAt) }}</span>
+                  </div>
+                  <p class="text-xs text-gray-700 leading-relaxed line-clamp-2">{{ note.content }}</p>
+                </div>
+              }
+            </div>
+            <button (click)="setTab('Notes')"
+                    class="w-full mt-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              <i class="fa-solid fa-plus mr-2"></i>Add Note
+            </button>
+          </div>
+
+        </div><!-- /sidebar -->
+      </div>
+    </div>
+  }
+
+  <!-- ══════════════════════════════════════════
+       TAB: TIMELINE
+  ══════════════════════════════════════════ -->
+  @if (activeTab() === 'Timeline') {
+    <div class="px-8 py-6">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-lg font-bold text-gray-900">Full Case Timeline</h2>
+          <span class="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{{ timeline().length }} events</span>
+        </div>
+        @if (timeline().length === 0) {
+          <div class="text-center py-12 text-gray-400">
+            <i class="fa-solid fa-timeline text-4xl mb-3 block"></i>
+            <p class="text-base font-medium">No timeline events yet.</p>
+          </div>
+        }
+        <div class="relative">
+          <div class="absolute left-5 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+          <div class="space-y-6">
+            @for (item of timeline(); track item.created_at) {
+              <div class="flex items-start space-x-5 relative">
+                <div class="w-10 h-10 rounded-full bg-amber-100 border-2 border-white shadow flex items-center justify-center flex-shrink-0 relative z-10">
+                  <i class="fa-solid fa-clock-rotate-left text-sm text-amber-600"></i>
+                </div>
+                <div class="flex-1 bg-gray-50 rounded-lg p-4">
+                  <div class="flex items-start justify-between">
+                    <p class="text-sm font-semibold text-gray-900">{{ item.action }}</p>
+                    <span class="text-xs text-gray-500 ml-4 whitespace-nowrap">{{ formatTimelineDate(item.created_at) }}</span>
+                  </div>
+                  @if (item.performed_by) {
+                    <p class="text-xs text-gray-500 mt-1"><i class="fa-solid fa-user mr-1"></i>{{ item.performed_by }}</p>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ══════════════════════════════════════════
+       TAB: DOCUMENTS
+  ══════════════════════════════════════════ -->
+  @if (activeTab() === 'Documents') {
+    <div class="px-8 py-6">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-lg font-bold text-gray-900">Case Documents</h2>
+          <button (click)="openUploadModal()"
+                  class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>Upload Document</span>
+          </button>
+        </div>
+        <div class="space-y-3">
+          @for (doc of documents(); track doc.id) {
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group">
+              <div class="flex items-center space-x-4 flex-1">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center" [ngClass]="doc.iconBg">
+                  <i class="fa-solid text-xl" [ngClass]="[doc.icon, doc.iconColor]"></i>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">{{ doc.name }}</p>
+                  <p class="text-xs text-gray-600 mt-0.5">Uploaded {{ doc.ago }} · {{ doc.size }}</p>
+                </div>
+              </div>
+              <div class="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button (click)="openPreview(doc)"
+                        class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Preview">
+                  <i class="fa-solid fa-eye"></i>
+                </button>
+                <button (click)="downloadDoc(doc)"
+                        class="p-2 rounded-lg transition-colors"
+                        [ngClass]="downloadingDoc() === doc.id
+                          ? 'text-green-600 bg-green-50'
+                          : 'text-gray-400 hover:text-green-600 hover:bg-green-50'"
+                        title="Download">
+                  <i class="fa-solid"
+                     [ngClass]="downloadingDoc() === doc.id ? 'fa-check' : 'fa-download'"></i>
+                </button>
+                <button (click)="confirmDelete(doc)"
+                        class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+        @if (documents().length === 0) {
+          <div class="text-center py-12 text-gray-400">
+            <i class="fa-solid fa-folder-open text-4xl mb-3 block"></i>
+            <p class="font-medium">No documents uploaded yet.</p>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ══════════════════════════════════════════
+       TAB: TASKS
+  ══════════════════════════════════════════ -->
+  @if (activeTab() === 'Tasks') {
+    <div class="px-8 py-6">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Case Tasks</h2>
+            <p class="text-sm text-gray-500 mt-0.5">
+              {{ tasks().filter(t => !t.done).length }} pending · {{ tasks().filter(t => t.done).length }} completed
+            </p>
+          </div>
+          <button (click)="openAddTaskModal()"
+                  class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+            <i class="fa-solid fa-plus"></i>
+            <span>Add Task</span>
+          </button>
+        </div>
+
+
+        <!-- Task list -->
+        <div class="divide-y divide-gray-100">
+          @for (task of tasks(); track task.id) {
+            <div class="flex items-center space-x-4 py-4">
+              <input type="checkbox" [ngModel]="task.done" (ngModelChange)="toggleTask(task)"
+                     class="w-5 h-5 rounded border-gray-300 accent-amber-500 flex-shrink-0">
+              <div class="flex-1">
+                <p class="text-sm font-medium"
+                   [ngClass]="task.done ? 'text-gray-400 line-through' : 'text-gray-900'">
+                  {{ task.label }}
+                </p>
+                <p class="text-xs mt-0.5" [ngClass]="task.dueColor">
+                  <i class="fa-regular fa-clock mr-1"></i>{{ task.due }}
+                </p>
+              </div>
+              <span class="text-xs px-2 py-1 rounded-full"
+                    [ngClass]="task.done ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'">
+                {{ task.done ? 'Done' : 'Pending' }}
+              </span>
+            </div>
+          }
+        </div>
+
+        @if (tasks().length === 0) {
+          <div class="text-center py-12 text-gray-400">
+            <i class="fa-solid fa-circle-check text-4xl mb-3 block"></i>
+            <p class="font-medium">No tasks yet. Add your first task above.</p>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ══════════════════════════════════════════
+       TAB: NOTES
+  ══════════════════════════════════════════ -->
+  @if (activeTab() === 'Notes') {
+    <div class="px-8 py-6">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Case Notes</h2>
+            <p class="text-sm text-gray-500 mt-0.5">
+              {{ notes().length }} {{ notes().length === 1 ? 'note' : 'notes' }}
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button (click)="openVoiceNoteModal()"
+                    class="flex items-center space-x-2 px-4 py-2 bg-rose-500 text-white rounded-lg text-sm font-medium hover:bg-rose-600 transition-colors">
+              <i class="fa-solid fa-microphone"></i>
+              <span>Voice Note</span>
+            </button>
+            <button (click)="openAddNoteModal()"
+                    class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+              <i class="fa-solid fa-plus"></i>
+              <span>Add Note</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Notes list -->
+        <div class="divide-y divide-gray-100">
+          @for (note of notes(); track note.id) {
+            <div class="py-5 group">
+              <!-- Row: avatar + meta + actions -->
+              <div class="flex items-start justify-between mb-2">
+                <div class="flex items-center space-x-3">
+                  <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                       [ngClass]="note.isVoice ? 'bg-purple-100' : 'bg-amber-100'">
+                    <i class="text-sm"
+                       [ngClass]="note.isVoice ? 'fa-solid fa-microphone text-purple-600' : 'fa-solid fa-user text-amber-600'"></i>
+                  </div>
+                  <div>
+                    <div class="flex items-center space-x-2">
+                      <p class="text-sm font-semibold text-gray-900">{{ note.author }}</p>
+                      @if (note.isVoice) {
+                        <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                          <i class="fa-solid fa-microphone mr-1"></i>Voice
+                        </span>
+                      }
+                    </div>
+                    <p class="text-xs text-gray-400 mt-0.5">
+                      <i class="fa-regular fa-clock mr-1"></i>{{ formatNoteDate(note.createdAt) }}
+                    </p>
+                  </div>
+                </div>
+                <!-- Actions on hover -->
+                <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  @if (!note.isVoice && editingNoteId() !== note.id) {
+                    <button (click)="startEditNote(note)"
+                            class="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit">
+                      <i class="fa-solid fa-pen text-xs"></i>
+                    </button>
+                  }
+                  <button (click)="deleteNote(note.id)"
+                          class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete">
+                    <i class="fa-solid fa-trash text-xs"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Content or inline edit -->
+              @if (editingNoteId() === note.id) {
+                <div class="ml-12 space-y-2">
+                  <input type="text" placeholder="Note title..."
+                         [ngModel]="editNoteTitle()" (ngModelChange)="editNoteTitle.set($event)"
+                         class="w-full bg-gray-50 border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                  <textarea rows="3"
+                            [ngModel]="editNoteContent()"
+                            (ngModelChange)="editNoteContent.set($event)"
+                            class="w-full bg-gray-50 border-2 border-amber-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
+                  <div class="flex items-center justify-end space-x-2">
+                    <button (click)="cancelEditNote()"
+                            class="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                      Cancel
+                    </button>
+                    <button (click)="saveEditNote(note.id)"
+                            [disabled]="!editNoteContent().trim()"
+                            class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors"
+                            [ngClass]="editNoteContent().trim()
+                              ? 'bg-amber-500 text-white hover:bg-amber-600'
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+                      <i class="fa-solid fa-check mr-1"></i>Save
+                    </button>
+                  </div>
+                </div>
+              } @else {
+                <div class="ml-12">
+                  @if (note.title) {
+                    <p class="text-sm font-semibold text-gray-900 mb-1">{{ note.title }}</p>
+                  }
+                  <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{{ note.content }}</p>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        @if (notes().length === 0) {
+          <div class="text-center py-12 text-gray-400">
+            <i class="fa-regular fa-note-sticky text-4xl mb-3 block"></i>
+            <p class="font-medium">No notes yet. Add your first note above.</p>
+          </div>
+        }
+
+      </div>
+    </div>
+  }
+
+  <!-- ══════════════════════════════════════════
+       TAB: BILLING
+  ══════════════════════════════════════════ -->
+  @if (activeTab() === 'Billing') {
+    <div class="px-8 py-6">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Billing & Time Tracking</h2>
+            <p class="text-sm text-gray-500 mt-0.5">Total billed: <span class="font-semibold text-gray-800">{{ totalBilled }}</span></p>
+          </div>
+          <button (click)="openLogTimeModal()"
+                  class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+            <i class="fa-solid fa-clock"></i>
+            <span>Log Time</span>
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Hours</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Rate</th>
+                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Amount</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              @for (entry of billingEntries; track entry.date + entry.desc) {
+                <tr class="hover:bg-gray-50">
+                  <td class="px-4 py-3 text-sm text-gray-900">{{ entry.date }}</td>
+                  <td class="px-4 py-3 text-sm text-gray-700">{{ entry.desc }}</td>
+                  <td class="px-4 py-3 text-sm text-gray-900">{{ entry.hours }}h</td>
+                  <td class="px-4 py-3 text-sm text-gray-900">{{ entry.rate }}</td>
+                  <td class="px-4 py-3 text-sm font-semibold text-gray-900 text-right">{{ entry.amount }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (billingEntries.length === 0) {
+          <div class="text-center py-12 text-gray-400">
+            <i class="fa-solid fa-file-invoice text-4xl mb-3 block"></i>
+            <p class="font-medium">No billing entries yet. Log your first time entry above.</p>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  }<!-- /if case() -->
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — LOG TIME
+══════════════════════════════════════════════════════════ -->
+@if (showLogTimeModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.5)"
+     (click)="closeLogTimeModal()">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+          <i class="fa-solid fa-clock text-amber-600"></i>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Log Time</h2>
+          <p class="text-xs text-gray-500">Add a billing entry to this case</p>
+        </div>
+      </div>
+      <button (click)="closeLogTimeModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400">
+        <i class="fa-solid fa-times text-lg"></i>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="px-6 py-5 space-y-4">
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">Date <span class="text-red-500">*</span></label>
+        <input type="date" [ngModel]="logTimeForm().date" (ngModelChange)="logTimeForm.update(v=>({...v,date:$event}))"
+               class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">Description <span class="text-red-500">*</span></label>
+        <input type="text" placeholder="e.g., Client consultation"
+               [ngModel]="logTimeForm().description" (ngModelChange)="logTimeForm.update(v=>({...v,description:$event}))"
+               class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-800 mb-2">Hours <span class="text-red-500">*</span></label>
+          <input type="number" min="0.25" step="0.25" placeholder="2.5"
+                 [ngModel]="logTimeForm().hours" (ngModelChange)="logTimeForm.update(v=>({...v,hours:$event}))"
+                 class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-800 mb-2">Rate ($/hr)</label>
+          <div class="relative">
+            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold text-sm">$</span>
+            <input type="number" placeholder="350"
+                   [ngModel]="logTimeForm().rate" (ngModelChange)="logTimeForm.update(v=>({...v,rate:$event}))"
+                   class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-8 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3">
+      <button (click)="closeLogTimeModal()"
+              class="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+        Cancel
+      </button>
+      <button (click)="saveLogTime()" [disabled]="!logTimeValid || isSavingTime()"
+              class="flex-1 py-3 rounded-xl font-bold text-sm transition-all"
+              [ngClass]="logTimeValid
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+        <i class="fa-solid fa-check mr-2"></i>Save Entry
+      </button>
+    </div>
+
+  </div>
+</div>
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — EDIT CASE  (2 steps)
+══════════════════════════════════════════════════════════ -->
+@if (showEditModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.5)"
+     (click)="closeEditModal()">
+
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
+       style="max-height:92vh"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid fa-pen-to-square text-amber-600"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Edit Case</h2>
+            <p class="text-xs text-gray-500">Update case information and settings</p>
+          </div>
+        </div>
+        <button (click)="closeEditModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+      <div class="flex items-center justify-between mb-2 text-xs font-semibold">
+        <span class="text-gray-500">Progress</span>
+        <span class="text-gray-700">Step {{ editStep() }} of 2</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+        <div class="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300"
+             [style.width]="editStep() === 1 ? '50%' : '100%'"></div>
+      </div>
+      <div class="flex items-center justify-between mt-1">
+        @for (sl of editStepLabels; track sl.label) {
+          <span class="text-xs font-medium transition-colors"
+                [ngClass]="sl.active ? 'text-amber-600 font-bold' : sl.done ? 'text-green-500' : 'text-gray-400'">
+            @if (sl.done) { <i class="fa-solid fa-check mr-1"></i> }
+            {{ sl.label }}
+          </span>
+        }
+      </div>
+    </div>
+
+    <!-- Scrollable Body -->
+    <div class="overflow-y-auto flex-1">
+
+      <!-- ════ STEP 1 — Case Details ════ -->
+      @if (editStep() === 1) {
+        <div class="px-6 py-5 space-y-5">
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Case Title <span class="text-red-500">*</span></label>
+            <div class="relative">
+              <input type="text"
+                     [ngModel]="editF1().title" (ngModelChange)="editF1.update(v=>({...v,title:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Case Type <span class="text-red-500">*</span></label>
+            <div class="relative">
+              <select [ngModel]="editF1().caseType" (ngModelChange)="editF1.update(v=>({...v,caseType:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                @for (t of caseTypes; track t) { <option>{{ t }}</option> }
+              </select>
+              <i class="fa-solid fa-gavel absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Status <span class="text-red-500">*</span></label>
+              <div class="relative">
+                <select [ngModel]="editF1().status" (ngModelChange)="editF1.update(v=>({...v,status:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                  @for (s of statusList; track s) { <option [value]="s">{{ statusLabel(s) }}</option> }
+                </select>
+                <i class="fa-solid fa-circle-info absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Priority</label>
+              <div class="relative">
+                <select [ngModel]="editF1().priority" (ngModelChange)="editF1.update(v=>({...v,priority:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                  @for (p of priorityList; track p) { <option [value]="p">{{ priorityLabel(p) }}</option> }
+                </select>
+                <i class="fa-solid fa-flag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Case Description</label>
+            <textarea rows="4"
+                      [ngModel]="editF1().description" (ngModelChange)="editF1.update(v=>({...v,description:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
+          </div>
+
+        </div>
+      }
+
+      <!-- ════ STEP 2 — Court & More ════ -->
+      @if (editStep() === 2) {
+        <div class="px-6 py-5 space-y-5">
+
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Court Information</h3>
+            <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Court Name</label>
+              <div class="relative">
+                <input type="text"
+                       [ngModel]="editF2().courtName" (ngModelChange)="editF2.update(v=>({...v,courtName:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-landmark absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Court Location</label>
+              <div class="relative">
+                <input type="text"
+                       [ngModel]="editF2().courtLocation" (ngModelChange)="editF2.update(v=>({...v,courtLocation:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-map-pin absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Judge Name</label>
+              <div class="relative">
+                <input type="text"
+                       [ngModel]="editF2().judgeName" (ngModelChange)="editF2.update(v=>({...v,judgeName:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Next Hearing Date</label>
+              <input type="date"
+                     [ngModel]="editF2().hearingDate" (ngModelChange)="editF2.update(v=>({...v,hearingDate:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-gray-100">
+            <h3 class="text-base font-bold text-gray-900 mb-4">Financial</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-semibold text-gray-800 mb-2">Billing Type</label>
+                <div class="relative">
+                  <select [ngModel]="editF2().billingType" (ngModelChange)="editF2.update(v=>({...v,billingType:$event}))"
+                          class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                    <option value="">Select...</option>
+                    @for (b of billingTypes; track b) { <option>{{ b }}</option> }
+                  </select>
+                  <i class="fa-solid fa-file-invoice-dollar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-800 mb-2">Estimated Case Value</label>
+                <div class="relative">
+                  <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-sm">$</span>
+                  <input type="number"
+                         [ngModel]="editF2().caseValue" (ngModelChange)="editF2.update(v=>({...v,caseValue:$event}))"
+                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-8 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      }
+
+    </div><!-- /body -->
+
+    <!-- Sticky Footer -->
+    <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+      <button (click)="editStep() === 2 ? editPrevStep() : closeEditModal()"
+              class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+        @if (editStep() === 2) {
+          <i class="fa-solid fa-arrow-left mr-2"></i>Back
+        } @else {
+          <i class="fa-solid fa-times mr-2"></i>Cancel
+        }
+      </button>
+      <button (click)="editNextStep()"
+              [disabled]="(editStep()===1 && !editStep1Valid) || isSaving()"
+              class="flex-1 py-3.5 rounded-xl font-bold text-sm transition-all"
+              [ngClass]="(editStep()===1 && !editStep1Valid)
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'">
+        @if (isSaving()) {
+          <i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...
+        } @else if (editStep() === 2) {
+          <i class="fa-solid fa-check mr-2"></i>Save Changes
+        } @else {
+          Next <i class="fa-solid fa-arrow-right ml-2"></i>
+        }
+      </button>
+    </div>
+
+  </div><!-- /panel -->
+</div><!-- /backdrop -->
+}
+
+<!-- Upload Modal (shared) -->
+<app-upload-modal />
+
+<!-- Voice Note Modal (case pre-filled) -->
+<app-voice-note-modal
+  [prefillCase]="{ id: _caseId, name: case()?.title ?? '' }"
+  (saved)="onVoiceNoteSaved()">
+</app-voice-note-modal>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — ADD NOTE
+══════════════════════════════════════════════════════════ -->
+@if (showAddNoteModal()) {
+  <div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" (click)="closeAddNoteModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg" (click)="$event.stopPropagation()">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between p-6 border-b border-gray-200">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+            <i class="fa-solid fa-note-sticky text-yellow-600"></i>
+          </div>
+          <h3 class="text-lg font-bold text-gray-900">New Note</h3>
+        </div>
+        <button (click)="closeAddNoteModal()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+          <i class="fa-solid fa-xmark text-gray-500"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-6 space-y-4">
+
+        <!-- Linked case (read-only chip) -->
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Linked Case</label>
+          <div class="flex items-center gap-2 px-3 py-3 border border-gray-200 rounded-lg bg-gray-50">
+            <i class="fa-solid fa-briefcase text-gray-400 text-sm"></i>
+            <span class="text-sm text-gray-700 font-medium">{{ case()?.title ?? '—' }}</span>
+            <span class="ml-auto text-xs text-gray-400 font-medium">{{ case()?.caseNumber ?? '' }}</span>
+          </div>
+        </div>
+
+        <!-- Title -->
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Title</label>
+          <input type="text" placeholder="Note title..."
+                 [ngModel]="newNoteTitle()" (ngModelChange)="newNoteTitle.set($event)"
+                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm">
+        </div>
+
+        <!-- Content -->
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Content</label>
+          <textarea rows="5" placeholder="Write your note here..."
+                    [ngModel]="newNoteContent()" (ngModelChange)="newNoteContent.set($event)"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm resize-none"></textarea>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-end space-x-3 px-6 pb-6">
+        <button (click)="closeAddNoteModal()"
+                class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+          Cancel
+        </button>
+        <button (click)="saveNote()"
+                [disabled]="!newNoteContent().trim() || isSavingNote()"
+                class="px-6 py-2 bg-yellow-500 text-white text-sm font-medium rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+          @if (isSavingNote()) {
+            <span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+          }
+          Save Note
+        </button>
+      </div>
+
+    </div>
+  </div>
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — DOCUMENT PREVIEW
+══════════════════════════════════════════════════════════ -->
+@if (previewDoc()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color:rgba(0,0,0,0.55)"
+     (click)="closePreview()">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+             [ngClass]="previewDoc()!.iconBg">
+          <i class="fa-solid text-lg" [ngClass]="[previewDoc()!.icon, previewDoc()!.iconColor]"></i>
+        </div>
+        <div class="min-w-0">
+          <p class="text-sm font-bold text-gray-900 truncate max-w-xs">{{ previewDoc()!.name }}</p>
+          <p class="text-xs text-gray-500">{{ previewDoc()!.size }} · Uploaded {{ previewDoc()!.ago }}</p>
+        </div>
+      </div>
+      <button (click)="closePreview()"
+              class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
+        <i class="fa-solid fa-times"></i>
+      </button>
+    </div>
+
+    <!-- Preview area -->
+    <div class="px-6 py-10 flex flex-col items-center justify-center text-center bg-gray-50">
+      <div class="w-20 h-20 rounded-2xl flex items-center justify-center mb-4"
+           [ngClass]="previewDoc()!.iconBg">
+        <i class="fa-solid text-4xl" [ngClass]="[previewDoc()!.icon, previewDoc()!.iconColor]"></i>
+      </div>
+      <p class="text-sm font-semibold text-gray-700 mb-1">{{ previewDoc()!.name }}</p>
+      <p class="text-xs text-gray-400 mb-6">Preview not available — download to open</p>
+      <button (click)="downloadDoc(previewDoc()!); closePreview()"
+              class="flex items-center space-x-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl text-sm font-semibold hover:shadow-md transition-all">
+        <i class="fa-solid fa-download"></i>
+        <span>Download File</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — CONFIRM DELETE
+══════════════════════════════════════════════════════════ -->
+@if (deletingDoc()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color:rgba(0,0,0,0.5)"
+     (click)="cancelDelete()">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+       (click)="$event.stopPropagation()">
+
+    <div class="px-6 py-6 text-center">
+      <div class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <i class="fa-solid fa-trash text-red-500 text-xl"></i>
+      </div>
+      <h3 class="text-lg font-bold text-gray-900 mb-1">Delete Document</h3>
+      <p class="text-sm text-gray-500 mb-1">Are you sure you want to delete</p>
+      <p class="text-sm font-semibold text-gray-800 truncate px-4 mb-5">{{ deletingDoc()?.name }}</p>
+      <div class="flex items-center space-x-3">
+        <button (click)="cancelDelete()"
+                class="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">
+          Cancel
+        </button>
+        <button (click)="deleteDoc()"
+                class="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-semibold hover:bg-red-600 transition-colors">
+          <i class="fa-solid fa-trash mr-2"></i>Delete
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — ADD TASK
+══════════════════════════════════════════════════════════ -->
+@if (showAddTaskModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color:rgba(0,0,0,0.5)"
+     (click)="closeAddTaskModal()">
+
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden"
+       style="max-height:92vh"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-11 h-11 bg-gradient-to-br from-amber-500 to-amber-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+            <i class="fa-solid fa-list-check text-white text-lg"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Add New Task</h2>
+            <p class="text-xs text-gray-500 truncate max-w-xs">{{ case()?.title ?? 'Current Case' }}</p>
+          </div>
+        </div>
+        <button (click)="closeAddTaskModal()"
+                class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Scrollable Body -->
+    <div class="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+      <!-- Task Title -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">
+          Task Title <span class="text-red-500">*</span>
+        </label>
+        <div class="relative">
+          <input type="text" placeholder="e.g., File Motion to Dismiss"
+                 [ngModel]="taskForm().title" (ngModelChange)="taskForm.update(v=>({...v,title:$event}))"
+                 class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+          <i class="fa-solid fa-list-check absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        </div>
+      </div>
+
+      <!-- Task Category -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">Task Category</label>
+        <div class="relative">
+          <select [ngModel]="taskForm().category" (ngModelChange)="taskForm.update(v=>({...v,category:$event}))"
+                  class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white appearance-none transition-all">
+            <option value="">Select category</option>
+            @for (cat of categories; track cat) {
+              <option [value]="cat">{{ cat }}</option>
+            }
+          </select>
+          <i class="fa-solid fa-tag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+          <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+        </div>
+      </div>
+
+      <!-- Priority Level -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">
+          Priority Level <span class="text-red-500">*</span>
+        </label>
+        <div class="grid grid-cols-3 gap-3">
+          <button (click)="taskPriority.set('Low')"
+                  class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
+                  [ngClass]="taskPriority() === 'Low'
+                    ? 'bg-green-50 border-green-500 text-green-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-green-300'">
+            <i class="fa-solid fa-flag mr-1.5 text-xs"></i>Low
+          </button>
+          <button (click)="taskPriority.set('Medium')"
+                  class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
+                  [ngClass]="taskPriority() === 'Medium'
+                    ? 'bg-amber-50 border-amber-500 text-amber-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-amber-300'">
+            <i class="fa-solid fa-flag mr-1.5 text-xs"></i>Medium
+          </button>
+          <button (click)="taskPriority.set('High')"
+                  class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
+                  [ngClass]="taskPriority() === 'High'
+                    ? 'bg-red-50 border-red-500 text-red-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-red-300'">
+            <i class="fa-solid fa-flag mr-1.5 text-xs"></i>High
+          </button>
+        </div>
+      </div>
+
+      <!-- Due Date + Due Time -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-800 mb-2">
+            Due Date <span class="text-red-500">*</span>
+          </label>
+          <div class="relative">
+            <input type="date"
+                   [ngModel]="taskForm().dueDate" (ngModelChange)="taskForm.update(v=>({...v,dueDate:$event}))"
+                   class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            <i class="fa-regular fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-800 mb-2">Due Time</label>
+          <div class="relative">
+            <input type="time"
+                   [ngModel]="taskForm().dueTime" (ngModelChange)="taskForm.update(v=>({...v,dueTime:$event}))"
+                   class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            <i class="fa-regular fa-clock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Assign To -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">Assign To</label>
+        <div class="relative">
+          <select [ngModel]="taskForm().assignTo" (ngModelChange)="taskForm.update(v=>({...v,assignTo:$event}))"
+                  class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white appearance-none transition-all">
+            <option value="Myself">Myself</option>
+          </select>
+          <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+          <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">Task Description</label>
+        <textarea rows="3" placeholder="Describe the task details..."
+                  [ngModel]="taskForm().description" (ngModelChange)="taskForm.update(v=>({...v,description:$event}))"
+                  class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white resize-none transition-all"></textarea>
+      </div>
+
+      <!-- Reminder -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">
+          <i class="fa-solid fa-bell mr-2 text-amber-500"></i>Reminder
+        </label>
+        <div class="space-y-2">
+          @for (r of [['dayBefore','1 day before'],['threeHours','3 hours before'],['oneHour','1 hour before']]; track r[0]) {
+            <label class="flex items-center space-x-3 bg-gray-50 border-2 border-gray-200 rounded-xl p-3.5 cursor-pointer hover:border-amber-300 transition-colors">
+              <input type="checkbox" class="w-4 h-4 accent-amber-500 rounded"
+                     [ngModel]="getReminder(r[0])" (ngModelChange)="setReminder(r[0], $event)">
+              <span class="text-sm font-medium text-gray-700">{{ r[1] }}</span>
+            </label>
+          }
+        </div>
+      </div>
+
+    </div><!-- /body -->
+
+    <!-- Footer -->
+    <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+      <button (click)="closeAddTaskModal()"
+              class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+        <i class="fa-solid fa-times mr-2"></i>Cancel
+      </button>
+      <button (click)="addTask()" [disabled]="!taskFormValid || isAddingTask()"
+              class="flex-1 py-3 rounded-xl font-bold text-sm transition-all"
+              [ngClass]="taskFormValid && !isAddingTask()
+                ? 'bg-gradient-to-r from-amber-500 to-amber-700 text-white hover:shadow-lg'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+        @if (isAddingTask()) {
+          <i class="fa-solid fa-spinner fa-spin mr-2"></i>Creating...
+        } @else {
+          <i class="fa-solid fa-check mr-2"></i>Create Task
+        }
+      </button>
+    </div>
+
+  </div><!-- /panel -->
+</div><!-- /backdrop -->
+}

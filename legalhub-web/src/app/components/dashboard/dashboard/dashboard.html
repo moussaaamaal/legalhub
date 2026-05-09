@@ -1,0 +1,548 @@
+<!-- ══════════════════════════════════════════
+     TOPBAR
+══════════════════════════════════════════ -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+
+    <!-- ── Global Search ── -->
+    <div class="relative w-96">
+      <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
+      <input type="text" placeholder="Search cases, clients, tasks…"
+        [value]="searchQuery()"
+        (input)="onSearchInput($any($event.target).value)"
+        (focus)="searchOpen.set(searchResults() !== null)"
+        class="w-full pl-9 pr-8 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50">
+      @if (searchQuery()) {
+        <button (click)="clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      }
+
+      @if (searchOpen() && searchQuery().length >= 2) {
+        <div class="fixed inset-0 z-40" (click)="searchOpen.set(false)"></div>
+        <div class="absolute left-0 top-full mt-2 w-[700px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden max-h-[72vh] overflow-y-auto">
+
+          @if (searchLoading()) {
+            <div class="flex items-center justify-center space-x-3 py-10">
+              <span class="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span>
+              <span class="text-sm text-gray-500">Searching…</span>
+            </div>
+
+          } @else if (noResults()) {
+            <div class="flex flex-col items-center py-12 text-center">
+              <i class="fa-solid fa-magnifying-glass text-3xl text-gray-200 mb-3"></i>
+              <p class="text-sm font-medium text-gray-500">No results for "{{ searchQuery() }}"</p>
+            </div>
+
+          } @else if (searchResults()) {
+
+            <!-- Clients -->
+            @if (searchResults()!.clients.length > 0) {
+              <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  <i class="fa-solid fa-users text-amber-400 mr-1.5"></i>Clients
+                </span>
+              </div>
+              @for (c of searchResults()!.clients; track c.id) {
+                <a [routerLink]="['/clients', c.id]" (click)="clearSearch()"
+                   class="flex items-center px-4 py-3 hover:bg-amber-50 transition-colors border-b border-gray-50 group cursor-pointer">
+                  <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 font-bold text-amber-700 text-sm">
+                    {{ (c.first_name?.[0] ?? '') + (c.last_name?.[0] ?? '') }}
+                  </div>
+                  <div class="ml-3 flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 group-hover:text-amber-600">{{ c.first_name }} {{ c.last_name }}</p>
+                    <p class="text-xs text-gray-500">{{ c.email }}</p>
+                  </div>
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 flex-shrink-0">{{ c.tag ?? 'Active' }}</span>
+                </a>
+              }
+            }
+
+            <!-- Cases -->
+            @if (searchResults()!.cases.length > 0) {
+              <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  <i class="fa-solid fa-briefcase text-blue-400 mr-1.5"></i>Cases
+                </span>
+              </div>
+              @for (c of searchResults()!.cases; track c.id) {
+                <a [routerLink]="['/cases', c.id]" (click)="clearSearch()"
+                   class="flex items-center px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-50 group cursor-pointer">
+                  <div class="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-gavel text-blue-600 text-xs"></i>
+                  </div>
+                  <div class="ml-3 flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 group-hover:text-blue-600 truncate">{{ c.title }}</p>
+                    <p class="text-xs text-gray-500">{{ c.case_number }} · {{ c.client?.first_name }} {{ c.client?.last_name }}</p>
+                  </div>
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 flex-shrink-0">{{ c.status }}</span>
+                </a>
+              }
+            }
+
+            <!-- Tasks -->
+            @if (searchResults()!.tasks.length > 0) {
+              <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  <i class="fa-solid fa-list-check text-purple-400 mr-1.5"></i>Tasks
+                </span>
+              </div>
+              @for (t of searchResults()!.tasks; track t.id) {
+                <div class="flex items-center px-4 py-3 border-b border-gray-50">
+                  <div class="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-check text-purple-600 text-xs"></i>
+                  </div>
+                  <div class="ml-3 flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate">{{ t.title }}</p>
+                    <p class="text-xs text-gray-500">{{ t.priority }} priority · {{ t.status }}</p>
+                  </div>
+                </div>
+              }
+            }
+
+            <!-- Notes -->
+            @if (searchResults()!.notes.length > 0) {
+              <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  <i class="fa-solid fa-note-sticky text-yellow-400 mr-1.5"></i>Notes
+                </span>
+              </div>
+              @for (n of searchResults()!.notes; track n.id) {
+                <div class="flex items-start px-4 py-3 border-b border-gray-50">
+                  <div class="w-9 h-9 rounded-lg bg-yellow-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <i class="fa-solid fa-note-sticky text-yellow-600 text-xs"></i>
+                  </div>
+                  <div class="ml-3 flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900">{{ n.title || 'Note' }}</p>
+                    <p class="text-xs text-gray-500 truncate">{{ n.content }}</p>
+                  </div>
+                </div>
+              }
+            }
+
+            <!-- Invoices -->
+            @if (searchResults()!.invoices.length > 0) {
+              <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  <i class="fa-solid fa-file-invoice text-green-400 mr-1.5"></i>Invoices
+                </span>
+              </div>
+              @for (i of searchResults()!.invoices; track i.id) {
+                <a routerLink="/billing" (click)="clearSearch()"
+                   class="flex items-center px-4 py-3 hover:bg-green-50 transition-colors border-b border-gray-50 group cursor-pointer">
+                  <div class="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-file-invoice text-green-600 text-xs"></i>
+                  </div>
+                  <div class="ml-3 flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 group-hover:text-green-600">{{ i.invoice_number }}</p>
+                    <p class="text-xs text-gray-500">{{ i.client?.first_name }} {{ i.client?.last_name }}</p>
+                  </div>
+                  <span class="text-sm font-semibold text-gray-700 flex-shrink-0">${{ i.total_amount }}</span>
+                </a>
+              }
+            }
+
+          }
+        </div>
+      }
+    </div>
+
+    <!-- ── Export button ── -->
+    <div class="relative">
+      <button (click)="exportOpen.update(v => !v)"
+        class="flex items-center space-x-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium transition-colors shadow-sm">
+        <i class="fa-solid fa-file-export"></i>
+        <span>Export Report</span>
+        <i class="fa-solid fa-chevron-down text-xs ml-1 transition-transform" [class.rotate-180]="exportOpen()"></i>
+      </button>
+      @if (exportOpen()) {
+        <div class="fixed inset-0 z-40" (click)="exportOpen.set(false)"></div>
+        <div class="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
+          <button (click)="exportPDF(); exportOpen.set(false)"
+            class="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-50 transition-colors text-sm text-gray-700">
+            <i class="fa-solid fa-file-pdf text-red-500 w-4"></i>
+            <span>Export as PDF</span>
+          </button>
+          <div class="border-t border-gray-100"></div>
+          <button (click)="exportExcel(); exportOpen.set(false)"
+            class="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-50 transition-colors text-sm text-gray-700">
+            <i class="fa-solid fa-file-excel text-green-500 w-4"></i>
+            <span>Export as Excel</span>
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto bg-gray-50">
+
+  <!-- ══ PAGE HEADER ══ -->
+  <section class="px-8 pt-6 pb-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Dashboard Overview</h1>
+        <p class="text-gray-600 mt-1">Welcome back, {{ currentUser()?.name }}. Here's what's happening today.</p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══ METRICS CARDS ══ -->
+  <section class="px-8 pb-6">
+    <div class="grid grid-cols-5 gap-6">
+      @if (statsLoading()) {
+        @for (_ of skeletonItems; track $index) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-pulse">
+            <div class="flex items-start justify-between mb-4">
+              <div class="w-12 h-12 rounded-lg bg-gray-200"></div>
+              <div class="w-16 h-5 rounded-full bg-gray-200"></div>
+            </div>
+            <div class="w-16 h-8 rounded bg-gray-200 mb-2"></div>
+            <div class="w-24 h-4 rounded bg-gray-200"></div>
+            <div class="mt-4 pt-4 border-t border-gray-100">
+              <div class="w-32 h-3 rounded bg-gray-200"></div>
+            </div>
+          </div>
+        }
+      } @else {
+        @for (metric of metrics(); track metric.label) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-4">
+              <div class="w-12 h-12 rounded-lg flex items-center justify-center" [class]="metric.bgColor">
+                <i class="text-xl" [ngClass]="[metric.icon, metric.iconColor]"></i>
+              </div>
+              <span class="text-xs px-2 py-1 rounded-full font-medium" [class]="metric.badgeColor">{{ metric.badge }}</span>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 mb-1">{{ metric.value ?? '—' }}</h3>
+            <p class="text-sm text-gray-600">{{ metric.label }}</p>
+            <div class="mt-4 pt-4 border-t border-gray-100">
+              <p class="text-xs text-gray-500">{{ metric.note }}</p>
+            </div>
+          </div>
+        }
+      }
+    </div>
+  </section>
+
+
+  <!-- ══ QUICK ACTIONS ══ -->
+  <section class="px-8 pb-6">
+    <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl shadow-lg p-8">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-bold text-white mb-2">Quick Actions</h2>
+          <p class="text-slate-300">Streamline your workflow with one-click actions</p>
+        </div>
+        <div class="flex items-center space-x-3">
+          @if (customizeMode()) {
+            <button (click)="resetActions()" class="text-xs text-slate-400 hover:text-white px-3 py-1.5 border border-slate-600 rounded-lg transition-colors">
+              Reset All
+            </button>
+          }
+          <button (click)="toggleCustomize()" class="flex items-center space-x-2 px-4 py-2 text-sm border rounded-lg transition-all"
+            [ngClass]="customizeMode() ? 'bg-amber-500 border-amber-500 text-white' : 'border-slate-600 text-slate-300 hover:border-slate-400 hover:text-white'">
+            <i class="fa-solid" [ngClass]="customizeMode() ? 'fa-check' : 'fa-sliders'"></i>
+            <span>{{ customizeMode() ? 'Done' : 'Customize' }}</span>
+          </button>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-4">
+        @for (action of visibleActions(); track action.id) {
+          <div class="bg-slate-800 hover:bg-slate-700 rounded-xl p-6 transition-all hover:shadow-xl group cursor-pointer relative select-none border"
+               [ngClass]="customizeMode() ? 'border-amber-500/60' : 'border-slate-700'"
+               (click)="onActionClick(action)">
+            @if (customizeMode()) {
+              <button class="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center z-10 transition-colors"
+                      (click)="hideAction($event, action.id)">
+                <i class="fa-solid fa-xmark text-white text-xs"></i>
+              </button>
+            }
+            <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform" [ngClass]="action.color">
+              <i class="text-white text-xl" [ngClass]="action.icon"></i>
+            </div>
+            <p class="text-white font-medium mb-1">{{ action.label }}</p>
+            <p class="text-xs text-slate-400">{{ action.sublabel }}</p>
+          </div>
+        }
+        @if (customizeMode()) {
+          @for (action of hiddenActions(); track action.id) {
+            <div class="border-2 border-dashed border-slate-600 hover:border-slate-500 rounded-xl p-6 transition-all cursor-pointer group"
+                 (click)="showAction(action.id)">
+              <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4 opacity-40" [ngClass]="action.color">
+                <i class="text-white text-xl" [ngClass]="action.icon"></i>
+              </div>
+              <p class="text-slate-500 font-medium mb-1">{{ action.label }}</p>
+              <p class="text-xs text-slate-600 group-hover:text-slate-400 transition-colors">Click to restore</p>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══ CHARTS ══ -->
+  <section class="px-8 pb-6">
+    <div class="grid grid-cols-3 gap-6">
+      <!-- Case Activity -->
+      <div class="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Case Activity Overview</h2>
+            <p class="text-sm text-gray-600 mt-1">Monthly case trends and statistics</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button (click)="setChartPeriod('monthly')"
+              class="px-3 py-1.5 text-xs rounded-lg font-medium transition-colors"
+              [ngClass]="chartPeriod() === 'monthly' ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'">Monthly</button>
+            <button (click)="setChartPeriod('quarterly')"
+              class="px-3 py-1.5 text-xs rounded-lg font-medium transition-colors"
+              [ngClass]="chartPeriod() === 'quarterly' ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'">Quarterly</button>
+            <button (click)="setChartPeriod('yearly')"
+              class="px-3 py-1.5 text-xs rounded-lg font-medium transition-colors"
+              [ngClass]="chartPeriod() === 'yearly' ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'">Yearly</button>
+          </div>
+        </div>
+        <div id="case-activity-chart" style="height:320px"></div>
+      </div>
+      <!-- Case Distribution -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="mb-6">
+          <h2 class="text-lg font-bold text-gray-900">Case Distribution</h2>
+          <p class="text-sm text-gray-600 mt-1">By practice area</p>
+        </div>
+        <div id="case-distribution-chart" style="height:320px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ TODAY'S SCHEDULE ══ -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Today's Schedule</h2>
+            <p class="text-sm text-gray-600 mt-1">Events and deadlines scheduled for today</p>
+          </div>
+          <a routerLink="/calendar" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View Calendar</a>
+        </div>
+        <div class="p-6">
+          @if (todayLoading()) {
+            <div class="space-y-4">
+              @for (_ of [1,2,3]; track $index) {
+                <div class="animate-pulse flex items-start space-x-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <div class="w-14 h-14 rounded-lg bg-gray-200 flex-shrink-0"></div>
+                  <div class="flex-1 space-y-2 py-1">
+                    <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+                    <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+                    <div class="h-3 bg-gray-200 rounded w-2/3"></div>
+                  </div>
+                </div>
+              }
+            </div>
+          } @else if (todayEvents().length === 0) {
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+              <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                <i class="fa-solid fa-calendar-check text-2xl text-green-500"></i>
+              </div>
+              <p class="font-semibold text-gray-700">No events today</p>
+              <p class="text-sm text-gray-400 mt-1">Your schedule is clear — enjoy the focus time</p>
+              <a routerLink="/calendar" class="mt-4 inline-flex items-center text-sm text-amber-600 hover:text-amber-700 font-medium">
+                <i class="fa-solid fa-plus mr-1"></i>Schedule an event
+              </a>
+            </div>
+          } @else {
+            <div class="space-y-4">
+              @for (ev of todayEvents(); track ev.id) {
+                <div class="flex items-start space-x-4 p-4 border rounded-lg" [class]="eventCardClass(ev.event_type)">
+                  <div class="flex-shrink-0">
+                    <div class="w-14 h-14 rounded-lg flex flex-col items-center justify-center" [class]="eventDateBgClass(ev.event_type)">
+                      <span class="text-xs font-semibold">{{ formatDateMonth(ev.start_datetime) }}</span>
+                      <span class="text-lg font-bold">{{ formatDateDay(ev.start_datetime) }}</span>
+                    </div>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between mb-1">
+                      <h3 class="font-semibold text-gray-900 truncate pr-2">{{ ev.title }}</h3>
+                      <span class="text-xs text-white px-2 py-1 rounded-full font-medium whitespace-nowrap flex-shrink-0" [class]="eventBadgeClass(ev.event_type)">
+                        {{ eventTypeLabel(ev.event_type) }}
+                      </span>
+                    </div>
+                    @if (ev.case_file) {
+                      <p class="text-sm text-gray-600 mb-1">
+                        <i class="fa-solid fa-briefcase mr-1 text-xs"></i>
+                        {{ ev.case_file.case_number }} — {{ ev.case_file.title }}
+                      </p>
+                    }
+                    <div class="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+                      <span><i class="fa-solid fa-clock mr-1"></i>{{ formatTime(ev.start_datetime) }}</span>
+                      @if (ev.location) {
+                        <span><i class="fa-solid fa-location-dot mr-1"></i>{{ ev.location }}</span>
+                      }
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+    </div>
+  </section>
+
+  <!-- ══ RECENT ACTIVITY ══ -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Recent Activity</h2>
+          <p class="text-sm text-gray-600 mt-1">Latest updates across your practice</p>
+        </div>
+        <button (click)="showAllActivity.update(v => !v)"
+          class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+          {{ showAllActivity() ? 'Show Less' : 'View All (' + recentActivity().length + ')' }}
+        </button>
+      </div>
+
+      @if (actLoading()) {
+        <div class="divide-y divide-gray-100">
+          @for (_ of [1,2,3,4]; track $index) {
+            <div class="p-6 animate-pulse">
+              <div class="flex items-start space-x-4">
+                <div class="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0"></div>
+                <div class="flex-1 space-y-2">
+                  <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+                  <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+                </div>
+                <div class="w-16 h-3 bg-gray-200 rounded"></div>
+              </div>
+            </div>
+          }
+        </div>
+      } @else if (recentActivity().length === 0) {
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+          <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <i class="fa-solid fa-clock-rotate-left text-2xl text-gray-400"></i>
+          </div>
+          <p class="font-semibold text-gray-600">No recent activity</p>
+          <p class="text-sm text-gray-400 mt-1">Actions will appear here as your team works on cases</p>
+        </div>
+      } @else {
+        <div class="divide-y divide-gray-100">
+          @for (a of visibleActivity(); track a.id) {
+            <div class="p-6 hover:bg-gray-50 transition-colors">
+              <div class="flex items-start space-x-4">
+                <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                  <i class="fa-solid fa-bolt text-amber-600 text-sm"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0 pr-4">
+                      <p class="text-sm text-gray-900">{{ a.action }}</p>
+                      @if (a.case_file) {
+                        <p class="text-xs text-blue-600 mt-1">
+                          <i class="fa-solid fa-briefcase mr-1"></i>
+                          {{ a.case_file.case_number }} — {{ a.case_file.title }}
+                        </p>
+                      }
+                    </div>
+                    <span class="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">{{ relativeTime(a.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- ══ REVENUE ══ -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div class="p-6 border-b border-gray-200">
+        <h2 class="text-lg font-bold text-gray-900">Revenue Overview</h2>
+        <p class="text-sm text-gray-600 mt-1">Monthly billing trends</p>
+      </div>
+      <div class="p-6">
+        <div id="revenue-chart" style="height:280px"></div>
+      </div>
+    </div>
+  </section>
+
+
+
+
+  <!-- ══ NEW NOTE OVERLAY ══ -->
+  @if (noteOpen()) {
+    <div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" (click)="noteOpen.set(false)">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg" (click)="$event.stopPropagation()">
+        <div class="flex items-center justify-between p-6 border-b border-gray-200">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <i class="fa-solid fa-note-sticky text-yellow-600"></i>
+            </div>
+            <h3 class="text-lg font-bold text-gray-900">New Note</h3>
+          </div>
+          <button (click)="noteOpen.set(false)" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <i class="fa-solid fa-xmark text-gray-500"></i>
+          </button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Linked Case</label>
+            <div class="relative">
+              <i class="fa-solid fa-briefcase absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
+              <select [value]="noteLinkedCase()" (change)="noteLinkedCase.set($any($event.target).value)"
+                class="w-full pl-9 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm bg-white appearance-none">
+                <option value="">— Select a case —</option>
+                @for (c of cases(); track c.id) {
+                  <option [value]="c.id">{{ c.caseNumber }} — {{ c.title }}</option>
+                }
+              </select>
+              <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Title</label>
+            <input type="text" placeholder="Note title..." [value]="noteTitle()" (input)="noteTitle.set($any($event.target).value)"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Content</label>
+            <textarea rows="5" placeholder="Write your note here..." [value]="noteContent()" (input)="noteContent.set($any($event.target).value)"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm resize-none"></textarea>
+          </div>
+        </div>
+        <div class="flex items-center justify-end space-x-3 px-6 pb-6">
+          <button (click)="noteOpen.set(false)" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+          <button (click)="saveNote()" [disabled]="!noteLinkedCase() || !noteContent() || noteSaving()"
+            class="px-6 py-2 bg-yellow-500 text-white text-sm font-medium rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+            @if (noteSaving()) {
+              <span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            }
+            Save Note
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+
+</main>
+
+<app-new-case-modal    #caseModal   (saved)="onCaseSaved()"></app-new-case-modal>
+<app-new-client-modal  #clientModal (saved)="onClientSaved()"></app-new-client-modal>
+<app-new-event-modal   #eventModal></app-new-event-modal>
+<app-new-invoice-modal #invoiceModal></app-new-invoice-modal>
+<app-upload-modal></app-upload-modal>
+<app-voice-note-modal (saved)="showToast('Voice note saved!')"></app-voice-note-modal>
+
+<!-- ══ TOAST NOTIFICATION ══ -->
+@if (toast()) {
+  <div class="fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl text-white text-sm font-medium animate-fade-in"
+       [ngClass]="toast()!.type === 'success' ? 'bg-green-600' : 'bg-red-600'">
+    <i class="fa-solid text-lg" [ngClass]="toast()!.type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark'"></i>
+    <span>{{ toast()!.msg }}</span>
+  </div>
+}

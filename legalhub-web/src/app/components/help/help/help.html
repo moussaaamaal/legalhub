@@ -1,0 +1,252 @@
+<!-- ══ TOPBAR ══ -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center flex-1">
+      <div class="relative w-96">
+        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" placeholder="Search help articles, guides..."
+          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
+      </div>
+    </div>
+    <div class="flex items-center space-x-3">
+      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+        <i class="fa-solid fa-bell text-xl"></i>
+        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+      </button>
+      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+        <i class="fa-solid fa-envelope text-xl"></i>
+        <span class="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
+      </button>
+      <div class="h-8 w-px bg-gray-300"></div>
+      <button class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
+        <i class="fa-solid fa-ticket"></i>
+        <span class="font-medium">New Ticket</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto bg-gray-50">
+
+  <!-- ══ HERO BANNER ══ -->
+  <section class="px-8 pt-6 pb-6">
+    <div class="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl shadow-lg p-10 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex-1">
+          <div class="flex items-center space-x-3 mb-4">
+            <div class="w-14 h-14 bg-amber-500 rounded-xl flex items-center justify-center">
+              <i class="fa-solid fa-circle-question text-white text-2xl"></i>
+            </div>
+            <div>
+              <h1 class="text-3xl font-bold">Help Center</h1>
+              <p class="text-slate-300">Find answers, tutorials, and contact support</p>
+            </div>
+          </div>
+          <div class="relative max-w-xl mt-6">
+            <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" placeholder="Search for help, e.g. 'how to add a case'..."
+              class="w-full pl-12 pr-4 py-4 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+          </div>
+          <div class="flex items-center space-x-6 mt-5 text-sm text-slate-400">
+            <span><i class="fa-solid fa-fire text-amber-400 mr-1"></i>Popular: Case management, AI Assistant, Billing</span>
+          </div>
+        </div>
+        <div class="hidden lg:block text-right pl-10">
+          <div class="grid grid-cols-2 gap-3 text-center">
+            <div class="bg-slate-700 rounded-xl p-4 border border-slate-600">
+              <p class="text-2xl font-bold text-amber-400">200+</p>
+              <p class="text-xs text-slate-400 mt-1">Help articles</p>
+            </div>
+            <div class="bg-slate-700 rounded-xl p-4 border border-slate-600">
+              <p class="text-2xl font-bold text-green-400">2h</p>
+              <p class="text-xs text-slate-400 mt-1">Avg response</p>
+            </div>
+            <div class="bg-slate-700 rounded-xl p-4 border border-slate-600">
+              <p class="text-2xl font-bold text-blue-400">24/7</p>
+              <p class="text-xs text-slate-400 mt-1">Chat support</p>
+            </div>
+            <div class="bg-slate-700 rounded-xl p-4 border border-slate-600">
+              <p class="text-2xl font-bold text-purple-400">98%</p>
+              <p class="text-xs text-slate-400 mt-1">Satisfaction</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ SUPPORT CHANNELS ══ -->
+  <section class="px-8 pb-6">
+    <div class="grid grid-cols-4 gap-6">
+      @for (c of channels; track c.title) {
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+          <div class="flex items-start justify-between mb-4">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center" [ngClass]="c.iconBg">
+              <i class="text-xl" [ngClass]="[c.icon, c.iconColor]"></i>
+            </div>
+            <span class="text-xs px-2.5 py-1 rounded-full font-medium" [ngClass]="c.badgeCls">{{ c.badge }}</span>
+          </div>
+          <h3 class="text-base font-bold text-gray-900 mb-1">{{ c.title }}</h3>
+          <p class="text-sm text-gray-600 mb-5">{{ c.desc }}</p>
+          <button class="w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors" [ngClass]="c.btnCls">
+            {{ c.btnLabel }}
+          </button>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- ══ FAQ + SYSTEM STATUS ══ -->
+  <section class="px-8 pb-6">
+    <div class="grid grid-cols-3 gap-6">
+
+      <!-- FAQ col-span-2 -->
+      <div class="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Frequently Asked Questions</h2>
+            <p class="text-sm text-gray-600 mt-1">Quick answers to the most common questions</p>
+          </div>
+          <button class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
+        </div>
+        <div class="divide-y divide-gray-100">
+          @for (faq of faqs; track faq.q; let i = $index) {
+            <div class="cursor-pointer hover:bg-gray-50 transition-colors" (click)="toggleFaq(i)">
+              <div class="px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                  <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                    [ngClass]="openFaq() === i ? 'bg-amber-500' : 'bg-gray-100'">
+                    <span class="text-xs font-bold" [ngClass]="openFaq() === i ? 'text-white' : 'text-gray-500'">{{ i + 1 }}</span>
+                  </div>
+                  <span class="text-sm font-semibold text-gray-900">{{ faq.q }}</span>
+                </div>
+                <i class="fa-solid text-gray-400 flex-shrink-0 ml-4 transition-transform"
+                  [ngClass]="openFaq() === i ? 'fa-chevron-up text-amber-500' : 'fa-chevron-down'"></i>
+              </div>
+              @if (openFaq() === i) {
+                <div class="px-6 pb-5 pl-15">
+                  <div class="ml-9 bg-amber-50 border border-amber-100 rounded-lg p-4">
+                    <p class="text-sm text-gray-700 leading-relaxed">{{ faq.a }}</p>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- System status -->
+      <div class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-base font-bold text-gray-900">System Status</h2>
+            <span class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">
+              <i class="fa-solid fa-circle text-green-500 mr-1 text-xs"></i>Operational
+            </span>
+          </div>
+          <div class="space-y-3">
+            @for (srv of systemServices; track srv.name; let last = $last) {
+              <div class="flex items-center justify-between py-2.5" [ngClass]="last ? '' : 'border-b border-gray-100'">
+                <div class="flex items-center space-x-2">
+                  <span class="w-2 h-2 rounded-full flex-shrink-0" [ngClass]="srv.dot"></span>
+                  <span class="text-sm text-gray-700">{{ srv.name }}</span>
+                </div>
+                <span class="text-xs px-2.5 py-1 rounded-full font-medium" [ngClass]="srv.cls">{{ srv.status }}</span>
+              </div>
+            }
+          </div>
+          <button class="w-full mt-5 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">
+            View Full Status Page
+          </button>
+        </div>
+
+        <!-- Contact info -->
+        <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-6 text-white">
+          <div class="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
+            <i class="fa-solid fa-phone text-xl"></i>
+          </div>
+          <h3 class="font-bold text-lg mb-1">Need urgent help?</h3>
+          <p class="text-amber-100 text-sm mb-4">Our enterprise support line is available 24/7 for critical issues.</p>
+          <p class="font-bold text-lg mb-1">+1 (800) 555-LEGAL</p>
+          <p class="text-amber-100 text-xs">Enterprise plan customers only</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══ GUIDES ══ -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Guides &amp; Tutorials</h2>
+          <p class="text-sm text-gray-600 mt-1">Step-by-step instructions to get the most from LegalFlow</p>
+        </div>
+        <button class="text-sm text-amber-600 hover:text-amber-700 font-medium">Browse All</button>
+      </div>
+      <div class="p-6 grid grid-cols-3 gap-4">
+        @for (g of guides; track g.title) {
+          <div class="flex items-center space-x-4 p-4 border border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-all cursor-pointer group">
+            <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-white transition-colors">
+              <i class="text-lg" [ngClass]="[g.icon, g.iconColor]"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-900 truncate">{{ g.title }}</p>
+              <div class="flex items-center space-x-2 mt-1">
+                <span class="text-xs text-gray-500">{{ g.meta }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded font-medium" [ngClass]="g.tagCls">{{ g.tag }}</span>
+              </div>
+            </div>
+            <i class="fa-solid fa-arrow-right text-gray-300 group-hover:text-amber-500 transition-colors text-sm"></i>
+          </div>
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ SUPPORT TICKETS ══ -->
+  <section class="px-8 pb-8">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">My Support Tickets</h2>
+          <p class="text-sm text-gray-600 mt-1">Track the status of your open and recent support requests</p>
+        </div>
+        <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
+          <i class="fa-solid fa-plus mr-2"></i>New Ticket
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Ticket ID</th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Subject</th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Priority</th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Created</th>
+              <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            @for (t of tickets; track t.id) {
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4"><p class="text-sm font-mono font-semibold text-gray-900">{{ t.id }}</p></td>
+                <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ t.subject }}</p></td>
+                <td class="px-6 py-4"><span class="text-xs px-2.5 py-1 rounded-full font-medium" [ngClass]="t.statusCls">{{ t.status }}</span></td>
+                <td class="px-6 py-4"><span class="text-xs px-2.5 py-1 rounded-full font-medium" [ngClass]="t.priorityCls">{{ t.priority }}</span></td>
+                <td class="px-6 py-4"><p class="text-sm text-gray-600">{{ t.created }}</p></td>
+                <td class="px-6 py-4 text-right">
+                  <button class="text-amber-600 hover:text-amber-700 mr-3 text-sm font-medium">View</button>
+                  <button class="text-gray-500 hover:text-gray-700 text-sm">Reply</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>

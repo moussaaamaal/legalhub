@@ -1,0 +1,945 @@
+<!-- ══ TOPBAR ══ -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center flex-1">
+      <div class="relative w-80">
+        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" [(ngModel)]="searchStr"
+          placeholder="Search events, hearings, cases..."
+          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm">
+      </div>
+    </div>
+    <div class="flex items-center space-x-3">
+
+      <!-- Sync status chips -->
+      <div class="flex items-center space-x-2">
+        <button (click)="triggerSync()"
+          class="flex items-center space-x-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all"
+          [ngClass]="googleSynced() ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'">
+          <i class="fa-brands fa-google text-sm" [ngClass]="googleSynced() ? 'text-green-600' : 'text-gray-400'"></i>
+          <span>{{ googleSynced() ? 'Google Synced' : 'Connect Google' }}</span>
+          @if (googleSynced()) { <i class="fa-solid fa-check-circle text-green-500"></i> }
+        </button>
+        <button
+          class="flex items-center space-x-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all"
+          [ngClass]="outlookSynced() ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'">
+          <i class="fa-regular fa-envelope text-sm" [ngClass]="outlookSynced() ? 'text-blue-600' : 'text-gray-400'"></i>
+          <span>{{ outlookSynced() ? 'Outlook Synced' : 'Connect Outlook' }}</span>
+        </button>
+        <button (click)="triggerSync()"
+          class="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+          title="Sync now">
+          <i class="fa-solid fa-rotate text-base" [ngClass]="isSyncing() ? 'fa-spin text-amber-500' : ''"></i>
+        </button>
+      </div>
+
+      <div class="h-8 w-px bg-gray-300"></div>
+
+      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+        <i class="fa-solid fa-bell text-xl"></i>
+        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+      </button>
+
+      <button (click)="openModal()"
+        class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all font-medium">
+        <i class="fa-solid fa-plus"></i>
+        <span>New Event</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ══ MAIN LAYOUT ══ -->
+<div class="flex flex-1 overflow-hidden bg-gray-50">
+
+  <!-- ── Calendar area ── -->
+  <main class="flex-1 overflow-y-auto">
+    <div class="px-8 py-6">
+
+      <!-- Page header -->
+      <div class="mb-5">
+        <h1 class="text-3xl font-bold text-gray-900">Office Calendar</h1>
+        <p class="text-gray-500 mt-1 text-sm">Manage hearings, court dates, meetings, and deadlines</p>
+      </div>
+
+      <!-- Controls row -->
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center space-x-3">
+          <button (click)="prev()" class="p-2 text-gray-600 hover:bg-white hover:shadow rounded-lg transition-all border border-transparent hover:border-gray-200">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <h2 class="text-xl font-bold text-gray-900 min-w-max">{{ navLabel() }}</h2>
+          <button (click)="next()" class="p-2 text-gray-600 hover:bg-white hover:shadow rounded-lg transition-all border border-transparent hover:border-gray-200">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+          <button (click)="goToday()" class="px-3 py-1.5 text-sm text-amber-600 hover:bg-amber-50 rounded-lg font-semibold border border-amber-200 transition-colors">
+            Today
+          </button>
+        </div>
+
+        <!-- View switcher -->
+        <div class="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm space-x-0.5">
+          @for (view of ['Day','Week','Month','Agenda']; track view) {
+            <button (click)="setView(view)"
+              class="px-4 py-2 text-sm rounded-lg font-medium transition-all"
+              [ngClass]="currentView() === view.toLowerCase()
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100'">
+              {{ view }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="flex items-center space-x-2 mb-5 flex-wrap gap-y-2">
+        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider mr-1">Filter:</span>
+        @for (type of typeKeys; track type) {
+          <button (click)="toggleFilter(type)"
+            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all"
+            [ngClass]="isFilterActive(type)
+              ? [typeConfig[type].badgeCls, 'border-transparent shadow-sm']
+              : 'bg-white border-gray-200 text-gray-400 opacity-60 hover:opacity-80'">
+            <span class="w-2 h-2 rounded-full" [ngClass]="typeConfig[type].dot"></span>
+            <i [ngClass]="typeConfig[type].icon" class="text-xs"></i>
+            <span>{{ typeConfig[type].label }}</span>
+            <span class="ml-1 font-bold opacity-70">{{ countByType(type) }}</span>
+          </button>
+        }
+        @if (activeFilters().size < typeKeys.length) {
+          <button (click)="resetFilters()"
+            class="px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 transition-colors">
+            Show All
+          </button>
+        }
+      </div>
+
+      <!-- Loading / Error -->
+      @if (isLoading()) {
+        <div class="flex items-center justify-center py-10 text-amber-500">
+          <i class="fa-solid fa-spinner fa-spin text-2xl mr-3"></i>
+          <span class="text-sm font-medium text-gray-500">Loading events…</span>
+        </div>
+      }
+      @if (loadError()) {
+        <div class="flex items-center space-x-3 mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span>{{ loadError() }}</span>
+          <button (click)="triggerSync()" class="ml-auto underline font-medium hover:text-red-900">Retry</button>
+        </div>
+      }
+
+      <!-- ════════ WEEK VIEW ════════ -->
+      @if (currentView() === 'week') {
+        <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+          <!-- Day headers -->
+          <div class="grid grid-cols-8 border-b border-gray-200">
+            <div class="p-3 bg-gray-50 border-r border-gray-200"></div>
+            @for (day of weekDays; track day; let i = $index) {
+              <div class="p-3 text-center border-r border-gray-200 last:border-r-0"
+                [ngClass]="todayWeekIndex() === i ? 'bg-amber-50' : 'bg-gray-50'">
+                <p class="text-xs font-bold uppercase tracking-wider"
+                  [ngClass]="todayWeekIndex() === i ? 'text-amber-600' : 'text-gray-400'">
+                  {{ day.slice(0,3) }}
+                </p>
+                <p class="text-2xl font-black mt-0.5"
+                  [ngClass]="todayWeekIndex() === i ? 'text-amber-500' : 'text-gray-800'">
+                  {{ weekDatesLabels()[i].split(' ')[1] }}
+                </p>
+                <div class="flex justify-center space-x-0.5 mt-1.5 h-2">
+                  @for (e of getEventsForWeekDay(i).slice(0,4); track e.id) {
+                    <span class="w-1.5 h-1.5 rounded-full" [ngClass]="typeConfig[e.type].dot"></span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+          <!-- Time grid -->
+          @for (h of hours; track h.hour) {
+            <div class="grid grid-cols-8 border-b border-gray-100 last:border-b-0">
+              <div class="border-r border-gray-200 px-2 py-2 text-xs text-gray-400 text-right h-16 flex items-start justify-end pt-2 bg-gray-50/50">
+                {{ h.label }}
+              </div>
+              @for (day of weekDays; track day; let i = $index) {
+                <div class="border-r border-gray-100 h-16 p-1 relative last:border-r-0 hover:bg-amber-50/20 cursor-pointer transition-colors group"
+                  [ngClass]="todayWeekIndex() === i ? 'bg-amber-50/30' : ''"
+                  (click)="openModal(weekDatesISO()[i], h.hour)">
+                  @if (getEventAtHour(i, h.hour); as ev) {
+                    <div class="absolute inset-x-1 top-1 rounded-lg px-2 py-1 text-xs border-l-4 cursor-pointer hover:shadow-md transition-shadow z-10"
+                      [ngClass]="typeConfig[ev.type].cardCls"
+                      (click)="openEventDetail(ev, $event)">
+                      <div class="flex items-center space-x-1 mb-0.5">
+                        <i [ngClass]="typeConfig[ev.type].icon" class="text-xs opacity-70"></i>
+                        @if (ev.locationType === 'video') {
+                          <i class="fa-solid fa-video text-xs opacity-60"></i>
+                        }
+                      </div>
+                      <p class="font-bold truncate leading-tight">{{ ev.title }}</p>
+                      <p class="opacity-60 text-xs">{{ formatTime(ev.startTime) }}</p>
+                    </div>
+                  }
+                  <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    <i class="fa-solid fa-plus text-gray-300 text-xs"></i>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <!-- ════════ MONTH VIEW ════════ -->
+      @if (currentView() === 'month') {
+        <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+          <div class="grid grid-cols-7 border-b border-gray-200">
+            @for (d of ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; track d; let i = $index) {
+              <div class="py-3 text-center text-xs font-bold uppercase tracking-wider border-r border-gray-100 last:border-r-0"
+                [ngClass]="i === todayIndex ? 'text-amber-500 bg-amber-50' : 'text-gray-400 bg-gray-50'">
+                {{ d }}
+              </div>
+            }
+          </div>
+          @for (week of monthGrid(); track $index) {
+            <div class="grid grid-cols-7 border-b border-gray-100 last:border-b-0">
+              @for (day of week; track $index) {
+                <div class="min-h-28 p-2 border-r border-gray-100 last:border-r-0 hover:bg-gray-50/70 cursor-pointer transition-colors"
+                  [ngClass]="!currentMonthDays().has(day) ? 'bg-gray-50/50' : ''"
+                  (click)="openModal(getMonthDayISO(day))">
+                  <div class="flex items-center justify-center w-7 h-7 rounded-full mb-1.5 text-sm font-bold"
+                    [ngClass]="day === todayDayNum && isTodayInNavMonth() && currentMonthDays().has(day)
+                      ? 'bg-amber-500 text-white shadow-md'
+                      : currentMonthDays().has(day) ? 'text-gray-700 hover:bg-gray-200' : 'text-gray-300'">
+                    {{ day }}
+                  </div>
+                  <div class="space-y-0.5">
+                    @for (ev of getEventsForMonthDay(day).slice(0,3); track ev.id) {
+                      <div class="flex items-center space-x-1 px-1.5 py-0.5 rounded text-xs font-medium truncate cursor-pointer hover:opacity-80"
+                        [ngClass]="typeConfig[ev.type].badgeCls"
+                        (click)="openEventDetail(ev, $event)">
+                        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" [ngClass]="typeConfig[ev.type].dot"></span>
+                        <span class="truncate">{{ ev.title }}</span>
+                      </div>
+                    }
+                    @if (getEventsForMonthDay(day).length > 3) {
+                      <p class="text-xs text-gray-400 font-medium pl-1">+{{ getEventsForMonthDay(day).length - 3 }} more</p>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <!-- ════════ DAY VIEW ════════ -->
+      @if (currentView() === 'day') {
+        <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+          <div class="flex items-center justify-center py-5 border-b border-gray-200 bg-amber-50">
+            <div class="text-center">
+              <p class="text-xs font-bold uppercase tracking-widest text-amber-600">
+                {{ navDate().toLocaleDateString('en-US', { weekday: 'long' }) }}
+              </p>
+              <p class="text-5xl font-black text-amber-500 leading-none mt-1">{{ navDayNum() }}</p>
+              <p class="text-sm text-gray-500 mt-1">{{ monthLabel() }}</p>
+            </div>
+          </div>
+          <div>
+            @for (h of hours; track h.hour) {
+              <div class="flex border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer group" style="min-height:72px"
+                (click)="openModal(navDateISO(), h.hour)">
+                <div class="w-20 flex-shrink-0 px-4 py-3 text-xs text-gray-400 text-right border-r border-gray-200 bg-gray-50/50 pt-3">
+                  {{ h.label }}
+                </div>
+                <div class="flex-1 p-2 relative">
+                  @if (getDayEventAtHour(h.hour); as ev) {
+                    <div class="rounded-xl px-4 py-3 border-l-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                      [ngClass]="typeConfig[ev.type].cardCls"
+                      (click)="openEventDetail(ev, $event)">
+                      <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center space-x-2">
+                          <i [ngClass]="[typeConfig[ev.type].icon, typeConfig[ev.type].labelCls]"></i>
+                          <span class="text-xs font-bold px-2 py-0.5 rounded-full" [ngClass]="typeConfig[ev.type].badgeCls">
+                            {{ typeConfig[ev.type].label }}
+                          </span>
+                          @if (ev.locationType === 'video') {
+                            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                              <i class="fa-solid fa-video mr-1"></i>Video
+                            </span>
+                          }
+                        </div>
+                        <span class="text-xs text-gray-400 font-medium">{{ formatTime(ev.startTime) }} – {{ formatTime(ev.endTime) }}</span>
+                      </div>
+                      <p class="font-bold text-gray-900">{{ ev.title }}</p>
+                      @if (ev.location) {
+                        <p class="text-xs text-gray-500 mt-1"><i class="fa-solid fa-location-dot mr-1"></i>{{ ev.location }}</p>
+                      }
+                    </div>
+                  } @else {
+                    <div class="h-full flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button class="text-xs text-amber-500 font-medium hover:text-amber-600"
+                        (click)="$event.stopPropagation(); openModal(navDateISO(), h.hour)">
+                        <i class="fa-solid fa-plus mr-1"></i>Add event
+                      </button>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ════════ AGENDA VIEW ════════ -->
+      @if (currentView() === 'agenda') {
+        <div class="space-y-4">
+          @for (agDay of agendaDays(); track agDay.dateStr) {
+            <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+              <div class="px-6 py-3 border-b border-gray-100 flex items-center space-x-3"
+                [ngClass]="agDay.label === 'Today' ? 'bg-amber-50' : 'bg-gray-50'">
+                @if (agDay.label) {
+                  <span class="text-xs font-bold px-2.5 py-1 rounded-full"
+                    [ngClass]="agDay.label === 'Today' ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-600'">
+                    {{ agDay.label }}
+                  </span>
+                }
+                <h3 class="font-bold text-gray-800 text-sm">{{ agDay.date }}</h3>
+              </div>
+              @if (getEventsForDate(agDay.dateStr).length === 0) {
+                <div class="px-6 py-4 text-sm text-gray-400 italic">No events scheduled</div>
+              }
+              <div class="divide-y divide-gray-100">
+                @for (ev of getEventsForDate(agDay.dateStr); track ev.id) {
+                  <div class="flex items-start space-x-4 px-6 py-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                    (click)="openEventDetail(ev)">
+                    <div class="w-20 flex-shrink-0 text-right">
+                      <p class="text-xs font-bold text-gray-700">{{ formatTime(ev.startTime) }}</p>
+                      @if (!ev.allDay && ev.endTime) {
+                        <p class="text-xs text-gray-400">{{ formatTime(ev.endTime) }}</p>
+                      }
+                    </div>
+                    <div class="w-1 flex-shrink-0 self-stretch rounded-full" [ngClass]="typeConfig[ev.type].dot"></div>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-xs px-2 py-0.5 rounded-full font-semibold" [ngClass]="typeConfig[ev.type].badgeCls">
+                          <i [ngClass]="typeConfig[ev.type].icon" class="mr-1 text-xs"></i>{{ typeConfig[ev.type].label }}
+                        </span>
+                        @if (ev.locationType === 'video') {
+                          <span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                            <i class="fa-solid fa-video mr-1"></i>Video
+                          </span>
+                        }
+                        @if (ev.locationType === 'phone') {
+                          <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                            <i class="fa-solid fa-phone mr-1"></i>Phone
+                          </span>
+                        }
+                      </div>
+                      <p class="font-bold text-gray-900 text-sm">{{ ev.title }}</p>
+                      @if (ev.location) {
+                        <p class="text-xs text-gray-500 mt-0.5"><i class="fa-solid fa-location-dot mr-1"></i>{{ ev.location }}</p>
+                      }
+                      @if (ev.caseRef) {
+                        <p class="text-xs text-amber-600 mt-0.5 font-medium"><i class="fa-solid fa-briefcase mr-1"></i>{{ ev.caseRef }}</p>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+    </div>
+  </main>
+
+  <!-- ══ Sidebar: Next 7 Days ══ -->
+  <aside class="w-80 flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto flex flex-col">
+
+    <div class="px-5 py-4 border-b border-gray-200">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-gray-900">Next 7 Days</h3>
+        <span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
+          {{ sidebarUpcomingEvents().length }} events
+        </span>
+      </div>
+      <p class="text-xs text-gray-400 mt-0.5">
+        @if (sidebarTypeFilter()) {
+          Filtered: {{ typeConfig[sidebarTypeFilter()!].label }}
+        } @else {
+          From today through the next 7 days
+        }
+      </p>
+    </div>
+
+    <!-- Today summary strip -->
+    <div class="mx-4 mt-4 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 p-4 text-white shadow-sm">
+      <p class="text-xs font-bold uppercase tracking-wider opacity-80">Today</p>
+      <p class="text-2xl font-black leading-tight mt-0.5">
+        {{ _todayRef.toLocaleDateString('en-US', { weekday: 'long' }) }}
+      </p>
+      <p class="text-xs opacity-80 mt-0.5">
+        {{ _todayRef.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }}, {{ _todayRef.getFullYear() }}
+      </p>
+      <div class="flex items-center justify-center mt-3 space-x-2">
+        <div class="text-center">
+          <p class="text-2xl font-black">{{ todayEvents().length }}</p>
+          <p class="text-xs opacity-70">Today</p>
+        </div>
+        <div class="w-px h-8 bg-white/30 mx-2"></div>
+        <div class="text-center">
+          <p class="text-2xl font-black">{{ upcomingEvents().length }}</p>
+          <p class="text-xs opacity-70">Next 7 days</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Type filter buttons -->
+    <div class="px-4 pt-4">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Filter by type</p>
+        @if (sidebarTypeFilter()) {
+          <button (click)="sidebarTypeFilter.set(null)"
+            class="text-xs text-amber-600 font-semibold hover:text-amber-800 flex items-center space-x-1">
+            <i class="fa-solid fa-times"></i><span>Clear</span>
+          </button>
+        }
+      </div>
+      <div class="grid grid-cols-5 gap-1.5">
+        @for (type of typeKeys; track type) {
+          <button (click)="toggleSidebarFilter(type)"
+            class="flex flex-col items-center py-2 px-1 rounded-xl border-2 transition-all"
+            [ngClass]="sidebarTypeFilter() === type
+              ? [typeConfig[type].activeBorder, typeConfig[type].activeBg]
+              : 'border-gray-200 bg-white hover:border-gray-300'">
+            <div class="w-6 h-6 rounded-lg flex items-center justify-center mb-1 transition-colors"
+              [ngClass]="sidebarTypeFilter() === type ? typeConfig[type].iconBg : 'bg-gray-100'">
+              <i [ngClass]="[typeConfig[type].icon, sidebarTypeFilter() === type ? 'text-white' : 'text-gray-400']"
+                class="text-xs"></i>
+            </div>
+            <span class="text-xs font-bold leading-none"
+              [ngClass]="sidebarTypeFilter() === type ? typeConfig[type].labelCls : 'text-gray-400'">
+              {{ countUpcomingByType(type) }}
+            </span>
+            <span class="text-[9px] leading-tight text-center mt-0.5"
+              [ngClass]="sidebarTypeFilter() === type ? typeConfig[type].labelCls : 'text-gray-400'">
+              {{ typeConfig[type].label }}
+            </span>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Upcoming event list -->
+    <div class="flex-1 px-4 py-4 space-y-2">
+      @if (sidebarUpcomingEvents().length === 0 && !isLoading()) {
+        <p class="text-xs text-gray-400 italic text-center py-4">
+          @if (sidebarTypeFilter()) {
+            No {{ typeConfig[sidebarTypeFilter()!].label }} events in the next 7 days
+          } @else {
+            No upcoming events in the next 7 days
+          }
+        </p>
+      }
+      @for (ev of sidebarUpcomingEvents(); track ev.id) {
+        <div class="rounded-xl border border-transparent p-3 cursor-pointer hover:shadow-sm transition-all"
+          [ngClass]="typeConfig[ev.type].cardCls"
+          (click)="openEventDetail(ev)">
+          <div class="flex items-start justify-between mb-1.5">
+            <span class="text-xs font-bold px-2 py-0.5 rounded-full flex items-center space-x-1"
+              [ngClass]="typeConfig[ev.type].badgeCls">
+              <i [ngClass]="typeConfig[ev.type].icon" class="text-xs"></i>
+              <span>{{ typeConfig[ev.type].label }}</span>
+            </span>
+            <span class="text-xs font-semibold opacity-60">{{ getUpcomingDateLabel(ev) }}</span>
+          </div>
+          <p class="text-sm font-bold text-gray-900 leading-tight">{{ ev.title }}</p>
+          <div class="flex items-center space-x-3 mt-1.5 text-xs text-gray-500">
+            <span class="flex items-center space-x-1">
+              <i class="fa-regular fa-clock opacity-60"></i>
+              <span>{{ formatTime(ev.startTime) }}</span>
+            </span>
+            @if (ev.locationType === 'physical' && ev.location) {
+              <span class="flex items-center space-x-1 truncate">
+                <i class="fa-solid fa-location-dot opacity-60"></i>
+                <span class="truncate">{{ ev.location.split(',')[0] }}</span>
+              </span>
+            }
+            @if (ev.locationType === 'video') {
+              <span class="flex items-center space-x-1">
+                <i class="fa-solid fa-video opacity-60"></i>
+                <span>Video</span>
+              </span>
+            }
+          </div>
+          @if (ev.caseRef) {
+            <p class="text-xs font-medium mt-1 opacity-70">
+              <i class="fa-solid fa-briefcase mr-1"></i>{{ ev.caseRef.split('—')[0].trim() }}
+            </p>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Calendar Sync panel -->
+    <div class="mx-4 mb-4 rounded-xl bg-gray-50 border border-gray-200 p-4">
+      <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Calendar Sync</h4>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <div class="w-7 h-7 bg-white rounded-lg border border-gray-200 flex items-center justify-center">
+              <i class="fa-brands fa-google text-red-500 text-sm"></i>
+            </div>
+            <div>
+              <p class="text-xs font-semibold text-gray-800">Google Calendar</p>
+              <p class="text-xs text-gray-400">{{ googleSynced() ? 'Last sync: just now' : 'Not connected' }}</p>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" [checked]="googleSynced()" (change)="googleSynced.set(!googleSynced())" class="sr-only peer">
+            <div class="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"></div>
+          </label>
+        </div>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <div class="w-7 h-7 bg-white rounded-lg border border-gray-200 flex items-center justify-center">
+              <i class="fa-regular fa-envelope text-blue-600 text-sm"></i>
+            </div>
+            <div>
+              <p class="text-xs font-semibold text-gray-800">Microsoft Outlook</p>
+              <p class="text-xs text-gray-400">{{ outlookSynced() ? 'Connected' : 'Not connected' }}</p>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" [checked]="outlookSynced()" (change)="outlookSynced.set(!outlookSynced())" class="sr-only peer">
+            <div class="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+          </label>
+        </div>
+        <button (click)="triggerSync()"
+          class="w-full mt-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2">
+          <i class="fa-solid fa-rotate" [ngClass]="isSyncing() ? 'fa-spin text-amber-500' : ''"></i>
+          <span>{{ isSyncing() ? 'Syncing…' : 'Sync Now' }}</span>
+        </button>
+      </div>
+    </div>
+
+  </aside>
+
+</div>
+
+
+<!-- ══════════════════════════════════════════════════
+     MODAL: NEW EVENT
+══════════════════════════════════════════════════════ -->
+@if (showModal()) {
+  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+    (click)="closeModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden"
+      style="max-height:92vh"
+      (click)="$event.stopPropagation()">
+
+      <!-- STEP 1: FORM -->
+      @if (modalStep() === 1) {
+
+        <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+              <i class="fa-solid fa-calendar-plus text-amber-600"></i>
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">New Event</h2>
+              <p class="text-xs text-gray-400">Schedule a hearing, meeting, deadline or consultation</p>
+            </div>
+          </div>
+          <button (click)="closeModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+            <i class="fa-solid fa-times text-lg"></i>
+          </button>
+        </div>
+
+        <div class="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          <!-- Event type -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-3">Event Type</label>
+            <div class="grid grid-cols-5 gap-2">
+              @for (type of typeKeys; track type) {
+                <button (click)="newEvent.type = type"
+                  class="flex flex-col items-center py-3 px-1 rounded-xl border-2 transition-all"
+                  [ngClass]="newEvent.type === type
+                    ? [typeConfig[type].activeBorder, typeConfig[type].activeBg]
+                    : ['border-gray-200', 'hover:border-gray-300']">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center mb-1.5 transition-colors"
+                    [ngClass]="newEvent.type === type ? typeConfig[type].iconBg : 'bg-gray-100'">
+                    <i [ngClass]="[typeConfig[type].icon, newEvent.type === type ? 'text-white' : 'text-gray-400']" class="text-xs"></i>
+                  </div>
+                  <span class="text-xs font-bold leading-tight text-center"
+                    [ngClass]="newEvent.type === type ? typeConfig[type].labelCls : 'text-gray-400'">
+                    {{ typeConfig[type].label }}
+                  </span>
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Title -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">
+              Title <span class="text-red-400">*</span>
+            </label>
+            <input type="text" [(ngModel)]="newEvent.title"
+              placeholder="e.g. Smith vs. Johnson Hearing…"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+          </div>
+
+          <!-- Date + All-day -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5">Date <span class="text-red-400">*</span></label>
+              <input type="date" [(ngModel)]="newEvent.date"
+                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div class="flex flex-col justify-end">
+              <label class="flex items-center space-x-3 cursor-pointer p-2.5 rounded-lg border border-gray-200 hover:bg-gray-50">
+                <input type="checkbox" [(ngModel)]="newEvent.allDay" class="w-4 h-4 accent-amber-500">
+                <span class="text-sm font-medium text-gray-700">All-day event</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Time -->
+          @if (!newEvent.allDay) {
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5">Start Time</label>
+                <input type="time" [(ngModel)]="newEvent.startTime"
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+              <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5">End Time</label>
+                <input type="time" [(ngModel)]="newEvent.endTime"
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+            </div>
+          }
+
+          <!-- Location type -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2">Location Type</label>
+            <div class="grid grid-cols-4 gap-2 mb-3">
+              @for (lt of locationTypes; track lt.value) {
+                <button (click)="newEvent.locationType = lt.value"
+                  class="flex flex-col items-center py-2.5 px-2 rounded-lg border-2 text-xs font-semibold transition-all"
+                  [ngClass]="newEvent.locationType === lt.value
+                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'">
+                  <i [ngClass]="lt.icon" class="mb-1 text-sm"></i>
+                  {{ lt.label }}
+                </button>
+              }
+            </div>
+            @if (newEvent.locationType !== '') {
+              <div class="relative">
+                <i [ngClass]="newEvent.locationType === 'video' ? 'fa-solid fa-video' : newEvent.locationType === 'phone' ? 'fa-solid fa-phone' : 'fa-solid fa-location-dot'"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input type="text" [(ngModel)]="newEvent.location"
+                  [placeholder]="newEvent.locationType === 'video' ? 'Zoom/Teams link or meeting ID…' : newEvent.locationType === 'phone' ? 'Phone number…' : 'Court room, office address…'"
+                  class="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+            }
+          </div>
+
+          <!-- ── Recurrence ───────────────────────────────── -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2">Recurrence</label>
+            <div class="grid grid-cols-4 gap-2">
+              @for (opt of recurrenceOptions; track opt.value) {
+                <button (click)="newEvent.recurrence = opt.value"
+                  class="flex flex-col items-center py-2.5 px-1 rounded-lg border-2 text-xs font-semibold transition-all"
+                  [ngClass]="newEvent.recurrence === opt.value
+                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'">
+                  <i [ngClass]="opt.icon" class="mb-1 text-sm"></i>
+                  {{ opt.label }}
+                </button>
+              }
+            </div>
+
+            @if (showRecurrenceLimit) {
+              <div class="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-100">
+                <p class="text-xs font-semibold text-amber-700 mb-2">
+                  <i class="fa-solid fa-rotate mr-1"></i>
+                  Repeats {{ newEvent.recurrence === 'weekly' ? 'every week' : newEvent.recurrence === 'biweekly' ? 'every 2 weeks' : 'every month' }}
+                </p>
+                <!-- Limit type toggle -->
+                <div class="flex rounded-lg border border-amber-200 overflow-hidden mb-2">
+                  <button (click)="newEvent.recurrenceLimitType = 'count'"
+                    class="flex-1 py-1.5 text-xs font-semibold transition-colors"
+                    [ngClass]="newEvent.recurrenceLimitType === 'count'
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-white text-gray-600 hover:bg-amber-50'">
+                    # of times
+                  </button>
+                  <button (click)="newEvent.recurrenceLimitType = 'until'"
+                    class="flex-1 py-1.5 text-xs font-semibold transition-colors"
+                    [ngClass]="newEvent.recurrenceLimitType === 'until'
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-white text-gray-600 hover:bg-amber-50'">
+                    End date
+                  </button>
+                </div>
+                @if (newEvent.recurrenceLimitType === 'count') {
+                  <div class="flex items-center space-x-2">
+                    <input type="number" [(ngModel)]="newEvent.recurrenceCount"
+                      min="1" max="104"
+                      class="w-20 px-3 py-1.5 border border-amber-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+                    <span class="text-xs text-amber-700 font-medium">occurrence(s)</span>
+                  </div>
+                } @else {
+                  <input type="date" [(ngModel)]="newEvent.recurrenceUntil"
+                    class="w-full px-3 py-1.5 border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+                }
+              </div>
+            }
+          </div>
+
+          <!-- Linked Case -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">Linked Case</label>
+            <div class="relative">
+              <i class="fa-solid fa-briefcase absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+              <select [(ngModel)]="newEvent.caseRef"
+                class="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white appearance-none">
+                <option value="">No linked case</option>
+                @for (c of cases; track c) { <option [value]="c">{{ c }}</option> }
+              </select>
+              <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+            </div>
+          </div>
+
+          <!-- Participants -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">Participants</label>
+            @if (newEvent.participants.length) {
+              <div class="flex flex-wrap gap-1.5 mb-2">
+                @for (p of newEvent.participants; track p; let i = $index) {
+                  <span class="flex items-center space-x-1.5 bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full">
+                    <span>{{ p }}</span>
+                    <button (click)="removeParticipant(i)" class="hover:text-blue-600 transition-colors">
+                      <i class="fa-solid fa-times text-xs"></i>
+                    </button>
+                  </span>
+                }
+              </div>
+            }
+            <div class="relative">
+              <i class="fa-solid fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+              <select [ngModel]="''" (ngModelChange)="addParticipant($event)"
+                class="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white appearance-none">
+                <option value="">Add team member…</option>
+                @for (m of teamMembers; track m) {
+                  @if (!newEvent.participants.includes(m)) {
+                    <option [value]="m">{{ m }}</option>
+                  }
+                }
+              </select>
+            </div>
+          </div>
+
+          <!-- Reminder -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5">Reminder</label>
+              <div class="relative">
+                <i class="fa-solid fa-bell absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <select [(ngModel)]="newEvent.reminder"
+                  class="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white appearance-none">
+                  @for (r of reminderOptions; track r.value) {
+                    <option [value]="r.value">{{ r.label }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">Notes</label>
+            <textarea [(ngModel)]="newEvent.notes" rows="3"
+              placeholder="Additional details, preparation notes, special instructions…"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"></textarea>
+          </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-3">
+          @if (submitError()) {
+            <div class="flex items-center space-x-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              <span>{{ submitError() }}</span>
+            </div>
+          }
+          <div class="flex items-center justify-between">
+            <button (click)="closeModal()"
+              class="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-white transition-colors">
+              Cancel
+            </button>
+            <button (click)="submitEvent()"
+              [disabled]="!isFormValid || isSubmitting()"
+              class="flex items-center space-x-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all"
+              [ngClass]="isFormValid
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-md'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+              @if (isSubmitting()) {
+                <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+              } @else {
+                <i class="fa-solid fa-calendar-check"></i><span>Save Event</span>
+              }
+            </button>
+          </div>
+        </div>
+
+      }<!-- /step 1 -->
+
+      <!-- STEP 2: SUCCESS -->
+      @if (modalStep() === 2) {
+        <div class="flex flex-col items-center justify-center py-14 px-8 text-center">
+          <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-sm">
+            <i class="fa-solid fa-check text-green-500 text-4xl"></i>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-2">Event Created!</h2>
+          <p class="text-gray-500 mb-2">
+            <span class="font-bold text-gray-700">{{ newEvent.title }}</span> has been added to the calendar.
+          </p>
+          @if (newEvent.recurrence !== 'none') {
+            <p class="text-xs text-amber-600 font-medium mb-2">
+              <i class="fa-solid fa-rotate mr-1"></i>
+              Repeats {{ newEvent.recurrence }}
+              @if (newEvent.recurrenceLimitType === 'count') { · {{ newEvent.recurrenceCount }} occurrence(s) }
+              @else { · until {{ newEvent.recurrenceUntil }} }
+            </p>
+          }
+          <div class="flex items-center space-x-2 bg-gray-100 rounded-full px-5 py-2 mb-2 text-sm text-gray-600">
+            <i class="fa-solid fa-calendar-day text-amber-500"></i>
+            <span>{{ newEvent.date }}</span>
+            @if (!newEvent.allDay) {
+              <span>·</span><span>{{ formatTime(newEvent.startTime) }} – {{ formatTime(newEvent.endTime) }}</span>
+            } @else {
+              <span>· All day</span>
+            }
+          </div>
+          @if (googleSynced()) {
+            <p class="text-xs text-green-600 font-medium mb-6">
+              <i class="fa-brands fa-google mr-1"></i>Synced to Google Calendar
+            </p>
+          }
+          <div class="flex items-center space-x-3 w-full max-w-xs">
+            <button (click)="addAnother()"
+              class="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+              <i class="fa-solid fa-plus mr-2"></i>Add Another
+            </button>
+            <button (click)="closeModal()"
+              class="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-sm font-bold hover:shadow-md">
+              Done
+            </button>
+          </div>
+        </div>
+      }<!-- /step 2 -->
+
+    </div>
+  </div>
+}
+
+
+<!-- ══════════════════════════════════════════════════
+     EVENT DETAIL PANEL
+══════════════════════════════════════════════════════ -->
+@if (showEventDetail() && selectedEvent(); as ev) {
+  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+    (click)="closeEventDetail()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+      (click)="$event.stopPropagation()">
+
+      <!-- Header -->
+      <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between"
+        [ngClass]="typeConfig[ev.type].activeBg">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" [ngClass]="typeConfig[ev.type].iconBg">
+            <i [ngClass]="typeConfig[ev.type].icon" class="text-white"></i>
+          </div>
+          <div>
+            <span class="text-xs font-bold px-2 py-0.5 rounded-full" [ngClass]="typeConfig[ev.type].badgeCls">
+              {{ typeConfig[ev.type].label }}
+            </span>
+            <h2 class="text-base font-bold text-gray-900 mt-0.5 leading-tight">{{ ev.title }}</h2>
+          </div>
+        </div>
+        <button (click)="closeEventDetail()" class="p-2 hover:bg-white/60 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
+          <i class="fa-solid fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="px-6 py-5 space-y-3">
+        <div class="flex items-center space-x-3 text-sm">
+          <i class="fa-regular fa-calendar text-gray-400 w-4 text-center"></i>
+          <span class="font-medium text-gray-700">{{ ev.date }}</span>
+        </div>
+        <div class="flex items-center space-x-3 text-sm">
+          <i class="fa-regular fa-clock text-gray-400 w-4 text-center"></i>
+          <span class="text-gray-700">
+            {{ formatTime(ev.startTime) }}
+            @if (ev.endTime) { – {{ formatTime(ev.endTime) }} }
+          </span>
+        </div>
+        @if (ev.location) {
+          <div class="flex items-center space-x-3 text-sm">
+            <i class="w-4 text-center text-gray-400"
+              [ngClass]="ev.locationType === 'video' ? 'fa-solid fa-video' : ev.locationType === 'phone' ? 'fa-solid fa-phone' : 'fa-solid fa-location-dot'"></i>
+            <span class="text-gray-700">
+              @if (ev.locationType === 'video') { Video · }
+              @else if (ev.locationType === 'phone') { Phone · }
+              {{ ev.location }}
+            </span>
+          </div>
+        }
+        @if (ev.caseRef) {
+          <div class="flex items-center space-x-3 text-sm">
+            <i class="fa-solid fa-briefcase text-amber-500 w-4 text-center"></i>
+            <span class="text-amber-700 font-medium">{{ ev.caseRef }}</span>
+          </div>
+        }
+        @if (ev.participants.length) {
+          <div class="flex items-center space-x-3 text-sm">
+            <i class="fa-solid fa-users text-gray-400 w-4 text-center"></i>
+            <span class="text-gray-700">{{ ev.participants.join(', ') }}</span>
+          </div>
+        }
+        @if (deleteEventError()) {
+          <div class="flex items-center space-x-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs mt-2">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span>{{ deleteEventError() }}</span>
+          </div>
+        }
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t border-gray-100 flex justify-between items-center bg-gray-50">
+        <button (click)="deleteSelectedEvent()"
+          [disabled]="isDeletingEvent()"
+          class="flex items-center space-x-2 px-4 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50">
+          @if (isDeletingEvent()) {
+            <i class="fa-solid fa-spinner fa-spin"></i><span>Deleting…</span>
+          } @else {
+            <i class="fa-solid fa-trash"></i><span>Delete</span>
+          }
+        </button>
+        <button (click)="closeEventDetail()"
+          class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+}

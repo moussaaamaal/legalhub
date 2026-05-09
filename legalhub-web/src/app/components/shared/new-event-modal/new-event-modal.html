@@ -1,0 +1,296 @@
+@if (showModal()) {
+  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+    (click)="closeModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden"
+      style="max-height:92vh"
+      (click)="$event.stopPropagation()">
+
+      <!-- STEP 1: FORM -->
+      @if (modalStep() === 1) {
+
+        <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+              <i class="fa-solid fa-calendar-plus text-amber-600"></i>
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">New Event</h2>
+              <p class="text-xs text-gray-400">Schedule a hearing, meeting, deadline or consultation</p>
+            </div>
+          </div>
+          <button (click)="closeModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+            <i class="fa-solid fa-times text-lg"></i>
+          </button>
+        </div>
+
+        <div class="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          <!-- Event type -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-3">Event Type</label>
+            <div class="grid grid-cols-5 gap-2">
+              @for (type of typeKeys; track type) {
+                <button (click)="newEvent.type = type"
+                  class="flex flex-col items-center py-3 px-1 rounded-xl border-2 transition-all"
+                  [ngClass]="newEvent.type === type
+                    ? [typeConfig[type].activeBorder, typeConfig[type].activeBg]
+                    : ['border-gray-200', 'hover:border-gray-300']">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center mb-1.5 transition-colors"
+                    [ngClass]="newEvent.type === type ? typeConfig[type].iconBg : 'bg-gray-100'">
+                    <i [ngClass]="[typeConfig[type].icon, newEvent.type === type ? 'text-white' : 'text-gray-400']" class="text-xs"></i>
+                  </div>
+                  <span class="text-xs font-bold leading-tight text-center"
+                    [ngClass]="newEvent.type === type ? typeConfig[type].labelCls : 'text-gray-400'">
+                    {{ typeConfig[type].label }}
+                  </span>
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Title -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">
+              Title <span class="text-red-400">*</span>
+            </label>
+            <input type="text" [(ngModel)]="newEvent.title"
+              placeholder="e.g. Smith vs. Johnson Hearing…"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+          </div>
+
+          <!-- Date + All-day -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5">Date <span class="text-red-400">*</span></label>
+              <input type="date" [(ngModel)]="newEvent.date"
+                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div class="flex flex-col justify-end">
+              <label class="flex items-center space-x-3 cursor-pointer p-2.5 rounded-lg border border-gray-200 hover:bg-gray-50">
+                <input type="checkbox" [(ngModel)]="newEvent.allDay" class="w-4 h-4 accent-amber-500">
+                <span class="text-sm font-medium text-gray-700">All-day event</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Time -->
+          @if (!newEvent.allDay) {
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5">Start Time</label>
+                <input type="time" [(ngModel)]="newEvent.startTime"
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+              <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5">End Time</label>
+                <input type="time" [(ngModel)]="newEvent.endTime"
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+            </div>
+          }
+
+          <!-- Location type -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2">Location Type</label>
+            <div class="grid grid-cols-4 gap-2 mb-3">
+              @for (lt of locationTypes; track lt.value) {
+                <button (click)="newEvent.locationType = lt.value"
+                  class="flex flex-col items-center py-2.5 px-2 rounded-lg border-2 text-xs font-semibold transition-all"
+                  [ngClass]="newEvent.locationType === lt.value
+                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'">
+                  <i [ngClass]="lt.icon" class="mb-1 text-sm"></i>
+                  {{ lt.label }}
+                </button>
+              }
+            </div>
+            @if (newEvent.locationType !== '') {
+              <div class="relative">
+                <i [ngClass]="newEvent.locationType === 'video' ? 'fa-solid fa-video' : newEvent.locationType === 'phone' ? 'fa-solid fa-phone' : 'fa-solid fa-location-dot'"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input type="text" [(ngModel)]="newEvent.location"
+                  [placeholder]="newEvent.locationType === 'video' ? 'Zoom/Teams link or meeting ID…' : newEvent.locationType === 'phone' ? 'Phone number…' : 'Court room, office address…'"
+                  class="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+            }
+          </div>
+
+          <!-- Recurrence -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2">Recurrence</label>
+            <div class="grid grid-cols-4 gap-2">
+              @for (opt of recurrenceOptions; track opt.value) {
+                <button (click)="newEvent.recurrence = opt.value"
+                  class="flex flex-col items-center py-2.5 px-1 rounded-lg border-2 text-xs font-semibold transition-all"
+                  [ngClass]="newEvent.recurrence === opt.value
+                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'">
+                  <i [ngClass]="opt.icon" class="mb-1 text-sm"></i>
+                  {{ opt.label }}
+                </button>
+              }
+            </div>
+            @if (showRecurrenceLimit) {
+              <div class="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-100">
+                <p class="text-xs font-semibold text-amber-700 mb-2">
+                  <i class="fa-solid fa-rotate mr-1"></i>
+                  Repeats {{ newEvent.recurrence === 'weekly' ? 'every week' : newEvent.recurrence === 'biweekly' ? 'every 2 weeks' : 'every month' }}
+                </p>
+                <div class="flex rounded-lg border border-amber-200 overflow-hidden mb-2">
+                  <button (click)="newEvent.recurrenceLimitType = 'count'"
+                    class="flex-1 py-1.5 text-xs font-semibold transition-colors"
+                    [ngClass]="newEvent.recurrenceLimitType === 'count' ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-amber-50'">
+                    # of times
+                  </button>
+                  <button (click)="newEvent.recurrenceLimitType = 'until'"
+                    class="flex-1 py-1.5 text-xs font-semibold transition-colors"
+                    [ngClass]="newEvent.recurrenceLimitType === 'until' ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-amber-50'">
+                    End date
+                  </button>
+                </div>
+                @if (newEvent.recurrenceLimitType === 'count') {
+                  <div class="flex items-center space-x-2">
+                    <input type="number" [(ngModel)]="newEvent.recurrenceCount" min="1" max="104"
+                      class="w-20 px-3 py-1.5 border border-amber-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+                    <span class="text-xs text-amber-700 font-medium">occurrence(s)</span>
+                  </div>
+                } @else {
+                  <input type="date" [(ngModel)]="newEvent.recurrenceUntil"
+                    class="w-full px-3 py-1.5 border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+                }
+              </div>
+            }
+          </div>
+
+          <!-- Linked Case -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">Linked Case</label>
+            <div class="relative">
+              <i class="fa-solid fa-briefcase absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+              <select [(ngModel)]="newEvent.caseRef"
+                class="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white appearance-none">
+                <option value="">No linked case</option>
+                @for (c of cases; track c) { <option [value]="c">{{ c }}</option> }
+              </select>
+              <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+            </div>
+          </div>
+
+          <!-- Participants -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">Participants</label>
+            @if (newEvent.participants.length) {
+              <div class="flex flex-wrap gap-1.5 mb-2">
+                @for (p of newEvent.participants; track p; let i = $index) {
+                  <span class="flex items-center space-x-1.5 bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full">
+                    <span>{{ p }}</span>
+                    <button (click)="removeParticipant(i)" class="hover:text-blue-600 transition-colors">
+                      <i class="fa-solid fa-times text-xs"></i>
+                    </button>
+                  </span>
+                }
+              </div>
+            }
+            <div class="relative">
+              <i class="fa-solid fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+              <select [ngModel]="''" (ngModelChange)="addParticipant($event)"
+                class="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white appearance-none">
+                <option value="">Add team member…</option>
+                @for (m of teamMembers; track m) {
+                  @if (!newEvent.participants.includes(m)) {
+                    <option [value]="m">{{ m }}</option>
+                  }
+                }
+              </select>
+            </div>
+          </div>
+
+          <!-- Reminder -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">Reminder</label>
+            <div class="relative">
+              <i class="fa-solid fa-bell absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+              <select [(ngModel)]="newEvent.reminder"
+                class="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white appearance-none">
+                @for (r of reminderOptions; track r.value) {
+                  <option [value]="r.value">{{ r.label }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">Notes</label>
+            <textarea [(ngModel)]="newEvent.notes" rows="3"
+              placeholder="Additional details, preparation notes, special instructions…"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"></textarea>
+          </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-3">
+          @if (submitError()) {
+            <div class="flex items-center space-x-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              <span>{{ submitError() }}</span>
+            </div>
+          }
+          <div class="flex items-center justify-between">
+            <button (click)="closeModal()"
+              class="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-white transition-colors">
+              Cancel
+            </button>
+            <button (click)="submitEvent()"
+              [disabled]="!isFormValid || isSubmitting()"
+              class="flex items-center space-x-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all"
+              [ngClass]="isFormValid
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-md'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+              @if (isSubmitting()) {
+                <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+              } @else {
+                <i class="fa-solid fa-calendar-check"></i><span>Save Event</span>
+              }
+            </button>
+          </div>
+        </div>
+
+      }<!-- /step 1 -->
+
+      <!-- STEP 2: SUCCESS -->
+      @if (modalStep() === 2) {
+        <div class="flex flex-col items-center justify-center py-14 px-8 text-center">
+          <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-sm">
+            <i class="fa-solid fa-check text-green-500 text-4xl"></i>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-2">Event Created!</h2>
+          <p class="text-gray-500 mb-2">
+            <span class="font-bold text-gray-700">{{ newEvent.title }}</span> has been added to the calendar.
+          </p>
+          <div class="flex items-center space-x-2 bg-gray-100 rounded-full px-5 py-2 mb-6 text-sm text-gray-600">
+            <i class="fa-solid fa-calendar-day text-amber-500"></i>
+            <span>{{ newEvent.date }}</span>
+            @if (!newEvent.allDay) {
+              <span>·</span><span>{{ formatTime(newEvent.startTime) }} – {{ formatTime(newEvent.endTime) }}</span>
+            } @else {
+              <span>· All day</span>
+            }
+          </div>
+          <div class="flex items-center space-x-3 w-full max-w-xs">
+            <button (click)="addAnother()"
+              class="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+              <i class="fa-solid fa-plus mr-2"></i>Add Another
+            </button>
+            <button (click)="closeModal()"
+              class="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-sm font-bold hover:shadow-md">
+              Done
+            </button>
+          </div>
+        </div>
+      }<!-- /step 2 -->
+
+    </div>
+  </div>
+}

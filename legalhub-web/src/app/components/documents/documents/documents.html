@@ -1,0 +1,577 @@
+<!-- ══ TOPBAR ══ -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center flex-1">
+      <div class="relative w-96">
+        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" placeholder="Search documents, cases, files..."
+          [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
+          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm">
+      </div>
+      <button class="ml-4 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+        <i class="fa-solid fa-filter mr-2"></i>Filters
+      </button>
+    </div>
+    <div class="flex items-center space-x-3">
+      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+        <i class="fa-solid fa-bell text-xl"></i>
+        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+      </button>
+      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+        <i class="fa-solid fa-envelope text-xl"></i>
+        <span class="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
+      </button>
+      <div class="h-8 w-px bg-gray-300"></div>
+      <button (click)="openUpload()"
+        class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
+        <i class="fa-solid fa-upload"></i><span class="font-medium">Upload Files</span>
+      </button>
+      <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        <i class="fa-solid fa-folder-plus text-gray-600"></i><span class="text-sm text-gray-700">New Folder</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto bg-gray-50">
+
+  <!-- PAGE HEADER -->
+  <section class="px-8 pt-6 pb-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Document Center</h1>
+        <p class="text-gray-600 mt-1">Manage all case files with AI-powered organization</p>
+      </div>
+      <div class="flex items-center space-x-3">
+        <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 bg-white text-sm">
+          <i class="fa-solid fa-download text-gray-600"></i><span class="text-gray-700">Bulk Download</span>
+        </button>
+        <button (click)="bulkSummarize()"
+          class="flex items-center space-x-2 px-4 py-2 border border-purple-300 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors text-sm">
+          <i class="fa-solid fa-robot text-purple-600"></i><span class="text-purple-700 font-medium">AI Summarize</span>
+        </button>
+        <div class="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer text-sm">
+          <i class="fa-solid fa-calendar text-gray-600"></i>
+          <span class="text-gray-700">Last 30 days</span>
+          <i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-1"></i>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ERROR BANNER -->
+  @if (error()) {
+    <section class="px-8 pb-4">
+      <div class="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-center space-x-3">
+        <i class="fa-solid fa-circle-exclamation text-red-500"></i>
+        <span class="text-sm text-red-700">{{ error() }}</span>
+        <button (click)="error.set(null)" class="ml-auto text-red-400 hover:text-red-600">
+          <i class="fa-solid fa-times"></i>
+        </button>
+      </div>
+    </section>
+  }
+
+  <!-- STATS — computed from real data -->
+  <section class="px-8 pb-6">
+    @if (loading()) {
+      <div class="grid grid-cols-5 gap-5">
+        @for (_ of [1,2,3,4,5]; track $index) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 animate-pulse">
+            <div class="w-11 h-11 bg-gray-200 rounded-lg mb-3"></div>
+            <div class="h-7 bg-gray-200 rounded w-16 mb-1"></div>
+            <div class="h-4 bg-gray-100 rounded w-24"></div>
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="grid grid-cols-5 gap-5">
+        @for (s of stats(); track s.label) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-3">
+              <div class="w-11 h-11 rounded-lg flex items-center justify-center" [ngClass]="s.iconBg">
+                <i class="text-lg" [ngClass]="[s.icon, s.iconColor]"></i>
+              </div>
+              @if (s.badge) {
+                <span class="text-xs px-2 py-1 rounded-full font-medium" [ngClass]="s.badgeColor">{{ s.badge }}</span>
+              }
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 mb-0.5">{{ s.value }}</h3>
+            <p class="text-sm text-gray-600">{{ s.label }}</p>
+            <div class="mt-3 pt-3 border-t border-gray-100">
+              <p class="text-xs text-gray-500">{{ s.note }}</p>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </section>
+
+  <!-- QUICK UPLOAD ZONE -->
+  <section class="px-8 pb-6">
+    <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl shadow-lg p-8">
+      <div class="flex items-center space-x-4 mb-6">
+        <div class="w-14 h-14 rounded-lg flex items-center justify-center" style="background:rgba(245,158,11,0.20)">
+          <i class="fa-solid fa-cloud-arrow-up text-amber-400 text-2xl"></i>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-white mb-1">Quick Upload Zone</h2>
+          <p class="text-slate-300 text-sm">Drag and drop files or click to browse. AI will auto-categorize and summarize documents.</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-5 gap-4">
+        <button (click)="openUpload('.pdf')"
+          class="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 transition-all text-left group">
+          <i class="fa-solid fa-file-pdf text-red-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
+          <p class="text-white font-medium text-sm">Upload PDF</p>
+          <p class="text-xs text-slate-400">Legal documents</p>
+        </button>
+        <button (click)="openUpload('.doc,.docx')"
+          class="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 transition-all text-left group">
+          <i class="fa-solid fa-file-word text-blue-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
+          <p class="text-white font-medium text-sm">Upload Word</p>
+          <p class="text-xs text-slate-400">Contracts, letters</p>
+        </button>
+        <button (click)="openUpload('.jpg,.jpeg,.png,.gif,.webp')"
+          class="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 transition-all text-left group">
+          <i class="fa-solid fa-file-image text-purple-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
+          <p class="text-white font-medium text-sm">Upload Images</p>
+          <p class="text-xs text-slate-400">Evidence, photos</p>
+        </button>
+        <button (click)="openUpload()"
+          class="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 transition-all text-left group">
+          <i class="fa-solid fa-folder text-amber-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
+          <p class="text-white font-medium text-sm">Upload Folder</p>
+          <p class="text-xs text-slate-400">Bulk upload</p>
+        </button>
+        <!-- Voice Note -->
+        @if (!isRecording()) {
+          <button (click)="startRecording()"
+            class="bg-pink-900 hover:bg-pink-800 border border-pink-700 rounded-lg p-4 transition-all text-left group">
+            <i class="fa-solid fa-microphone text-pink-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
+            <p class="text-white font-medium text-sm">Voice Note</p>
+            <p class="text-xs text-pink-300">AI auto-transcription</p>
+          </button>
+        } @else {
+          <button (click)="stopRecording()"
+            class="bg-red-900 border border-red-500 rounded-lg p-4 transition-all text-left relative overflow-hidden">
+            <div class="absolute inset-0 bg-red-500 opacity-10 animate-pulse"></div>
+            <i class="fa-solid fa-stop text-red-400 text-2xl mb-2 block"></i>
+            <p class="text-white font-medium text-sm">Stop Recording</p>
+            <p class="text-xs text-red-300 font-mono">{{ recordTime }}</p>
+          </button>
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- BULK AI BAR -->
+  @if (showBulkBar()) {
+    <section class="px-8 pb-3">
+      <div class="bg-purple-900 rounded-xl px-6 py-4 flex items-center justify-between shadow-lg border border-purple-700">
+        <div class="flex items-center space-x-3">
+          <div class="w-8 h-8 bg-purple-700 rounded-lg flex items-center justify-center">
+            <i class="fa-solid fa-robot text-purple-300 text-sm"></i>
+          </div>
+          <span class="text-white font-medium">{{ selectedDocs().size }} document{{ selectedDocs().size > 1 ? 's' : '' }} selected</span>
+        </div>
+        <div class="flex items-center space-x-3">
+          <button (click)="bulkSummarize()"
+            class="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-colors">
+            <i class="fa-solid fa-wand-magic-sparkles"></i><span>AI Bulk Summarize</span>
+          </button>
+          <button class="flex items-center space-x-2 px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-sm transition-colors">
+            <i class="fa-solid fa-download"></i><span>Download</span>
+          </button>
+          <button class="flex items-center space-x-2 px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-sm transition-colors">
+            <i class="fa-solid fa-share"></i><span>Share</span>
+          </button>
+          <button (click)="clearSelection()" class="p-2 hover:bg-purple-700 rounded-lg text-purple-300 hover:text-white transition-colors">
+            <i class="fa-solid fa-times"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+  }
+
+  <!-- BROWSE + FILTERS -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center space-x-2 flex-wrap gap-2">
+          <h2 class="text-lg font-bold text-gray-900 mr-2">Browse Documents</h2>
+          @for (f of filters; track f.key) {
+            <button (click)="setFilter(f.key)"
+              class="flex items-center space-x-1.5 px-4 py-2 text-sm rounded-lg font-medium transition-colors"
+              [ngClass]="activeFilter() === f.key
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100 border border-gray-200'">
+              <i [ngClass]="f.icon" class="text-xs"></i>
+              <span>{{ f.label }}</span>
+              @if (f.key === 'pending') {
+                <span class="px-1.5 py-0.5 rounded-full text-xs font-bold"
+                  [ngClass]="activeFilter() === 'pending' ? 'bg-white text-amber-600' : 'bg-orange-100 text-orange-700'">
+                  {{ pendingCount }}
+                </span>
+              }
+              @if (f.key === 'voice-notes') {
+                <span class="px-1.5 py-0.5 rounded-full text-xs font-bold"
+                  [ngClass]="activeFilter() === 'voice-notes' ? 'bg-white text-amber-600' : 'bg-pink-100 text-pink-700'">
+                  {{ voiceCount }}
+                </span>
+              }
+            </button>
+          }
+        </div>
+        <div class="flex items-center space-x-3">
+          <div class="relative">
+            <select class="appearance-none px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none text-sm bg-white">
+              <option>Sort by: Date Modified</option>
+              <option>Sort by: Name</option>
+              <option>Sort by: Size</option>
+              <option>Sort by: Status</option>
+            </select>
+            <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+          </div>
+          <div class="flex items-center bg-gray-100 rounded-lg p-1">
+            <button (click)="setView('grid')" class="px-3 py-1.5 rounded-md transition-all"
+              [ngClass]="viewMode() === 'grid' ? 'bg-white shadow-sm' : ''">
+              <i class="fa-solid fa-grid-2 text-gray-600"></i>
+            </button>
+            <button (click)="setView('list')" class="px-3 py-1.5 rounded-md transition-all"
+              [ngClass]="viewMode() === 'list' ? 'bg-white shadow-sm' : ''">
+              <i class="fa-solid fa-list text-gray-600"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3 mb-4">
+        <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
+          <i class="fa-solid fa-briefcase text-gray-600"></i><span class="text-gray-700">All Cases</span><i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-1"></i>
+        </button>
+        <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
+          <i class="fa-solid fa-file text-gray-600"></i><span class="text-gray-700">File Type</span><i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-1"></i>
+        </button>
+        <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
+          <i class="fa-solid fa-calendar text-gray-600"></i><span class="text-gray-700">Date Range</span><i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-1"></i>
+        </button>
+        <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
+          <i class="fa-solid fa-user text-gray-600"></i><span class="text-gray-700">Uploaded By</span><i class="fa-solid fa-chevron-down text-gray-400 text-xs ml-1"></i>
+        </button>
+        <button class="ml-auto text-sm text-amber-600 hover:text-amber-700 font-medium">Clear Filters</button>
+      </div>
+      <div class="border-t border-gray-200 pt-4 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <input type="checkbox" [checked]="allSelected" (change)="toggleAll()" class="rounded border-gray-300 accent-amber-500">
+          <span class="text-sm text-gray-700">Select All</span>
+          @if (showBulkBar()) {
+            <span class="text-sm text-purple-600 font-medium ml-2">{{ selectedDocs().size }} selected</span>
+          }
+        </div>
+        <div class="flex items-center space-x-2">
+          <button class="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"><i class="fa-solid fa-download mr-2"></i>Download</button>
+          <button class="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"><i class="fa-solid fa-share mr-2"></i>Share</button>
+          <button class="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"><i class="fa-solid fa-trash mr-2"></i>Delete</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOLDER STRUCTURE — grouped by case -->
+  @if (activeFilter() === 'all' || activeFilter() === 'by-case') {
+    <section class="px-8 pb-6">
+      <div class="grid grid-cols-4 gap-5">
+        @for (folder of folders(); track folder.caseId) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-all cursor-pointer group">
+            <div class="flex items-start justify-between mb-4">
+              <div class="w-14 h-14 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform" [ngClass]="folder.folderBg">
+                <i class="fa-solid fa-folder text-2xl" [ngClass]="folder.folderColor"></i>
+              </div>
+              <button class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-gray-100 rounded-lg">
+                <i class="fa-solid fa-ellipsis-vertical text-gray-400"></i>
+              </button>
+            </div>
+            <h3 class="font-semibold text-gray-900 mb-1 truncate">{{ folder.name }}</h3>
+            <p class="text-sm text-gray-500 mb-3">{{ folder.type }}</p>
+            <div class="flex items-center justify-between text-xs text-gray-500">
+              <span><i class="fa-solid fa-file mr-1"></i>{{ folder.files }}</span>
+              <span>{{ folder.size }}</span>
+            </div>
+          </div>
+        }
+        @if (folders().length === 0 && !loading()) {
+          <div class="col-span-4 py-8 text-center text-gray-500 text-sm">
+            <i class="fa-solid fa-folder-open text-gray-300 text-3xl mb-2 block"></i>
+            No folders yet — upload documents to a case to see them here.
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  <!-- DOCUMENTS TABLE -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">
+            @if (activeFilter() === 'pending') { Documents Pending Review }
+            @else if (activeFilter() === 'approved') { Approved Documents }
+            @else if (activeFilter() === 'voice-notes') { Voice Notes }
+            @else { Recent Documents }
+          </h2>
+          <p class="text-sm text-gray-600 mt-0.5">{{ filteredDocuments().length }} document{{ filteredDocuments().length !== 1 ? 's' : '' }} found</p>
+        </div>
+        @if (showBulkBar()) {
+          <button (click)="bulkSummarize()"
+            class="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>AI Summarize ({{ selectedDocs().size }})</span>
+          </button>
+        } @else {
+          <button class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
+        }
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-5 py-4 text-left w-10">
+                <input type="checkbox" [checked]="allSelected" (change)="toggleAll()" class="rounded border-gray-300 accent-amber-500">
+              </th>
+              <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Document Name</th>
+              <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Case</th>
+              <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+              <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Size</th>
+              <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Uploaded By</th>
+              <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Modified</th>
+              <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+              <th class="px-5 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <!-- Loading skeleton -->
+            @if (loading()) {
+              @for (_ of [1,2,3]; track $index) {
+                <tr class="animate-pulse">
+                  <td class="px-5 py-4"><div class="w-4 h-4 bg-gray-200 rounded"></div></td>
+                  <td class="px-5 py-4">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                      <div>
+                        <div class="h-4 bg-gray-200 rounded w-40 mb-1"></div>
+                        <div class="h-3 bg-gray-100 rounded w-24"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
+                  <td class="px-5 py-4"><div class="h-6 bg-gray-200 rounded-full w-12"></div></td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-24"></div></td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
+                  <td class="px-5 py-4"><div class="h-6 bg-gray-200 rounded-full w-20"></div></td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-20 ml-auto"></div></td>
+                </tr>
+              }
+            }
+
+            <!-- Real rows -->
+            @for (doc of filteredDocuments(); track doc.id) {
+              <tr class="hover:bg-gray-50 transition-colors" [ngClass]="isSelected(doc.id) ? 'bg-amber-50' : ''">
+                <td class="px-5 py-4">
+                  <input type="checkbox" [checked]="isSelected(doc.id)" (change)="toggleDoc(doc.id)" class="rounded border-gray-300 accent-amber-500">
+                </td>
+                <td class="px-5 py-4">
+                  <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="doc.iconBg">
+                      <i [ngClass]="[doc.icon, doc.iconColor]"></i>
+                    </div>
+                    <div class="min-w-0">
+                      <p class="text-sm font-medium text-gray-900 truncate max-w-xs">{{ doc.name }}</p>
+                      <p class="text-xs text-gray-500">{{ doc.desc }}</p>
+                      @if (doc.isVoiceNote) {
+                        <div class="flex items-center space-x-2 mt-1">
+                          @if (doc.transcribed) {
+                            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                              <i class="fa-solid fa-check mr-1"></i>Transcribed
+                            </span>
+                          } @else {
+                            <span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                              <i class="fa-solid fa-spinner fa-spin mr-1"></i>Transcribing…
+                            </span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+                </td>
+                <td class="px-5 py-4">
+                  <p class="text-sm text-gray-900 max-w-[130px] truncate">{{ doc.case }}</p>
+                </td>
+                <td class="px-5 py-4">
+                  <span class="text-xs px-2.5 py-1 rounded-full font-medium" [ngClass]="[doc.typeBg, doc.typeColor]">{{ doc.type }}</span>
+                </td>
+                <td class="px-5 py-4"><p class="text-sm text-gray-900">{{ doc.size }}</p></td>
+                <td class="px-5 py-4">
+                  <div class="flex items-center space-x-2">
+                    @if (doc.avatar) {
+                      <img [src]="doc.avatar" alt="" class="w-6 h-6 rounded-full">
+                    } @else {
+                      <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                        <i class="fa-solid fa-user text-gray-400 text-xs"></i>
+                      </div>
+                    }
+                    <span class="text-sm text-gray-900 whitespace-nowrap">{{ doc.uploader }}</span>
+                  </div>
+                </td>
+                <td class="px-5 py-4"><p class="text-sm text-gray-500">{{ doc.modified }}</p></td>
+
+                <!-- Status + quick approve/reject -->
+                <td class="px-5 py-4">
+                  <span class="text-xs px-2.5 py-1 rounded-full font-medium flex items-center space-x-1 w-fit whitespace-nowrap"
+                    [ngClass]="getStatusCls(doc.status)">
+                    <i [ngClass]="getStatusIcon(doc.status)" class="text-xs"></i>
+                    <span>{{ doc.status }}</span>
+                  </span>
+                  @if (doc.status === 'Pending Review') {
+                    <div class="flex items-center space-x-1 mt-1.5">
+                      <button (click)="approveDoc(doc.id)"
+                        class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors font-medium">
+                        <i class="fa-solid fa-check mr-1"></i>Approve
+                      </button>
+                      <button (click)="rejectDoc(doc.id)"
+                        class="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors font-medium">
+                        <i class="fa-solid fa-times mr-1"></i>Reject
+                      </button>
+                    </div>
+                  }
+                </td>
+
+                <!-- Actions -->
+                <td class="px-5 py-4 text-right">
+                  <div class="flex items-center justify-end space-x-1">
+                    <button (click)="viewDoc(doc)" class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View">
+                      <i class="fa-solid fa-eye text-sm"></i>
+                    </button>
+                    <button (click)="downloadDoc(doc)" class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Download">
+                      <i class="fa-solid fa-download text-sm"></i>
+                    </button>
+                    <button (click)="shareDoc(doc.id)" class="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Share with client">
+                      <i class="fa-solid fa-share text-sm"></i>
+                    </button>
+                    @if (!doc.isVoiceNote) {
+                      <button (click)="aiSummarizeDoc(doc.id)" class="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="AI Summarize">
+                        <i class="fa-solid fa-robot text-sm"></i>
+                      </button>
+                    }
+                    <button (click)="deleteDoc(doc.id)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                      <i class="fa-solid fa-trash text-sm"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+
+            @if (!loading() && filteredDocuments().length === 0) {
+              <tr>
+                <td colspan="9" class="px-6 py-16 text-center">
+                  <div class="flex flex-col items-center">
+                    <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                      <i class="fa-solid fa-file-slash text-gray-400 text-xl"></i>
+                    </div>
+                    <p class="text-sm font-medium text-gray-600">No documents found</p>
+                    <p class="text-xs text-gray-400 mt-1">Try a different filter or upload a new document</p>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- AI CATEGORIES + STORAGE -->
+  <section class="px-8 pb-8">
+    <div class="grid grid-cols-3 gap-6">
+
+      <!-- AI Categories — computed from real docs -->
+      <div class="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">AI Document Categories</h2>
+            <p class="text-sm text-gray-600 mt-0.5">Automatically organized by AI</p>
+          </div>
+          <button class="px-4 py-2 text-sm bg-purple-100 text-purple-700 rounded-lg font-medium hover:bg-purple-200 transition-colors">
+            <i class="fa-solid fa-robot mr-2"></i>Recategorize All
+          </button>
+        </div>
+        <div class="p-6">
+          <div class="grid grid-cols-5 gap-4">
+            @for (cat of categories(); track cat.label) {
+              <div class="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all cursor-pointer text-center group">
+                <div class="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform" [ngClass]="cat.iconBg">
+                  <i class="text-xl" [ngClass]="[cat.icon, cat.iconColor]"></i>
+                </div>
+                <p class="font-semibold text-gray-900 text-sm mb-1">{{ cat.label }}</p>
+                <p class="text-2xl font-bold text-gray-900 mb-0.5">{{ cat.count }}</p>
+                <p class="text-xs text-gray-500 mb-3">{{ cat.unit }}</p>
+                <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full transition-all" [ngClass]="cat.iconColor.replace('text-','bg-')" [style.width.%]="cat.pct"></div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- Storage Tracker — computed from real doc sizes -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
+        <div class="p-6 border-b border-gray-200">
+          <h2 class="text-lg font-bold text-gray-900">Storage Usage</h2>
+          <p class="text-sm text-gray-600 mt-0.5">Based on uploaded documents</p>
+        </div>
+        <div class="p-6 flex-1 flex flex-col justify-between">
+          <div class="text-center mb-6">
+            <div class="relative w-32 h-32 mx-auto mb-4">
+              <svg viewBox="0 0 36 36" class="w-full h-full -rotate-90">
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f3f4f6" stroke-width="3"/>
+                <circle cx="18" cy="18" r="15.9" fill="none"
+                  [attr.stroke]="storagePercent >= 85 ? '#ef4444' : storagePercent >= 65 ? '#f59e0b' : '#10b981'"
+                  stroke-width="3"
+                  [attr.stroke-dasharray]="storagePercent + ', 100'"
+                  stroke-linecap="round"/>
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <span class="text-2xl font-bold text-gray-900">{{ storagePercent }}%</span>
+                <span class="text-xs text-gray-500">used</span>
+              </div>
+            </div>
+            <p class="text-3xl font-bold text-gray-900">{{ storageUsedGB() }} <span class="text-lg font-normal text-gray-500">GB</span></p>
+            <p class="text-sm text-gray-500 mt-1">of {{ storageTotal }} GB available</p>
+          </div>
+          <div>
+            <div class="h-3 bg-gray-100 rounded-full overflow-hidden mb-4">
+              <div class="h-full rounded-full transition-all duration-500"
+                [ngClass]="storageColor.bar" [style.width.%]="storagePercent"></div>
+            </div>
+            <div class="mt-4 pt-4 border-t border-gray-100">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-gray-600">Remaining</span>
+                <span class="text-sm font-bold" [ngClass]="storageColor.text">{{ storageTotal - storageUsedGB() }} GB free</span>
+              </div>
+              <button class="mt-3 w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                <i class="fa-solid fa-arrow-up-right-dots mr-2 text-amber-500"></i>Upgrade Storage
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<app-upload-modal />

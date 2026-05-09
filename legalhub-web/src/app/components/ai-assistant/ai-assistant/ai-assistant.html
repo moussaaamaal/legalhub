@@ -1,0 +1,761 @@
+<!-- ══ TOPBAR — épurée AI only ══ -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+    <!-- Search -->
+    <div class="flex items-center flex-1">
+      <div class="relative w-96">
+        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" placeholder="Search AI history, templates, cases…"
+          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm">
+      </div>
+    </div>
+    <!-- Actions AI only -->
+    <div class="flex items-center space-x-3">
+      <!-- Notifications -->
+      <button class="relative p-2.5 text-gray-500 hover:bg-gray-100 rounded-xl transition-colors">
+        <i class="fa-solid fa-bell text-lg"></i>
+        <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+      </button>
+      <div class="h-7 w-px bg-gray-200"></div>
+      <!-- WEB-AI-05 History button -->
+      <button (click)="showHistoryPanel.set(true)"
+        class="flex items-center space-x-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-amber-50 hover:border-amber-300 transition-all group relative">
+        <i class="fa-solid fa-clock-rotate-left text-gray-500 group-hover:text-amber-600 transition-colors"></i>
+        <span class="text-sm text-gray-600 group-hover:text-amber-700 font-medium">History</span>
+        <span class="absolute -top-2 -right-2 w-5 h-5 bg-amber-600 text-white text-xs rounded-full flex items-center justify-center font-bold shadow-sm">{{ history.length }}</span>
+      </button>
+      <!-- WEB-AI-06 Settings button -->
+      <button (click)="showSettingsPanel.set(true)"
+        class="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:shadow-md transition-all">
+        <i class="fa-solid fa-sliders text-sm"></i>
+        <span class="text-sm font-semibold">AI Settings</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto bg-gray-50 relative">
+
+  <!-- ══════════════════════════════════════════════════════
+       WEB-AI-05  HISTORY PANEL — slide-in overlay
+  ══════════════════════════════════════════════════════ -->
+  @if (showHistoryPanel()) {
+    <!-- backdrop -->
+    <div class="fixed inset-0 z-50 bg-black bg-opacity-40 backdrop-blur-sm" (click)="showHistoryPanel.set(false)"></div>
+    <!-- drawer -->
+    <div class="fixed top-0 right-0 z-50 h-full w-[420px] bg-white shadow-2xl flex flex-col"
+         style="animation: slideInRight 0.25s ease-out">
+      <!-- Header -->
+      <div class="px-6 py-5 bg-gradient-to-r from-slate-700 to-slate-800 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+            <i class="fa-solid fa-clock-rotate-left text-white"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">AI Session History</h2>
+            <p class="text-xs text-amber-200">{{ history.length }} sessions recorded</p>
+          </div>
+        </div>
+        <button (click)="showHistoryPanel.set(false)"
+          class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:bg-opacity-20 text-white transition-colors">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Search -->
+      <div class="px-5 py-3 border-b border-gray-100 flex-shrink-0">
+        <div class="relative">
+          <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+          <input type="text" placeholder="Search history…"
+            [ngModel]="historySearch()" (ngModelChange)="historySearch.set($event)"
+            class="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+        </div>
+      </div>
+
+      <!-- Entries -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-2">
+        @for (entry of filteredHistory(); track entry.id) {
+          <div (click)="loadHistoryEntry(entry)"
+            class="flex items-start space-x-3 p-4 rounded-xl border cursor-pointer transition-all"
+            [ngClass]="entry.active
+              ? 'bg-amber-50 border-amber-200 shadow-sm'
+              : 'bg-white border-gray-100 hover:border-amber-200 hover:bg-amber-50 hover:shadow-sm'">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" [ngClass]="entry.iconBg">
+              <i [ngClass]="[entry.icon, 'text-white text-sm']"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between mb-0.5">
+                <p class="text-sm font-semibold text-gray-900 truncate pr-2">{{ entry.title }}</p>
+                @if (entry.active) {
+                  <span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0">Actif</span>
+                }
+              </div>
+              <p class="text-xs text-gray-500 truncate mb-1.5">{{ entry.caseRef }}</p>
+              <div class="flex items-center space-x-2">
+                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{{ entry.docType }}</span>
+                <span class="text-xs text-gray-400">{{ entry.time }}</span>
+              </div>
+            </div>
+          </div>
+        }
+        @if (filteredHistory().length === 0) {
+          <div class="text-center py-16">
+            <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <i class="fa-solid fa-clock-rotate-left text-gray-400 text-xl"></i>
+            </div>
+            <p class="text-sm text-gray-500 font-medium">No results found</p>
+            <p class="text-xs text-gray-400 mt-1">Try a different term</p>
+          </div>
+        }
+      </div>
+
+      <!-- Footer -->
+      <div class="p-4 border-t border-gray-100 flex-shrink-0">
+        <button class="w-full flex items-center justify-center space-x-2 px-4 py-2.5 border border-red-200 text-red-500 rounded-xl text-sm hover:bg-red-50 transition-colors">
+          <i class="fa-solid fa-trash-can"></i><span>Clear all history</span>
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- ══════════════════════════════════════════════════════
+       WEB-AI-06  SETTINGS PANEL — slide-in overlay
+  ══════════════════════════════════════════════════════ -->
+  @if (showSettingsPanel()) {
+    <div class="fixed inset-0 z-50 bg-black bg-opacity-40 backdrop-blur-sm" (click)="showSettingsPanel.set(false)"></div>
+    <div class="fixed top-0 right-0 z-50 h-full w-[460px] bg-white shadow-2xl flex flex-col"
+         style="animation: slideInRight 0.25s ease-out">
+      <!-- Header -->
+      <div class="px-6 py-5 bg-gradient-to-r from-slate-800 to-slate-900 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 bg-white bg-opacity-15 rounded-lg flex items-center justify-center">
+            <i class="fa-solid fa-sliders text-white"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">AI Settings</h2>
+            <p class="text-xs text-slate-300">Tone, language, jurisdiction &amp; output</p>
+          </div>
+        </div>
+        <button (click)="showSettingsPanel.set(false)"
+          class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:bg-opacity-15 text-white transition-colors">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto">
+        <!-- Active config summary banner -->
+        <div class="mx-5 mt-5 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <p class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Active Configuration</p>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="flex items-center space-x-2">
+              <i class="fa-solid fa-pen text-amber-500 text-xs w-4"></i>
+              <span class="text-xs text-amber-700 capitalize"><strong>Tone:</strong> {{ aiTone() }}</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <i class="fa-solid fa-globe text-amber-500 text-xs w-4"></i>
+              <span class="text-xs text-amber-700"><strong>Lang:</strong> {{ aiLanguage() }}</span>
+            </div>
+            <div class="flex items-center space-x-2 col-span-2">
+              <i class="fa-solid fa-location-dot text-amber-500 text-xs w-4"></i>
+              <span class="text-xs text-amber-700"><strong>Jurisdiction:</strong> {{ aiJurisdiction() }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-5 space-y-7">
+
+          <!-- Tone -->
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-1">Document Tone</label>
+            <p class="text-xs text-gray-500 mb-3">Writing style for generated documents</p>
+            <div class="grid grid-cols-3 gap-2">
+              @for (t of toneOptions; track t.value) {
+                <button (click)="setAiTone(t.value)"
+                  class="py-3 rounded-xl border-2 text-sm font-medium transition-all text-center"
+                  [ngClass]="aiTone() === t.value
+                    ? 'border-amber-500 bg-amber-50 text-amber-700 shadow-sm'
+                    : 'border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50'">
+                  <i [ngClass]="[t.icon, 'block mb-1 text-base']"></i>
+                  {{ t.label }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Language -->
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-1">Output Language</label>
+            <p class="text-xs text-gray-500 mb-3">Language for generated documents</p>
+            <div class="grid grid-cols-3 gap-2">
+              @for (l of languages; track l) {
+                <button (click)="aiLanguage.set(l)"
+                  class="py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all text-center"
+                  [ngClass]="aiLanguage() === l
+                    ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                    : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'">
+                  {{ l }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Jurisdiction -->
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-1">Default Jurisdiction</label>
+            <p class="text-xs text-gray-500 mb-3">Applicable legal clauses</p>
+            <div class="relative">
+              <select [ngModel]="aiJurisdiction()" (ngModelChange)="aiJurisdiction.set($event)"
+                class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 appearance-none bg-white text-sm">
+                @for (j of jurisdictions; track j) { <option [value]="j">{{ j }}</option> }
+              </select>
+              <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+            </div>
+          </div>
+
+          <!-- Detail level -->
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-1">Detail Level</label>
+            <p class="text-xs text-gray-500 mb-3">Depth of generated content</p>
+            <div class="grid grid-cols-3 gap-2">
+              @for (d of detailOptions; track d.value) {
+                <button (click)="setAiDetailLevel(d.value)"
+                  class="py-3 rounded-xl border-2 text-sm font-medium transition-all text-center"
+                  [ngClass]="aiDetailLevel() === d.value
+                    ? 'border-amber-500 bg-amber-50 text-amber-700 shadow-sm'
+                    : 'border-gray-200 text-gray-600 hover:border-amber-300'">
+                  <i [ngClass]="[d.icon, 'block mb-1']"></i>
+                  {{ d.label }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Output format -->
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-1">Output Format</label>
+            <p class="text-xs text-gray-500 mb-3">Default download format</p>
+            <div class="grid grid-cols-3 gap-2">
+              @for (f of formatOptions; track f.value) {
+                <button (click)="setAiOutputFormat(f.value)"
+                  class="py-3 rounded-xl border-2 text-sm font-bold uppercase transition-all text-center"
+                  [ngClass]="aiOutputFormat() === f.value
+                    ? 'border-amber-500 bg-amber-50 text-amber-700 shadow-sm'
+                    : 'border-gray-200 text-gray-600 hover:border-amber-300'">
+                  <i [ngClass]="[f.icon, 'block mb-1 text-base normal-case font-normal']"></i>
+                  {{ f.value }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Toggles -->
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-3">Default Options</label>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">Auto-link to case</p>
+                  <p class="text-xs text-gray-500">Save to selected case folder</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" [ngModel]="aiAutoLink()" (ngModelChange)="aiAutoLink.set($event)" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-300 rounded-full peer peer-checked:bg-amber-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                </label>
+              </div>
+              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">Legal disclaimers</p>
+                  <p class="text-xs text-gray-500">Include standard legal disclaimers</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" [ngModel]="aiIncludeDiscl()" (ngModelChange)="aiIncludeDiscl.set($event)" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-300 rounded-full peer peer-checked:bg-amber-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                </label>
+              </div>
+              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">Jurisdiction clauses</p>
+                  <p class="text-xs text-gray-500">Jurisdiction-specific clauses</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" [ngModel]="aiJurisClause()" (ngModelChange)="aiJurisClause.set($event)" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-300 rounded-full peer peer-checked:bg-amber-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Save footer -->
+      <div class="p-5 border-t border-gray-100 flex-shrink-0 flex items-center space-x-3">
+        <button (click)="showSettingsPanel.set(false)"
+          class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+          Cancel
+        </button>
+        <button (click)="saveSettings()"
+          class="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl text-sm font-bold hover:shadow-md transition-all">
+          <i class="fa-solid fa-check mr-2"></i>Save
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- ══ PAGE HEADER ══ -->
+  <section class="px-8 pt-6 pb-5">
+    <div class="flex items-center space-x-4">
+      <div class="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl flex items-center justify-center shadow-lg">
+        <i class="fa-solid fa-robot text-white text-2xl"></i>
+      </div>
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">AI Legal Assistant</h1>
+        <p class="text-gray-500 mt-0.5 text-sm">Draft documents, analyze cases, and generate legal insights instantly</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICK ACTIONS -->
+  <section class="px-8 pb-6">
+    <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-amber-700 rounded-2xl shadow-xl p-8 relative overflow-hidden">
+      <div class="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/4"></div>
+      <div class="absolute bottom-0 left-0 w-48 h-48 bg-white opacity-5 rounded-full translate-y-1/2 -translate-x-1/4"></div>
+
+      <div class="relative z-10">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-2xl font-bold text-white mb-1">What would you like to create?</h2>
+            <p class="text-amber-200 text-sm">Select a task or describe your needs below</p>
+          </div>
+          <div class="flex items-center space-x-2 bg-transparent bg-opacity-15 border border-white border-opacity-20 rounded-xl px-4 py-2">
+            <i class="fa-solid fa-sparkles text-black-300 text-sm"></i>
+            <span class="text-white text-sm font-semibold">AI Powered</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-5">
+          @for (qa of quickActions; track qa.key) {
+            <button
+              (click)="selectQuickTask(qa.key)"
+              class="relative rounded-2xl p-6 text-left border-2 transition-all duration-300 group overflow-hidden"
+              [ngClass]="activeQuickTask() === qa.key
+                ? qa.activeCls
+                : 'bg-white/10 border-white/30 hover:bg-white/20 hover:border-white/50 hover:scale-[1.02]'"
+            >
+              @if (activeQuickTask() === qa.key) {
+                <div class="absolute inset-0 opacity-35 rounded-2xl" [ngClass]="qa.glowCls"></div>
+              }
+              <div class="relative z-10">
+                <div class="w-14 h-14 rounded-xl flex items-center justify-center mb-4 transition-all"
+                  [ngClass]="activeQuickTask() === qa.key ? qa.iconActiveCls : 'bg-white/25'">
+                  <i [ngClass]="[qa.icon, 'text-2xl', activeQuickTask() === qa.key ? qa.iconActiveText : 'text-white']"></i>
+                </div>
+                <p class="text-lg font-bold mb-1 transition-colors" [ngClass]="activeQuickTask() === qa.key ? qa.labelCls : 'text-white'">
+                  {{ qa.label }}
+                </p>
+                <p class="text-sm transition-colors" [ngClass]="activeQuickTask() === qa.key ? qa.subCls : 'text-amber-200'">
+                  {{ qa.sub }}
+                </p>
+              </div>
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ WEB-AI-03/04 DOCUMENT GENERATOR + WEB-AI-05 SIDEBAR ══ -->
+  <section class="px-8 pb-6" id="section-generator">
+    <div class="grid grid-cols-3 gap-6">
+
+      <!-- ─── Generator col-span-2 ─── -->
+      <div class="col-span-2">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"
+          [ngClass]="activeQuickTask() === 'contract' || activeQuickTask() === 'letter' ? 'ring-2 ring-amber-400 ring-offset-2' : ''">
+
+          <!-- Header -->
+          <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between"
+            [ngClass]="activeQuickTask() === 'contract' || activeQuickTask() === 'letter' ? 'bg-amber-50' : 'bg-white'">
+            <div class="flex items-center space-x-3">
+              <div class="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center">
+                <i class="fa-solid fa-wand-magic-sparkles text-amber-600"></i>
+              </div>
+              <h2 class="text-lg font-bold text-gray-900">Document Generator</h2>
+              @if (linkedCase()) {
+                <span class="flex items-center space-x-1.5 text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium border border-green-200">
+                  <i class="fa-solid fa-link text-xs"></i>
+                  <span>{{ linkedCase() }}</span>
+                </span>
+              }
+            </div>
+            <span class="text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full font-semibold border border-amber-200">
+              <i class="fa-solid fa-circle-dot mr-1 text-amber-500"></i>AI Active
+            </span>
+          </div>
+
+          <div class="p-6 space-y-6">
+
+            <!-- WEB-AI-03 — Doc type -->
+            <div>
+              <label class="block text-sm font-bold text-gray-800 mb-3">Document Type</label>
+              <div class="grid grid-cols-3 gap-3">
+                @for (dt of docTypeOptions; track dt.key) {
+                  <button (click)="setDocType(dt.key)"
+                    class="flex items-center space-x-3 p-4 border-2 rounded-xl transition-all"
+                    [ngClass]="selectedDocType() === dt.key
+                      ? 'border-amber-500 bg-amber-50 shadow-sm'
+                      : 'border-gray-200 bg-white hover:border-amber-300 hover:bg-amber-50'">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                      [ngClass]="selectedDocType() === dt.key ? 'bg-amber-600' : dt.iconBg">
+                      <i [ngClass]="[dt.icon, selectedDocType() === dt.key ? 'text-white' : dt.iconColor]"></i>
+                    </div>
+                    <div class="text-left">
+                      <p class="text-sm font-bold text-gray-900">{{ dt.label }}</p>
+                      <p class="text-xs text-gray-500">{{ dt.sub }}</p>
+                    </div>
+                  </button>
+                }
+              </div>
+            </div>
+
+            <!-- WEB-AI-02 — Template -->
+            <div>
+              <label class="block text-sm font-bold text-gray-800 mb-2">Template</label>
+              <div class="relative">
+                <i class="fa-solid fa-file-contract absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <select [ngModel]="selectedTemplate()" (ngModelChange)="selectedTemplate.set($event)"
+                  class="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white appearance-none text-sm">
+                  @for (t of templates; track t) { <option [value]="t">{{ t }}</option> }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+              </div>
+            </div>
+
+            <!-- WEB-AI-04 — Link to Case -->
+            <div>
+              <label class="block text-sm font-bold text-gray-800 mb-2">
+                Link to Case
+              </label>
+              <div class="relative">
+                <i class="fa-solid fa-briefcase absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <select [ngModel]="selectedCase()" (ngModelChange)="selectedCase.set($event)"
+                  class="w-full pl-10 pr-10 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 bg-white appearance-none text-sm transition-colors"
+                  [ngClass]="selectedCase() ? 'border-green-400 bg-green-50' : 'border-gray-300'">
+                  <option value="">Select a case…</option>
+                  @for (c of cases; track c) { <option [value]="c">{{ c }}</option> }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+              </div>
+              @if (selectedCase()) {
+                <div class="flex items-center space-x-2 mt-2 text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-lg">
+                  <i class="fa-solid fa-circle-check text-green-500"></i>
+                  <span>Document will be linked &amp; saved to <strong>{{ selectedCase() }}</strong></span>
+                </div>
+              }
+            </div>
+
+            <!-- Requirements -->
+            <div>
+              <label class="block text-sm font-bold text-gray-800 mb-2">Requirements</label>
+              <textarea rows="4" [ngModel]="requirements()" (ngModelChange)="requirements.set($event)"
+                placeholder="Describe your requirements: parties, terms, special clauses, salary, duration…"
+                class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none text-sm placeholder-gray-400"></textarea>
+              <div class="flex items-center justify-between mt-1">
+                <p class="text-xs text-gray-400">Be specific for better AI output</p>
+                <p class="text-xs" [ngClass]="charCount > 1800 ? 'text-red-500 font-medium' : 'text-gray-400'">{{ charCount }}/2000</p>
+              </div>
+            </div>
+
+            <!-- Parties -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-bold text-gray-800 mb-2">Party A</label>
+                <input type="text" [ngModel]="partyA()" (ngModelChange)="partyA.set($event)"
+                  placeholder="First party name…"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-bold text-gray-800 mb-2">Party B</label>
+                <input type="text" [ngModel]="partyB()" (ngModelChange)="partyB.set($event)"
+                  placeholder="Second party name…"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              </div>
+            </div>
+
+            <!-- Compact options -->
+            <div class="grid grid-cols-2 gap-2">
+              @for (opt of docOptions; track opt.label) {
+                <label class="flex items-center space-x-2.5 cursor-pointer p-3 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+                  <input type="checkbox" [ngModel]="opt.value()" (ngModelChange)="opt.set($event)" class="rounded border-gray-300 accent-amber-600 w-4 h-4">
+                  <span class="text-sm text-gray-700">{{ opt.label }}</span>
+                </label>
+              }
+            </div>
+
+            <!-- Generate button / result -->
+            @if (!generatedDoc()) {
+              <div class="flex items-center space-x-3 pt-1">
+                <button (click)="generateDocument()" [disabled]="isGenerating() || !requirements().trim()"
+                  class="flex-1 flex items-center justify-center space-x-2 py-4 rounded-xl font-bold text-sm transition-all"
+                  [ngClass]="requirements().trim() && !isGenerating()
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg hover:from-amber-600 hover:to-amber-700'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'">
+                  @if (isGenerating()) {
+                    <i class="fa-solid fa-spinner fa-spin"></i><span>Generating…</span>
+                  } @else {
+                    <i class="fa-solid fa-wand-magic-sparkles"></i><span>Generate Document</span>
+                  }
+                </button>
+                <button (click)="resetForm()" title="Reset" class="px-4 py-4 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+                  <i class="fa-solid fa-rotate-right text-gray-500"></i>
+                </button>
+              </div>
+            } @else {
+              <div class="p-5 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl">
+                <div class="flex items-center space-x-3 mb-4">
+                  <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                    <i class="fa-solid fa-circle-check text-green-600 text-2xl"></i>
+                  </div>
+                  <div>
+                    <p class="text-sm font-bold text-green-900">Document Generated!</p>
+                    <p class="text-xs text-green-700 mt-0.5">{{ generatedDoc() }}</p>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <button class="flex-1 flex items-center justify-center space-x-2 py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors">
+                    <i class="fa-solid fa-eye"></i><span>Preview</span>
+                  </button>
+                  <button class="flex-1 flex items-center justify-center space-x-2 py-2.5 bg-white border border-green-300 text-green-700 rounded-xl text-sm font-semibold hover:bg-green-50 transition-colors">
+                    <i class="fa-solid fa-download"></i><span>Download</span>
+                  </button>
+                  <button (click)="resetForm()" class="px-4 py-2.5 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50 transition-colors">
+                    <i class="fa-solid fa-plus mr-1"></i>New
+                  </button>
+                </div>
+              </div>
+            }
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Sidebar — WEB-AI-05 (pas de duplication avec History Panel) ─── -->
+      <div class="space-y-5">
+
+        <!-- Recent Generations — 4 derniers seulement -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+          <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 class="text-sm font-bold text-gray-900">Recent Generations</h3>
+            <button (click)="showHistoryPanel.set(true)" class="text-xs text-amber-600 hover:text-slate-800 font-semibold flex items-center space-x-1">
+              <span>All ({{ history.length }})</span>
+              <i class="fa-solid fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+          <div class="p-4 space-y-2.5">
+            @for (doc of history.slice(0,4); track doc.id) {
+              <div class="flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition-all"
+                [ngClass]="doc.active ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100 hover:border-amber-200 hover:bg-amber-50'">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="doc.iconBg">
+                  <i [ngClass]="[doc.icon, 'text-white text-xs']"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-bold text-gray-900 truncate">{{ doc.title }}</p>
+                  <p class="text-xs text-gray-500 truncate">{{ doc.caseRef }}</p>
+                  <p class="text-xs text-gray-400 mt-0.5">{{ doc.time }}</p>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+
+
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ AI TOOLS — WEB-AI-07 + Analyzer ══ -->
+  <section class="px-8 pb-6" id="section-action">
+    <div class="grid grid-cols-2 gap-6">
+
+      <!-- WEB-AI-07 — Legal Action Suggester -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"
+        [ngClass]="activeQuickTask() === 'action' ? 'ring-2 ring-amber-400 ring-offset-2' : ''">
+        <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between"
+          [ngClass]="activeQuickTask() === 'action' ? 'bg-amber-50' : 'bg-white'">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center">
+              <i class="fa-solid fa-lightbulb text-amber-600"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-gray-900">Legal Action Suggester</h2>
+              <p class="text-xs text-gray-500">WEB-AI-07 — next procedural steps</p>
+            </div>
+          </div>
+        </div>
+        <div class="p-6 space-y-5">
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-2">Select Case</label>
+            <div class="relative">
+              <i class="fa-solid fa-briefcase absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+              <select [ngModel]="suggesterCase()" (ngModelChange)="suggesterCase.set($event)"
+                class="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white appearance-none text-sm">
+                @for (c of cases; track c) { <option [value]="c">{{ c }}</option> }
+              </select>
+              <i class="fa-solid fa-chevron-down absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-2">Current Situation</label>
+            <textarea rows="3" [ngModel]="situation()" (ngModelChange)="situation.set($event)"
+              placeholder="Describe recent developments, challenges, or current case status…"
+              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none text-sm placeholder-gray-400"></textarea>
+          </div>
+          <button (click)="suggestActions()" [disabled]="isSuggesting()"
+            class="w-full flex items-center justify-center space-x-2 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl font-bold text-sm hover:shadow-md transition-all">
+            @if (isSuggesting()) {
+              <i class="fa-solid fa-spinner fa-spin"></i><span>Analyzing case…</span>
+            } @else {
+              <i class="fa-solid fa-wand-magic-sparkles"></i><span>Suggest Next Steps</span>
+            }
+          </button>
+
+          @if (suggestionsShown() && !isSuggesting()) {
+            <div class="space-y-2.5">
+              <p class="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center space-x-2">
+                <i class="fa-solid fa-lightbulb text-amber-500"></i>
+                <span>AI Recommendations</span>
+              </p>
+              @for (s of suggestions; track s.label; let i = $index) {
+                <div class="flex items-start space-x-3 p-3.5 bg-amber-50 rounded-xl border border-amber-100">
+                  <div class="w-7 h-7 bg-amber-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-white text-xs font-bold">{{ i + 1 }}</span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                      <p class="text-sm font-semibold text-gray-900">{{ s.label }}</p>
+                      <span class="text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0" [ngClass]="getPriorityBadge(s.priority)">
+                        {{ s.priority }}
+                      </span>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-0.5">{{ s.desc }}</p>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Document Analyzer / Summarize -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"
+        [ngClass]="activeQuickTask() === 'summarize' ? 'ring-2 ring-green-400 ring-offset-2' : ''">
+        <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between"
+          [ngClass]="activeQuickTask() === 'summarize' ? 'bg-green-50' : 'bg-white'">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 bg-green-100 rounded-xl flex items-center justify-center">
+              <i class="fa-solid fa-file-lines text-green-600"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-gray-900">Document Analyzer</h2>
+              <p class="text-xs text-gray-500">Extract summaries, deadlines &amp; issues</p>
+            </div>
+          </div>
+        </div>
+        <div class="p-6 space-y-5">
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-2">Upload Document</label>
+            <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-green-400 hover:bg-green-50 transition-all cursor-pointer group">
+              <div class="w-14 h-14 bg-gray-100 group-hover:bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3 transition-colors">
+                <i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 group-hover:text-green-500 transition-colors"></i>
+              </div>
+              <p class="text-sm font-semibold text-gray-700 mb-1">Drag &amp; drop or click to upload</p>
+              <p class="text-xs text-gray-400">PDF, DOCX, TXT — max 50 MB</p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-800 mb-2">Analysis Type</label>
+            <div class="space-y-2">
+              @for (at of analysisOptions; track at.value) {
+                <label class="flex items-center p-3.5 border-2 rounded-xl cursor-pointer transition-all"
+                  [ngClass]="analysisType() === at.value ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-green-300 hover:bg-green-50'">
+                  <input type="radio" name="analysis" [checked]="analysisType() === at.value" (change)="analysisType.set(at.value)" class="accent-green-600">
+                  <div class="ml-3">
+                    <p class="text-sm font-semibold text-gray-900">{{ at.label }}</p>
+                    <p class="text-xs text-gray-500">{{ at.sub }}</p>
+                  </div>
+                </label>
+              }
+            </div>
+          </div>
+          <button class="w-full flex items-center justify-center space-x-2 py-3.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl font-bold text-sm hover:shadow-md transition-all">
+            <i class="fa-solid fa-wand-magic-sparkles"></i><span>Analyze Document</span>
+          </button>
+          <div class="p-4 bg-green-50 rounded-xl border border-green-200">
+            <p class="text-xs font-bold text-green-800 uppercase tracking-wider mb-2">
+              <i class="fa-solid fa-circle-check text-green-600 mr-1.5"></i>Recently Analyzed
+            </p>
+            <div class="space-y-2">
+              @for (f of recentAnalyzed; track f) {
+                <div class="flex items-center justify-between">
+                  <p class="text-sm text-gray-700 truncate pr-2">{{ f }}</p>
+                  <button class="text-xs text-green-600 hover:text-green-800 font-semibold flex-shrink-0">View</button>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══ WEB-AI-02 TEMPLATES LIBRARY ══ -->
+  <section class="px-8 pb-8" id="section-templates">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+      <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Contract Templates Library</h2>
+          <p class="text-sm text-gray-500 mt-0.5">Pre-built templates for common legal documents</p>
+        </div>
+        <div class="relative">
+          <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+          <input type="text" placeholder="Search templates…" class="pl-9 pr-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+        </div>
+      </div>
+      <div class="p-6 grid grid-cols-4 gap-4">
+        @for (t of docTemplates; track t.title) {
+          <div (click)="useTemplate(t.title)"
+            class="border border-gray-200 rounded-xl p-5 cursor-pointer transition-all group hover:shadow-md"
+            [ngClass]="[t.hoverBorder, selectedTemplate() === t.title ? 'ring-2 ring-amber-400 bg-amber-50 border-amber-300' : '']">
+            <div class="flex items-center justify-between mb-4">
+              <div class="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+                [ngClass]="[t.iconBg, t.iconHoverBg]">
+                <i class="text-lg transition-colors" [ngClass]="[t.icon, t.iconColor, 'group-hover:text-white']"></i>
+              </div>
+              @if (t.badge) {
+                <span class="text-xs px-2 py-0.5 rounded-full font-semibold" [ngClass]="t.badgeColor">{{ t.badge }}</span>
+              }
+              @if (selectedTemplate() === t.title) {
+                <span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">Selected</span>
+              }
+            </div>
+            <h3 class="text-sm font-bold text-gray-900 mb-1">{{ t.title }}</h3>
+            <p class="text-xs text-gray-500 mb-3">{{ t.desc }}</p>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-gray-400">{{ t.uses }} uses</span>
+              <button class="text-xs font-semibold" [ngClass]="t.btnColor">Use →</button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<style>
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+</style>

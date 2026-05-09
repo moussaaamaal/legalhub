@@ -1,0 +1,226 @@
+@if (isOpen()) {
+  <div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" (click)="closeModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+         (click)="$event.stopPropagation()">
+
+      <!-- ── Recorder area ─────────────────────────────────────── -->
+      <div class="bg-gradient-to-b from-rose-600 to-rose-700 px-6 pt-5 pb-7 flex-shrink-0">
+
+        <!-- Top bar -->
+        <div class="flex items-center justify-between mb-4">
+          <div class="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-microphone text-white text-sm"></i>
+          </div>
+          <h3 class="text-white font-bold text-base">Voice Note</h3>
+          <button (click)="closeModal()" class="w-9 h-9 bg-white/20 hover:bg-white/30 rounded-xl flex items-center justify-center transition-colors">
+            <i class="fa-solid fa-xmark text-white text-sm"></i>
+          </button>
+        </div>
+
+        <!-- Instruction hint -->
+        @if (!voiceDone()) {
+          <p class="text-center text-white/70 text-xs mb-3">
+            @if (prefillCase) {
+              Mention the <strong class="text-white/90">title</strong> and <strong class="text-white/90">content</strong> of your note
+            } @else {
+              Mention the <strong class="text-white/90">title</strong>, <strong class="text-white/90">content</strong>, and <strong class="text-white/90">case name</strong>
+            }
+          </p>
+        }
+
+        <!-- Linked case chip (when pre-filled) -->
+        @if (prefillCase && !voiceDone()) {
+          <div class="flex justify-center mb-3">
+            <span class="inline-flex items-center gap-1.5 bg-white/20 text-white text-xs font-medium px-3 py-1 rounded-full">
+              <i class="fa-solid fa-briefcase text-[10px]"></i>
+              {{ prefillCase.name }}
+            </span>
+          </div>
+        }
+
+        <!-- Timer -->
+        <div class="text-center mb-1">
+          <p class="text-5xl font-extrabold text-white tracking-widest tabular-nums">{{ fmtSeconds(voiceSeconds()) }}</p>
+          <p class="text-white/75 text-sm mt-1">
+            @if (voiceDone()) { Note saved }
+            @else if (voiceRecording()) {
+              @if (voicePaused()) { Paused } @else { Recording… }
+            } @else if (voiceThinking()) { Analyzing… }
+            @else if (voiceAiResponse()) { Tap mic to answer }
+            @else { Tap to start }
+          </p>
+        </div>
+
+        <!-- Waveform bars -->
+        <div class="flex items-center justify-center gap-1 h-10 my-3">
+          @for (bar of waveformBars; track $index) {
+            <div class="w-1 rounded-full origin-bottom"
+              [style.height.px]="voiceRecording() && !voicePaused() ? bar.h : 6"
+              [style.background]="voiceRecording() && !voicePaused() ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.3)'"
+              [style.animation]="voiceRecording() && !voicePaused() ? 'voiceWave 0.7s ease-in-out infinite' : 'none'"
+              [style.animation-delay.ms]="bar.delay">
+            </div>
+          }
+        </div>
+
+        <!-- Record button / Done icon -->
+        @if (!voiceDone()) {
+          <div class="flex justify-center mb-3">
+            <div class="relative flex items-center justify-center">
+              @if (voiceRecording() && !voicePaused()) {
+                <div class="absolute w-28 h-28 rounded-full bg-white/20 animate-ping" style="animation-duration:1.4s"></div>
+              }
+              <button (click)="toggleVoiceRecording()" [disabled]="voiceThinking()"
+                class="relative w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                [ngClass]="voiceRecording() ? 'ring-4 ring-white/40' : 'hover:scale-105'">
+                <i class="text-rose-600 text-2xl fa-solid"
+                   [ngClass]="voiceRecording() ? 'fa-stop' : 'fa-microphone'"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Pause / Discard -->
+          @if (voiceRecording()) {
+            <div class="flex justify-center gap-4 mb-2">
+              <button (click)="pauseVoiceRecording()"
+                class="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-colors">
+                <i class="fa-solid" [ngClass]="voicePaused() ? 'fa-play' : 'fa-pause'"></i>
+                {{ voicePaused() ? 'Resume' : 'Pause' }}
+              </button>
+              <button (click)="discardVoiceRecording()"
+                class="flex items-center gap-2 bg-white/30 hover:bg-white/40 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-colors">
+                <i class="fa-solid fa-trash"></i>
+                Discard
+              </button>
+            </div>
+          }
+
+          <p class="text-center text-white/55 text-xs">
+            {{ voiceRecording() ? 'Tap stop when finished speaking' : 'Max 30 minutes per recording' }}
+          </p>
+        } @else {
+          <div class="flex justify-center">
+            <div class="w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-lg">
+              <i class="fa-solid fa-circle-check text-green-500 text-3xl"></i>
+            </div>
+          </div>
+        }
+      </div>
+
+      <!-- ── Body ──────────────────────────────────────────────── -->
+      <div class="flex-1 overflow-y-auto">
+
+        <!-- Extracted fields -->
+        @if (hasExtracted()) {
+          <div class="px-5 pt-4 pb-3 border-b border-gray-100">
+            <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+              <i class="fa-solid fa-list-check mr-1"></i>Extracted so far
+            </p>
+            <div class="space-y-1.5">
+              <div class="flex items-start gap-2">
+                <i class="fa-solid text-xs mt-0.5 flex-shrink-0"
+                   [ngClass]="voiceExtracted().title ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-400'"></i>
+                <span class="text-sm text-gray-700">
+                  <span class="font-medium">Title:</span> {{ voiceExtracted().title || 'Missing' }}
+                </span>
+              </div>
+              <div class="flex items-start gap-2">
+                <i class="fa-solid text-xs mt-0.5 flex-shrink-0"
+                   [ngClass]="voiceExtracted().content ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-400'"></i>
+                <span class="text-sm text-gray-700 line-clamp-2">
+                  <span class="font-medium">Content:</span> {{ voiceExtracted().content || 'Missing' }}
+                </span>
+              </div>
+              @if (!prefillCase) {
+                <div class="flex items-start gap-2">
+                  <i class="fa-solid text-xs mt-0.5 flex-shrink-0"
+                     [ngClass]="voiceExtracted().case_id ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-400'"></i>
+                  <span class="text-sm text-gray-700">
+                    <span class="font-medium">Case:</span>
+                    {{ voiceExtracted().case_name || (voiceExtracted().case_id ? 'Linked' : 'Missing') }}
+                  </span>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Current transcript -->
+        @if (voiceTranscript()) {
+          <div class="px-5 py-3 border-b border-gray-100">
+            <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+              <i class="fa-solid fa-waveform-lines mr-1"></i>Current transcript
+            </p>
+            <p class="text-sm text-gray-700 italic leading-relaxed">"{{ voiceTranscript() }}"</p>
+          </div>
+        }
+
+        <!-- Thinking spinner -->
+        @if (voiceThinking()) {
+          <div class="flex items-center justify-center gap-3 py-5">
+            <div class="w-5 h-5 border-2 border-rose-500 border-t-transparent rounded-full animate-spin"></div>
+            <span class="text-sm text-rose-600 font-medium">Mistral is analyzing your note…</span>
+          </div>
+        }
+
+        <!-- AI question or confirmation -->
+        @if (voiceAiResponse()) {
+          <div class="px-5 py-4">
+            <div class="p-4 rounded-xl border"
+                 [ngClass]="voiceDone() ? 'bg-green-50 border-green-200' : 'bg-rose-50 border-rose-200'">
+              <div class="flex items-center justify-between mb-2">
+                <p class="text-[11px] font-semibold uppercase tracking-wide"
+                   [ngClass]="voiceDone() ? 'text-green-700' : 'text-rose-600'">
+                  <i class="fa-solid mr-1" [ngClass]="voiceDone() ? 'fa-circle-check' : 'fa-robot'"></i>
+                  {{ voiceDone() ? 'Saved' : 'Mistral AI' }}
+                </p>
+                @if (voiceSpeaking()) {
+                  <span class="flex items-end gap-0.5 h-4">
+                    <span class="w-1 rounded-full animate-bounce" style="height:8px;animation-delay:0ms"
+                          [ngClass]="voiceDone() ? 'bg-green-400' : 'bg-rose-400'"></span>
+                    <span class="w-1 rounded-full animate-bounce" style="height:12px;animation-delay:100ms"
+                          [ngClass]="voiceDone() ? 'bg-green-500' : 'bg-rose-500'"></span>
+                    <span class="w-1 rounded-full animate-bounce" style="height:8px;animation-delay:200ms"
+                          [ngClass]="voiceDone() ? 'bg-green-400' : 'bg-rose-400'"></span>
+                  </span>
+                }
+              </div>
+              <p class="text-sm text-gray-800 leading-relaxed">{{ voiceAiResponse() }}</p>
+              @if (!voiceDone()) {
+                <p class="text-xs text-rose-400 mt-2">
+                  <i class="fa-solid fa-microphone mr-1"></i>Tap the microphone above to answer
+                </p>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Empty state -->
+        @if (!hasExtracted() && !voiceTranscript() && !voiceThinking() && !voiceAiResponse()) {
+          <div class="flex flex-col items-center justify-center py-8 text-center px-5">
+            <p class="text-sm text-gray-400">
+              @if (prefillCase) {
+                Record your note — mention a title and what you want to note.
+              } @else {
+                Record your note mentioning the title, content, and case name.
+              }
+            </p>
+          </div>
+        }
+
+      </div>
+
+      <!-- ── Footer ─────────────────────────────────────────────── -->
+      <div class="flex items-center justify-end px-6 py-4 border-t border-gray-100 flex-shrink-0">
+        <button (click)="closeModal()"
+          class="px-6 py-2 text-sm font-medium rounded-lg transition-colors"
+          [ngClass]="voiceDone()
+            ? 'bg-green-500 text-white hover:bg-green-600'
+            : 'text-gray-600 hover:bg-gray-100'">
+          {{ voiceDone() ? 'Close' : 'Cancel' }}
+        </button>
+      </div>
+
+    </div>
+  </div>
+}

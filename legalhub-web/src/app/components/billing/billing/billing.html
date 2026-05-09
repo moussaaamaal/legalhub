@@ -1,0 +1,1012 @@
+<!-- ══ TOPBAR ══ -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center flex-1">
+      <div class="relative w-96">
+        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" placeholder="Search invoices, clients, payments..."
+          [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
+          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
+      </div>
+      <button (click)="showFilterPanel.set(!showFilterPanel())"
+        class="ml-4 px-4 py-2 text-sm rounded-lg transition-colors"
+        [ngClass]="showFilterPanel() ? 'bg-amber-100 text-amber-700 font-medium' : 'text-gray-600 hover:bg-gray-100'">
+        <i class="fa-solid fa-filter mr-2"></i>Filters
+        @if (hasActiveFilters()) {
+          <span class="ml-1 w-2 h-2 bg-amber-500 rounded-full inline-block"></span>
+        }
+      </button>
+    </div>
+    <div class="flex items-center space-x-3">
+      <div class="h-8 w-px bg-gray-300"></div>
+      <button (click)="openModal()"
+        class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
+        <i class="fa-solid fa-plus"></i><span class="font-medium">New Invoice</span>
+      </button>
+      <!-- Export dropdown -->
+      <div class="relative">
+        <button (click)="showExportMenu.set(!showExportMenu())"
+          class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <i class="fa-solid fa-download text-gray-600"></i>
+          <span class="text-sm text-gray-700">Export</span>
+          <i class="fa-solid fa-chevron-down text-gray-400 text-xs"></i>
+        </button>
+        @if (showExportMenu()) {
+          <div class="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-30 overflow-hidden">
+            <button (click)="exportCsv()"
+              class="w-full flex items-center space-x-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              <i class="fa-solid fa-file-csv text-green-600 w-5"></i><span>Export as CSV</span>
+            </button>
+            <button (click)="exportPdf()"
+              class="w-full flex items-center space-x-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              <i class="fa-solid fa-file-pdf text-red-500 w-5"></i><span>Export as PDF</span>
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto bg-gray-50">
+
+  <!-- PAGE HEADER -->
+  <section class="px-8 pt-6 pb-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Billing &amp; Invoicing</h1>
+        <p class="text-gray-600 mt-1">Manage invoices, track payments, and send reminders to clients</p>
+      </div>
+      <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-1 bg-white border border-gray-300 rounded-lg p-1">
+          @for (p of periods; track p) {
+            <button (click)="setPeriod(p)"
+              class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+              [ngClass]="selectedPeriod() === p ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
+              {{ p }}
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- METRICS -->
+  <section class="px-8 pb-6">
+    <div class="grid grid-cols-5 gap-6">
+      @for (m of metrics; track m.label) {
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+          <div class="flex items-start justify-between mb-4">
+            <div class="w-12 h-12 rounded-lg flex items-center justify-center" [ngClass]="m.iconBg">
+              <i [className]="m.icon + ' text-xl ' + m.iconColor"></i>
+            </div>
+            <span class="text-xs px-2 py-1 rounded-full font-medium" [ngClass]="m.badgeCls">{{ m.badge }}</span>
+          </div>
+          <h3 class="text-2xl font-bold text-gray-900 mb-1">{{ m.value }}</h3>
+          <p class="text-sm text-gray-600">{{ m.label }}</p>
+          <div class="mt-4 pt-4 border-t border-gray-100">
+            <p class="text-xs text-gray-500">{{ m.note }}</p>
+          </div>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- INVOICES TABLE -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+
+      <!-- Header -->
+      <div class="border-b border-gray-200">
+        <div class="px-6 pt-5 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">All Invoices</h2>
+            <p class="text-sm text-gray-600 mt-0.5">Manage and track all client invoices</p>
+          </div>
+          <div class="flex items-center space-x-3 pb-1">
+            <div class="relative">
+              <input type="text" placeholder="Search invoices..."
+                [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
+                class="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm w-56">
+              <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            </div>
+            <button (click)="showFilterPanel.set(!showFilterPanel())"
+              class="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 transition-colors"
+              [ngClass]="showFilterPanel() ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-gray-300'">
+              <i class="fa-solid fa-filter mr-1.5 text-gray-500"></i>Filter
+            </button>
+            <button (click)="setSort('number')"
+              class="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+              <i [className]="sortIcon('number') + ' mr-1.5'"></i>Sort
+            </button>
+            @if (hasActiveFilters()) {
+              <button (click)="clearFilters()"
+                class="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                <i class="fa-solid fa-times mr-1"></i>Clear
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- Filter panel -->
+        @if (showFilterPanel()) {
+          <div class="px-6 py-4 bg-amber-50 border-t border-amber-100 flex items-center space-x-4">
+            <div class="flex items-center space-x-2">
+              <label class="text-xs font-semibold text-gray-600 uppercase tracking-wide">From</label>
+              <input type="date" [ngModel]="filterDateFrom()" (ngModelChange)="filterDateFrom.set($event)"
+                class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div class="flex items-center space-x-2">
+              <label class="text-xs font-semibold text-gray-600 uppercase tracking-wide">To</label>
+              <input type="date" [ngModel]="filterDateTo()" (ngModelChange)="filterDateTo.set($event)"
+                class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <button (click)="clearFilters()" class="text-sm text-gray-500 hover:text-gray-700 underline">Reset filters</button>
+          </div>
+        }
+
+        <!-- Tabs -->
+        <div class="flex items-center px-6 mt-3 gap-1 overflow-x-auto">
+          @for (tab of invoiceTabs; track tab.key) {
+            <button (click)="activeTab.set(tab.key)"
+              class="flex items-center space-x-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-all whitespace-nowrap"
+              [ngClass]="activeTab() === tab.key ? tab.activeCls : 'border-transparent text-gray-500 hover:text-gray-700'">
+              <span>{{ tab.label }}</span>
+              <span class="text-xs px-2 py-0.5 rounded-full font-bold"
+                [ngClass]="activeTab() === tab.key ? tab.badgeActiveCls : 'bg-gray-100 text-gray-500'">
+                {{ tab.count }}
+              </span>
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-6 py-4 text-left w-10"><input type="checkbox" class="rounded border-gray-300"></th>
+              <th class="px-6 py-4 text-left">
+                <button (click)="setSort('number')" class="flex items-center space-x-1 text-xs font-semibold text-gray-600 uppercase tracking-wider hover:text-gray-900">
+                  <span>Invoice #</span><i [className]="sortIcon('number')"></i>
+                </button>
+              </th>
+              <th class="px-6 py-4 text-left">
+                <button (click)="setSort('client')" class="flex items-center space-x-1 text-xs font-semibold text-gray-600 uppercase tracking-wider hover:text-gray-900">
+                  <span>Client</span><i [className]="sortIcon('client')"></i>
+                </button>
+              </th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Case</th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Billing Type</th>
+              <th class="px-6 py-4 text-left">
+                <button (click)="setSort('amount')" class="flex items-center space-x-1 text-xs font-semibold text-gray-600 uppercase tracking-wider hover:text-gray-900">
+                  <span>Amount</span><i [className]="sortIcon('amount')"></i>
+                </button>
+              </th>
+              <th class="px-6 py-4 text-left">
+                <button (click)="setSort('rawIssueDate')" class="flex items-center space-x-1 text-xs font-semibold text-gray-600 uppercase tracking-wider hover:text-gray-900">
+                  <span>Issue Date</span><i [className]="sortIcon('rawIssueDate')"></i>
+                </button>
+              </th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Due Date</th>
+              <th class="px-6 py-4 text-left">
+                <button (click)="setSort('status')" class="flex items-center space-x-1 text-xs font-semibold text-gray-600 uppercase tracking-wider hover:text-gray-900">
+                  <span>Status</span><i [className]="sortIcon('status')"></i>
+                </button>
+              </th>
+              <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            @if (loading()) {
+              <tr><td colspan="10" class="px-6 py-12 text-center text-sm text-gray-500">
+                <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading invoices...
+              </td></tr>
+            }
+            @if (apiError() && !loading()) {
+              <tr><td colspan="10" class="px-6 py-8 text-center text-sm text-red-600">
+                <i class="fa-solid fa-triangle-exclamation mr-2"></i>{{ apiError() }}
+              </td></tr>
+            }
+            @if (!loading() && !apiError()) {
+              @for (inv of filteredInvoices(); track inv.id) {
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="px-6 py-4"><input type="checkbox" class="rounded border-gray-300"></td>
+                  <td class="px-6 py-4">
+                    <p class="text-sm font-semibold text-gray-900">{{ inv.number }}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <p class="text-sm font-medium text-gray-900">{{ inv.client }}</p>
+                    <p class="text-xs text-gray-500">{{ inv.email }}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <p class="text-sm text-gray-900">{{ inv.case }}</p>
+                    <p class="text-xs text-gray-500">{{ inv.caseType }}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <span class="text-xs px-2.5 py-1 rounded-full font-semibold" [ngClass]="getBillingTypeCls(inv.billingType)">
+                      {{ inv.billingType }}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4">
+                    <p class="text-sm font-bold text-gray-900">{{ inv.amount }}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <p class="text-sm text-gray-900">{{ inv.issueDate }}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <p class="text-sm text-gray-900">{{ inv.dueDate }}</p>
+                    <p class="text-xs font-medium mt-0.5" [ngClass]="inv.dueNoteColor">{{ inv.dueNote }}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="[inv.statusBg, inv.statusColor]">
+                      {{ inv.status }}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 text-right">
+                    <div class="flex items-center justify-end space-x-1">
+                      <!-- View detail -->
+                      <button (click)="viewInvoice(inv.id)"
+                        class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Invoice">
+                        <i class="fa-solid fa-eye"></i>
+                      </button>
+                      <!-- Send invoice (DRAFT only) -->
+                      @if (inv.canSend) {
+                        <button (click)="onSendInvoice(inv.id)" [disabled]="sendingInvoiceId() === inv.id"
+                          class="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Send Invoice">
+                          <i [class]="sendingInvoiceId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
+                        </button>
+                      }
+                      <!-- Send reminder (PENDING/OVERDUE) -->
+                      @if (inv.showRemind) {
+                        <button (click)="onSendReminder(inv.id)" [disabled]="sendingReminderId() === inv.id"
+                          class="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Send Reminder">
+                          <i [class]="sendingReminderId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-bell'"></i>
+                        </button>
+                      }
+                      <!-- Download / print -->
+                      <button (click)="onDownload(inv.id)"
+                        class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Download PDF">
+                        <i class="fa-solid fa-download"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              }
+              @if (filteredInvoices().length === 0) {
+                <tr>
+                  <td colspan="10" class="px-6 py-12 text-center">
+                    <div class="flex flex-col items-center">
+                      <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                        <i class="fa-solid fa-file-invoice text-gray-400 text-lg"></i>
+                      </div>
+                      <p class="text-sm font-medium text-gray-600">No invoices found</p>
+                      @if (hasActiveFilters()) {
+                        <button (click)="clearFilters()" class="mt-2 text-sm text-amber-600 hover:text-amber-700 underline">Clear filters</button>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="p-6 border-t border-gray-200 flex items-center justify-between">
+        <p class="text-sm text-gray-600">
+          Showing <span class="font-medium">{{ filteredInvoices().length }}</span> of
+          <span class="font-medium">{{ allInvoices.length }}</span> invoices
+        </p>
+        <div class="flex items-center space-x-2 text-sm text-gray-500">
+          <i class="fa-solid fa-circle-info mr-1"></i>All invoices shown
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAYMENT TRACKING -->
+  <section class="px-8 pb-6">
+    <div class="grid grid-cols-3 gap-6">
+      <div class="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Payment Tracking</h2>
+            <p class="text-sm text-gray-600 mt-1">Monitor payment status and history</p>
+          </div>
+          <button (click)="showPaymentsModal.set(true)"
+            class="text-sm text-amber-600 font-medium hover:text-amber-700 hover:underline transition-colors">
+            View All Payments
+          </button>
+        </div>
+        <div class="p-6 space-y-4">
+          @if (paidInvoices.length === 0 && !loading()) {
+            <div class="flex flex-col items-center py-8 text-gray-400">
+              <i class="fa-solid fa-receipt text-3xl mb-3"></i>
+              <p class="text-sm">No paid invoices yet</p>
+            </div>
+          }
+          @for (inv of paidInvoices.slice(0, 4); track inv.id) {
+            <div class="flex items-start space-x-4 p-4 border border-green-200 rounded-lg bg-green-50">
+              <div class="flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center bg-green-100">
+                <i class="fa-solid fa-circle-check text-xl text-green-600"></i>
+              </div>
+              <div class="flex-1">
+                <div class="flex items-start justify-between mb-1">
+                  <div>
+                    <h3 class="font-semibold text-gray-900">Payment Received — {{ inv.number }}</h3>
+                    <p class="text-sm text-gray-600 mt-0.5">{{ inv.client }}</p>
+                  </div>
+                  <div class="text-right">
+                    <p class="text-lg font-bold text-green-600">{{ inv.amount }}</p>
+                    <p class="text-xs text-gray-500">{{ inv.dueDate }}</p>
+                  </div>
+                </div>
+                <p class="text-xs text-gray-500">{{ inv.email }}</p>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 class="text-lg font-bold text-gray-900 mb-4">Revenue Analytics</h3>
+          <div id="revenue-trend-chart" style="height:240px"></div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 class="text-lg font-bold text-gray-900 mb-4">Payment Methods</h3>
+          <div class="space-y-4">
+            @for (pm of paymentMethods; track pm.label) {
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center" [ngClass]="pm.iconBg">
+                    <i [className]="pm.icon + ' ' + pm.iconColor"></i>
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-gray-900">{{ pm.label }}</p>
+                    <p class="text-xs text-gray-600">{{ pm.pct }}</p>
+                  </div>
+                </div>
+                <p class="text-sm font-bold text-gray-900">{{ pm.amount }}</p>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAYMENT REMINDERS -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Payment Reminders</h2>
+          <p class="text-sm text-gray-600 mt-1">Automated reminder system for overdue invoices</p>
+        </div>
+        <div class="flex items-center space-x-3">
+          <button (click)="activeTab.set('Overdue')"
+            class="flex items-center space-x-2 px-4 py-2 border border-red-200 text-red-600 bg-red-50 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>{{ overdueCount }} Overdue Invoices</span>
+          </button>
+          <button (click)="showRemindersModal.set(true)"
+            class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium hover:shadow-lg transition-all">
+            <i class="fa-solid fa-cog mr-2"></i>Configure Reminders
+          </button>
+        </div>
+      </div>
+      <div class="p-6">
+        <div class="grid grid-cols-2 gap-6 mb-6">
+          <div class="border border-gray-200 rounded-lg p-6">
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-2">Reminder Settings</h3>
+                <p class="text-sm text-gray-600">Configured automatic reminders</p>
+              </div>
+            </div>
+            <div class="space-y-3">
+              @for (r of reminderSettings(); track r.label) {
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900">{{ r.label }}</p>
+                    <p class="text-xs text-gray-600">{{ r.desc }}</p>
+                  </div>
+                  <i [class]="r.enabled ? 'fa-solid fa-circle-check text-green-600' : 'fa-solid fa-circle-xmark text-gray-400'"></i>
+                </div>
+              }
+            </div>
+          </div>
+          <div class="border border-gray-200 rounded-lg p-6">
+            <h3 class="font-semibold text-gray-900 mb-2">Notification Channels</h3>
+            <p class="text-sm text-gray-600 mb-4">Active channels for sending reminders</p>
+            <div class="space-y-3">
+              @for (ch of channels(); track ch.label; let i = $index) {
+                <label class="flex items-center justify-between p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                  <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center" [ngClass]="ch.iconBg">
+                      <i [className]="ch.icon + ' ' + ch.iconColor"></i>
+                    </div>
+                    <div>
+                      <p class="text-sm font-medium text-gray-900">{{ ch.label }}</p>
+                      <p class="text-xs text-gray-600">{{ ch.desc }}</p>
+                    </div>
+                  </div>
+                  <input type="checkbox" [checked]="ch.checked" (change)="toggleChannel(i)"
+                    class="w-5 h-5 accent-amber-500 border-gray-300 rounded cursor-pointer">
+                </label>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent reminders -->
+        <div class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="font-semibold text-gray-900">Invoices Requiring Attention</h3>
+            <span class="text-xs text-gray-500">{{ reminders.length }} invoice(s)</span>
+          </div>
+          @if (reminders.length === 0) {
+            <div class="px-6 py-8 text-center text-sm text-gray-500">
+              <i class="fa-solid fa-check-circle text-green-500 text-2xl mb-2 block"></i>
+              All invoices are up to date
+            </div>
+          }
+          <div class="divide-y divide-gray-100">
+            @for (r of reminders; track r.title) {
+              <div class="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="r.iconBg">
+                      <i [className]="'fa-solid fa-paper-plane ' + r.iconColor"></i>
+                    </div>
+                    <div>
+                      <p class="text-sm font-medium text-gray-900">{{ r.title }}</p>
+                      <p class="text-sm text-gray-600">{{ r.client }} — Due: {{ r.time }}</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="r.badgeCls">{{ r.badge }}</span>
+                    <button (click)="onSendReminder(r.id)" [disabled]="sendingReminderId() === r.id"
+                      class="px-3 py-1.5 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50">
+                      <i [class]="sendingReminderId() === r.id ? 'fa-solid fa-spinner fa-spin mr-1' : 'fa-solid fa-bell mr-1'"></i>
+                      Remind
+                    </button>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REVENUE CHARTS -->
+  <section class="px-8 pb-8">
+    <div class="grid grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200">
+          <h2 class="text-lg font-bold text-gray-900">Revenue Breakdown</h2>
+          <p class="text-sm text-gray-600 mt-1">By practice area</p>
+        </div>
+        <div class="p-6"><div id="revenue-breakdown-chart" style="height:320px"></div></div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Revenue Trend</h2>
+            <p class="text-sm text-gray-600 mt-1">Performance over time</p>
+          </div>
+          @if (showChartToggle) {
+            <div class="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
+              @for (v of chartViewLabels; track v) {
+                <button (click)="setChartView(v)"
+                  class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+                  [ngClass]="chartView() === v ? 'bg-white text-gray-900 shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'">
+                  {{ v }}
+                </button>
+              }
+            </div>
+          }
+        </div>
+        <div class="p-6"><div id="monthly-revenue-chart" style="height:320px"></div></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ══ MODAL — CREATE INVOICE ══ -->
+@if (showModal()) {
+  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" (click)="closeModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden"
+      style="max-height:92vh" (click)="$event.stopPropagation()">
+
+      @if (modalStep() === 1) {
+        <!-- Header -->
+        <div class="flex items-center justify-between px-7 py-5 border-b border-gray-100">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+              <i class="fa-solid fa-file-invoice text-amber-600"></i>
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">Create New Invoice</h2>
+              <p class="text-xs text-gray-500">Generate and send invoices to clients</p>
+            </div>
+          </div>
+          <button (click)="closeModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600">
+            <i class="fa-solid fa-times text-lg"></i>
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="overflow-y-auto flex-1 px-7 py-6 space-y-6">
+
+          <!-- Client + Case -->
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Select Client <span class="text-red-400">*</span></label>
+              <div class="relative">
+                <select [ngModel]="selectedClientId()" (ngModelChange)="onClientChange($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 appearance-none bg-white">
+                  <option value="">Choose a client...</option>
+                  @for (c of clients(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Link to Case</label>
+              <div class="relative">
+                <select [ngModel]="selectedCaseId()" (ngModelChange)="selectedCaseId.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 appearance-none bg-white">
+                  <option value="">No case selected</option>
+                  @for (c of cases(); track c.id) { <option [value]="c.id">{{ c.title }}</option> }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Billing Type + Dates -->
+          <div class="grid grid-cols-3 gap-6">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Billing Type</label>
+              <div class="relative">
+                <select [ngModel]="selectedBillingType()" (ngModelChange)="selectedBillingType.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 appearance-none bg-white">
+                  @for (bt of billingTypes; track bt) { <option [value]="bt">{{ bt }}</option> }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Invoice Date</label>
+              <input type="date" [ngModel]="invoiceDate()" (ngModelChange)="invoiceDate.set($event)"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Due Date <span class="text-red-400">*</span></label>
+              <input type="date" [ngModel]="dueDate()" (ngModelChange)="dueDate.set($event)"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+          </div>
+
+          <!-- Invoice Items -->
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <label class="text-sm font-semibold text-gray-700">Invoice Items</label>
+              <button (click)="addItem()" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
+                <i class="fa-solid fa-plus mr-1"></i>Add Item
+              </button>
+            </div>
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <table class="w-full">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-28">Qty</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-28">Rate ($)</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-28">Amount</th>
+                    <th class="px-4 py-3 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  @for (item of invoiceItems(); track $index) {
+                    <tr>
+                      <td class="px-4 py-3">
+                        <input type="text" placeholder="Legal consultation" [(ngModel)]="item.description"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                      </td>
+                      <td class="px-4 py-3">
+                        <input type="number" min="0" placeholder="0" [(ngModel)]="item.qty"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                      </td>
+                      <td class="px-4 py-3">
+                        <input type="number" min="0" placeholder="0.00" [(ngModel)]="item.rate"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                      </td>
+                      <td class="px-4 py-3">
+                        <span class="text-sm font-semibold text-gray-900">{{ getItemAmount(item) }}</span>
+                      </td>
+                      <td class="px-4 py-3 text-center">
+                        <button (click)="removeItem($index)" class="text-red-400 hover:text-red-600 transition-colors">
+                          <i class="fa-solid fa-trash text-sm"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Notes + Totals -->
+          <div class="flex items-start gap-6">
+            <div class="flex-1">
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Notes <span class="text-gray-400 font-normal">(Optional)</span></label>
+              <textarea rows="4" placeholder="Add any additional notes or payment terms..."
+                [ngModel]="notes()" (ngModelChange)="notes.set($event)"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none text-sm"></textarea>
+            </div>
+            <div class="w-64 bg-gray-50 rounded-xl p-5 border border-gray-200 flex-shrink-0">
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-gray-600">Subtotal</span>
+                  <span class="text-sm font-semibold text-gray-900">${{ getSubtotal().toFixed(2) }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-gray-600">Tax (8%)</span>
+                  <span class="text-sm font-semibold text-gray-900">${{ getTax().toFixed(2) }}</span>
+                </div>
+                <div class="flex items-center justify-between pt-3 border-t border-gray-300">
+                  <span class="text-base font-bold text-gray-900">Total</span>
+                  <span class="text-xl font-bold text-amber-600">{{ getTotal() }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          @if (formError()) {
+            <div class="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <i class="fa-solid fa-circle-exclamation flex-shrink-0"></i>
+              <span>{{ formError() }}</span>
+            </div>
+          }
+
+        </div><!-- /body -->
+
+        <!-- Footer -->
+        <div class="px-7 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+          <button (click)="closeModal()" class="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-white transition-colors">
+            Cancel
+          </button>
+          <div class="flex items-center space-x-3">
+            <!-- Save as Draft -->
+            <button (click)="saveAsDraft()" [disabled]="!isFormValid || savingDraft() || isSubmitting()"
+              class="flex items-center space-x-2 px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              @if (savingDraft()) {
+                <i class="fa-solid fa-spinner fa-spin"></i><span>Saving...</span>
+              } @else {
+                <i class="fa-solid fa-floppy-disk"></i><span>Save as Draft</span>
+              }
+            </button>
+            <!-- Create & Send -->
+            <button (click)="submitInvoice()" [disabled]="!isFormValid || isSubmitting() || savingDraft()"
+              class="flex items-center space-x-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              [ngClass]="isFormValid ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-md' : 'bg-gray-200 text-gray-400'">
+              @if (isSubmitting()) {
+                <i class="fa-solid fa-spinner fa-spin"></i><span>Sending...</span>
+              } @else {
+                <i class="fa-solid fa-paper-plane"></i><span>Create &amp; Send</span>
+              }
+            </button>
+          </div>
+        </div>
+      }
+
+      <!-- Step 2 — Success -->
+      @if (modalStep() === 2) {
+        <div class="flex flex-col items-center justify-center py-16 px-8 text-center">
+          <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+            <i class="fa-solid fa-check text-green-500 text-4xl"></i>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-2">Invoice Created!</h2>
+          <p class="text-gray-500 mb-4">
+            Invoice for <span class="font-semibold text-gray-800">{{ selectedClientName() || 'client' }}</span> has been created successfully.
+          </p>
+          @if (lastCreated()) {
+            <div class="flex items-center space-x-3 bg-gray-100 rounded-full px-5 py-2 mb-8 text-sm text-gray-600">
+              <i class="fa-solid fa-file-invoice text-amber-500"></i>
+              <span class="font-medium">{{ lastCreated()!.invoice_number }}</span>
+              <span>·</span>
+              <span>Total: <strong class="text-gray-800">${{ lastCreated()!.total_amount.toFixed(2) }}</strong></span>
+              <span>·</span>
+              <span>{{ lastCreated()!.status }}</span>
+            </div>
+          }
+          <div class="flex items-center space-x-3 w-full max-w-xs">
+            <button (click)="openModal()"
+              class="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+              <i class="fa-solid fa-plus mr-2"></i>New Invoice
+            </button>
+            <button (click)="closeModal()"
+              class="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-sm font-semibold hover:shadow-md transition-all">
+              Done
+            </button>
+          </div>
+        </div>
+      }
+
+    </div>
+  </div>
+}
+
+<!-- ══ MODAL — INVOICE DETAIL ══ -->
+@if (showDetailModal() && detailInvoice) {
+  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" (click)="closeDetailModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
+      style="max-height:90vh" (click)="$event.stopPropagation()">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between px-7 py-5 border-b border-gray-100">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-file-invoice text-blue-600"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">{{ detailInvoice.invoice_number }}</h2>
+            <span class="text-xs px-2.5 py-1 rounded-full font-medium"
+              [ngClass]="(statusMap[detailInvoice.status]?.bg ?? 'bg-gray-100') + ' ' + (statusMap[detailInvoice.status]?.color ?? 'text-gray-600')">
+              {{ statusMap[detailInvoice.status]?.display ?? detailInvoice.status }}
+            </span>
+          </div>
+        </div>
+        <button (click)="closeDetailModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="overflow-y-auto flex-1 px-7 py-6 space-y-6">
+
+        <!-- Client + Dates -->
+        <div class="grid grid-cols-2 gap-6">
+          <div class="bg-gray-50 rounded-xl p-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Client</p>
+            <p class="font-semibold text-gray-900">
+              {{ detailInvoice.client ? (detailInvoice.client.first_name + ' ' + detailInvoice.client.last_name) : '—' }}
+            </p>
+            <p class="text-sm text-gray-500">{{ detailInvoice.client?.email ?? '—' }}</p>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dates</p>
+            <p class="text-sm"><span class="text-gray-500">Issue:</span> <span class="font-medium text-gray-800">{{ detailInvoice.issue_date }}</span></p>
+            <p class="text-sm mt-1"><span class="text-gray-500">Due:</span> <span class="font-medium text-gray-800">{{ detailInvoice.due_date }}</span></p>
+          </div>
+        </div>
+
+        <!-- Items -->
+        <div>
+          <p class="text-sm font-semibold text-gray-700 mb-3">Invoice Items</p>
+          <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <table class="w-full">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
+                  <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-20">Qty</th>
+                  <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase w-28">Unit Price</th>
+                  <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase w-28">Total</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                @if (!detailInvoice.invoice_item || detailInvoice.invoice_item.length === 0) {
+                  <tr><td colspan="4" class="px-4 py-4 text-center text-sm text-gray-400">No items</td></tr>
+                }
+                @for (it of (detailInvoice.invoice_item ?? []); track it.id) {
+                  <tr>
+                    <td class="px-4 py-3 text-sm text-gray-900">{{ it.description }}</td>
+                    <td class="px-4 py-3 text-sm text-center text-gray-700">{{ it.quantity }}</td>
+                    <td class="px-4 py-3 text-sm text-right text-gray-700">${{ it.unit_price.toFixed(2) }}</td>
+                    <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900">${{ it.total.toFixed(2) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Totals -->
+        <div class="bg-gray-50 rounded-xl p-5">
+          <div class="space-y-2">
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600">Subtotal</span>
+              <span class="font-medium">${{ detailInvoice.subtotal.toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600">Tax ({{ detailInvoice.tax_rate }}%)</span>
+              <span class="font-medium">${{ detailInvoice.tax_amount.toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between text-base font-bold pt-2 border-t border-gray-200">
+              <span>Total</span>
+              <span class="text-amber-600">{{ getDetailTotal(detailInvoice) }}</span>
+            </div>
+          </div>
+        </div>
+
+        @if (detailInvoice.notes) {
+          <div class="bg-amber-50 border border-amber-100 rounded-xl p-4">
+            <p class="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Notes</p>
+            <p class="text-sm text-gray-700">{{ detailInvoice.notes }}</p>
+          </div>
+        }
+
+      </div>
+
+      <!-- Footer -->
+      <div class="px-7 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+        <button (click)="closeDetailModal()" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
+          Close
+        </button>
+        <div class="flex items-center space-x-2">
+          @if (detailInvoice.status === 'DRAFT') {
+            <button (click)="onSendInvoice(detailInvoice.id); closeDetailModal()"
+              [disabled]="sendingInvoiceId() === detailInvoice.id"
+              class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50">
+              <i class="fa-solid fa-paper-plane"></i><span>Send Invoice</span>
+            </button>
+          }
+          @if (detailInvoice.status === 'PENDING' || detailInvoice.status === 'OVERDUE') {
+            <button (click)="onSendReminder(detailInvoice.id)"
+              [disabled]="sendingReminderId() === detailInvoice.id"
+              class="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors disabled:opacity-50">
+              <i class="fa-solid fa-bell"></i><span>Send Reminder</span>
+            </button>
+          }
+          <button (click)="printInvoice(detailInvoice)"
+            class="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-white transition-colors">
+            <i class="fa-solid fa-print"></i><span>Print / PDF</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+}
+
+<!-- ══ MODAL — ALL PAYMENTS ══ -->
+@if (showPaymentsModal()) {
+  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" (click)="showPaymentsModal.set(false)">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
+      style="max-height:85vh" (click)="$event.stopPropagation()">
+
+      <div class="flex items-center justify-between px-7 py-5 border-b border-gray-100">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-circle-check text-green-600"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">All Payments</h2>
+            <p class="text-xs text-gray-500">{{ paidInvoices.length }} paid invoice(s)</p>
+          </div>
+        </div>
+        <button (click)="showPaymentsModal.set(false)" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+
+      <div class="overflow-y-auto flex-1 px-7 py-6 space-y-3">
+        @if (paidInvoices.length === 0) {
+          <div class="text-center py-12 text-gray-400">
+            <i class="fa-solid fa-receipt text-4xl mb-3 block"></i>
+            <p>No paid invoices yet</p>
+          </div>
+        }
+        @for (inv of paidInvoices; track inv.id) {
+          <div class="flex items-center justify-between p-4 border border-green-200 rounded-xl bg-green-50 hover:bg-green-100 transition-colors cursor-pointer"
+            (click)="viewInvoice(inv.id); showPaymentsModal.set(false)">
+            <div class="flex items-center space-x-4">
+              <div class="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid fa-circle-check text-green-600"></i>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-900">{{ inv.number }}</p>
+                <p class="text-sm text-gray-600">{{ inv.client }}</p>
+                <p class="text-xs text-gray-400">{{ inv.email }}</p>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="text-lg font-bold text-green-600">{{ inv.amount }}</p>
+              <p class="text-xs text-gray-500">{{ inv.dueDate }}</p>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="px-7 py-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+        <span class="text-sm text-gray-500">Total paid: <strong class="text-green-600">{{ paidInvoices.length }}</strong> invoices</span>
+        <button (click)="showPaymentsModal.set(false)" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">Close</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ══ MODAL — CONFIGURE REMINDERS ══ -->
+@if (showRemindersModal()) {
+  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" (click)="showRemindersModal.set(false)">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden"
+      style="max-height:85vh" (click)="$event.stopPropagation()">
+
+      <div class="flex items-center justify-between px-7 py-5 border-b border-gray-100">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-bell text-amber-600"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Configure Reminders</h2>
+            <p class="text-xs text-gray-500">Manage automated payment reminders</p>
+          </div>
+        </div>
+        <button (click)="showRemindersModal.set(false)" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+
+      <div class="overflow-y-auto flex-1 px-7 py-6 space-y-6">
+
+        <!-- Reminder schedule -->
+        <div>
+          <h3 class="text-sm font-semibold text-gray-700 mb-3">Reminder Schedule</h3>
+          <div class="space-y-2">
+            @for (r of reminderSettings(); track r.label; let i = $index) {
+              <div class="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">{{ r.label }}</p>
+                  <p class="text-xs text-gray-500">{{ r.desc }}</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" [checked]="r.enabled" (change)="toggleReminder(i)" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-amber-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                </label>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- Channels -->
+        <div>
+          <h3 class="text-sm font-semibold text-gray-700 mb-3">Notification Channels</h3>
+          <div class="space-y-2">
+            @for (ch of channels(); track ch.label; let i = $index) {
+              <label class="flex items-center justify-between p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
+                <div class="flex items-center space-x-3">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center" [ngClass]="ch.iconBg">
+                    <i [className]="ch.icon + ' ' + ch.iconColor"></i>
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-gray-900">{{ ch.label }}</p>
+                    <p class="text-xs text-gray-600">{{ ch.desc }}</p>
+                  </div>
+                </div>
+                <input type="checkbox" [checked]="ch.checked" (change)="toggleChannel(i)"
+                  class="w-5 h-5 accent-amber-500 border-gray-300 rounded cursor-pointer">
+              </label>
+            }
+          </div>
+        </div>
+
+      </div>
+
+      <div class="px-7 py-4 border-t border-gray-100 bg-gray-50 flex justify-end space-x-3">
+        <button (click)="showRemindersModal.set(false)" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-white transition-colors">Cancel</button>
+        <button (click)="showRemindersModal.set(false)" class="px-5 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+          <i class="fa-solid fa-check mr-2"></i>Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+}

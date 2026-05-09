@@ -1,0 +1,1059 @@
+<!-- ══ TOAST ══ -->
+@if (toast()) {
+  <div class="fixed top-5 right-5 z-50 flex items-center space-x-3 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium transition-all"
+    [ngClass]="toast()!.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'">
+    <i [ngClass]="toast()!.type === 'success' ? 'fa-solid fa-check-circle' : 'fa-solid fa-times-circle'"></i>
+    <span>{{ toast()!.msg }}</span>
+  </div>
+}
+
+<!-- ══ TOPBAR ══ -->
+<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+  <div class="px-8 py-4 flex items-center justify-between">
+    <div class="flex items-center flex-1">
+      <div class="relative w-96">
+        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" placeholder="Search settings, users, plans..."
+          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
+      </div>
+    </div>
+    <div class="flex items-center space-x-3">
+      <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+        <i class="fa-solid fa-download text-gray-600"></i>
+        <span class="text-sm text-gray-700">Export Settings</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 overflow-y-auto bg-gray-50">
+
+  <!-- PAGE HEADER -->
+  <section class="px-8 pt-6 pb-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Configuration &amp; Settings</h1>
+        <p class="text-gray-600 mt-1">Manage your office profile, subscription, team roles, and system preferences</p>
+      </div>
+      @if (loading()) {
+        <span class="text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full font-medium">
+          <i class="fa-solid fa-spinner fa-spin mr-1"></i>Loading…
+        </span>
+      } @else {
+        <span class="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-medium">
+          <i class="fa-solid fa-check-circle mr-1"></i>Ready
+        </span>
+      }
+    </div>
+  </section>
+
+  <!-- TABS -->
+  <section class="px-8 pb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-2 mb-6">
+      <div class="flex items-center space-x-1 overflow-x-auto">
+        @for (tab of tabs; track tab.label) {
+          <button (click)="setTab(tab.label)"
+            class="px-4 py-2.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors flex items-center"
+            [ngClass]="activeTab() === tab.label ? 'bg-amber-500 text-white' : 'text-gray-700 hover:bg-gray-100'">
+            <i class="mr-2" [ngClass]="tab.icon"></i>{{ tab.label }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         WEB-CFG-01  OFFICE PROFILE
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Office Profile') {
+      <div class="grid grid-cols-3 gap-6">
+
+        <!-- Form -->
+        <div class="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200">
+            <h2 class="text-lg font-bold text-gray-900">Office Information</h2>
+            <p class="text-sm text-gray-600 mt-1">Legal identity and contact details of your firm</p>
+          </div>
+          <div class="p-6 space-y-6">
+
+            <!-- Name + Entity -->
+            <div class="grid grid-cols-2 gap-6">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Office / Firm Name</label>
+                <div class="relative">
+                  <input type="text" [ngModel]="officeName()" (ngModelChange)="officeName.set($event)"
+                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                  <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Legal Entity Type</label>
+                <div class="relative">
+                  <select [ngModel]="entityType()" (ngModelChange)="entityType.set($event)"
+                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 appearance-none">
+                    @for (e of entityTypes; track e) { <option>{{ e }}</option> }
+                  </select>
+                  <i class="fa-solid fa-scale-balanced absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Reg + Tax -->
+            <div class="grid grid-cols-2 gap-6">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Registration Number</label>
+                <div class="relative">
+                  <input type="text" [ngModel]="regNumber()" (ngModelChange)="regNumber.set($event)"
+                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                  <i class="fa-solid fa-hashtag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Tax ID / EIN</label>
+                <div class="relative">
+                  <input type="text" [ngModel]="taxId()" (ngModelChange)="taxId.set($event)"
+                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                  <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Address -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Office Address</label>
+              <div class="relative">
+                <input type="text" [ngModel]="address()" (ngModelChange)="address.set($event)"
+                  class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">City</label>
+                <input type="text" [ngModel]="city()" (ngModelChange)="city.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Country / Region</label>
+                <input type="text" [ngModel]="state()" (ngModelChange)="state.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">ZIP Code</label>
+                <input type="text" [ngModel]="zip()" (ngModelChange)="zip.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+              </div>
+            </div>
+
+            <!-- Phone + Email -->
+            <div class="grid grid-cols-2 gap-6">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Office Phone</label>
+                <div class="relative">
+                  <input type="text" [ngModel]="phone()" (ngModelChange)="phone.set($event)"
+                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                  <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Office Email</label>
+                <div class="relative">
+                  <input type="email" [ngModel]="email()" (ngModelChange)="email.set($event)"
+                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                  <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Practice Areas -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Practice Areas</label>
+              <div class="flex flex-wrap gap-2 mb-3">
+                @for (area of practiceAreas(); track area; let i = $index) {
+                  <span class="px-3 py-1.5 rounded-full text-sm font-medium flex items-center space-x-2"
+                    [ngClass]="practiceAreaColors[i % practiceAreaColors.length]">
+                    <span>{{ area }}</span>
+                    <button (click)="removePracticeArea(i)" class="hover:opacity-70"><i class="fa-solid fa-times text-xs"></i></button>
+                  </span>
+                }
+              </div>
+              <div class="flex items-center space-x-2">
+                <input type="text" placeholder="Add practice area…" [ngModel]="newPracticeArea()" (ngModelChange)="newPracticeArea.set($event)"
+                  (keydown.enter)="addPracticeArea()"
+                  class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                <button (click)="addPracticeArea()" class="px-4 py-2.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
+                  <i class="fa-solid fa-plus mr-1"></i>Add
+                </button>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">Office Description</label>
+              <textarea rows="4" [ngModel]="description()" (ngModelChange)="description.set($event)"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"></textarea>
+            </div>
+
+            <div class="flex justify-end pt-2">
+              <button (click)="saveProfile()" [disabled]="profileSaving()"
+                class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md transition-all disabled:opacity-70 flex items-center space-x-2">
+                @if (profileSaving()) {
+                  <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+                } @else {
+                  <i class="fa-solid fa-save"></i><span>Save Profile</span>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right sidebar -->
+        <div class="space-y-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Office Logo</h3>
+            <div class="w-32 h-32 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center mb-4 mx-auto">
+              <i class="fa-solid fa-scale-balanced text-white text-5xl"></i>
+            </div>
+            <p class="text-sm text-gray-600 text-center mb-4">Current logo displayed across the platform</p>
+            <button class="w-full px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">
+              <i class="fa-solid fa-upload mr-2"></i>Upload New Logo
+            </button>
+            <p class="text-xs text-gray-500 mt-3 text-center">Recommended: 512×512px, PNG or SVG</p>
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Quick Stats</h3>
+            <div class="space-y-4">
+              @for (s of quickStats(); track s.label; let last = $last) {
+                <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-3 border-b border-gray-100'">
+                  <span class="text-sm text-gray-600">{{ s.label }}</span>
+                  <span class="text-lg font-bold text-gray-900">{{ s.value }}</span>
+                </div>
+              }
+            </div>
+          </div>
+
+          <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white">
+            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
+              <i class="fa-solid fa-certificate text-2xl"></i>
+            </div>
+            <h3 class="text-lg font-bold mb-2">Verified Office</h3>
+            <p class="text-sm text-blue-100 mb-4">Your office profile is verified and trusted</p>
+            @if (officeCode()) {
+              <div class="mt-2 bg-white bg-opacity-10 rounded-lg px-3 py-2 text-sm font-mono tracking-widest text-center">
+                {{ officeCode() }}
+              </div>
+              <p class="text-xs text-blue-200 mt-1 text-center">Office invite code</p>
+            }
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- ══════════════════════════════════════════
+         WEB-CFG-02  SUBSCRIPTION
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Subscription') {
+      <div class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">Subscription &amp; Billing</h2>
+              <p class="text-sm text-gray-600 mt-1">Manage your plan, billing cycle, and payment methods</p>
+            </div>
+            <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
+              <i class="fa-solid fa-crown mr-2"></i>Upgrade Plan
+            </button>
+          </div>
+          <div class="p-6">
+            <div class="grid grid-cols-4 gap-6 mb-8">
+              @for (p of plans; track p.badge) {
+                <div class="border-2 rounded-xl p-6 transition-all relative overflow-hidden"
+                  [ngClass]="p.current ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-amber-300 cursor-pointer'">
+                  @if (p.current) {
+                    <div class="absolute top-0 right-0 bg-amber-500 text-white text-xs px-3 py-1 rounded-bl-lg font-medium">Current</div>
+                  }
+                  <div class="mb-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="p.badgeCls">{{ p.badge }}</span></div>
+                  <h3 class="text-2xl font-bold text-gray-900 mb-1">{{ p.price }}<span class="text-sm font-normal text-gray-600">{{ p.price !== 'Custom' ? '/mo' : '' }}</span></h3>
+                  <p class="text-sm text-gray-600 mb-5">{{ p.sub }}</p>
+                  <ul class="space-y-2 mb-6">
+                    @for (f of p.features; track f) {
+                      <li class="flex items-center text-sm text-gray-700"><i class="fa-solid fa-check text-green-500 mr-2"></i>{{ f }}</li>
+                    }
+                  </ul>
+                  <button class="w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                    [ngClass]="p.current ? 'bg-amber-500 text-white' : 'border border-gray-300 hover:bg-gray-50'">
+                    {{ p.current ? 'Current Plan' : (p.badge === 'Custom' ? 'Contact Sales' : 'Select Plan') }}
+                  </button>
+                </div>
+              }
+            </div>
+
+            <div class="grid grid-cols-3 gap-6">
+              <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-700 mb-4">Billing Information</h3>
+                <div class="space-y-3">
+                  <div class="flex justify-between"><span class="text-sm text-gray-600">Billing Cycle</span><span class="text-sm font-medium">{{ subscriptionBillingCycle() }}</span></div>
+                  <div class="flex justify-between"><span class="text-sm text-gray-600">Next Billing Date</span><span class="text-sm font-medium">{{ subscriptionNextBilling() }}</span></div>
+                  <div class="flex justify-between"><span class="text-sm text-gray-600">Amount Due</span><span class="text-sm font-medium">{{ subscriptionAmountDue() }}</span></div>
+                  <div class="flex justify-between pt-3 border-t border-gray-300"><span class="text-sm text-gray-600">Payment Method</span><span class="text-sm font-medium">{{ subscriptionPaymentMethod() }}</span></div>
+                </div>
+                <button class="w-full mt-4 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium">
+                  <i class="fa-solid fa-pen-to-square mr-2"></i>Update Payment
+                </button>
+              </div>
+              <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-700 mb-4">Usage Statistics</h3>
+                <div class="space-y-4">
+                  @for (u of usageBars; track u.label) {
+                    <div>
+                      <div class="flex justify-between mb-2"><span class="text-sm text-gray-600">{{ u.label }}</span><span class="text-sm font-medium">{{ u.value }}</span></div>
+                      <div class="w-full bg-gray-200 rounded-full h-2"><div class="h-2 rounded-full" [ngClass]="u.color" [style.width.%]="u.pct"></div></div>
+                    </div>
+                  }
+                </div>
+              </div>
+              <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-700 mb-4">Billing History</h3>
+                <div class="space-y-3">
+                  @for (b of billingHistory; track b.month; let last = $last) {
+                    <div class="flex justify-between" [ngClass]="last ? '' : 'pb-3 border-b border-gray-200'">
+                      <div><p class="text-sm font-medium">{{ b.month }}</p><p class="text-xs text-gray-600">{{ b.paid }}</p></div>
+                      <span class="text-sm font-medium">{{ b.amount }}</span>
+                    </div>
+                  }
+                </div>
+                <button class="w-full mt-4 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium">View All Invoices</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- ══════════════════════════════════════════
+         WEB-CFG-03  ROLES & PERMISSIONS
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Roles & Permissions') {
+      <div class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">Roles &amp; Permissions Management</h2>
+              <p class="text-sm text-gray-600 mt-1">Define user roles and control access levels across the platform</p>
+            </div>
+            <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
+              <i class="fa-solid fa-plus mr-2"></i>Create New Role
+            </button>
+          </div>
+          <div class="p-6">
+            <div class="grid grid-cols-3 gap-6 mb-8">
+              @for (role of [
+                {iconBg:'bg-blue-100',icon:'fa-solid fa-user-tie',iconColor:'text-blue-600',title:'Senior Partner',desc:'Full administrative access and control',badge:'2 Users',badgeCls:'bg-blue-100 text-blue-700',level:'Admin Level',perms:[['All case management',true],['Financial oversight',true],['User management',true],['System settings',true]]},
+                {iconBg:'bg-green-100',icon:'fa-solid fa-user-graduate',iconColor:'text-green-600',title:'Associate Lawyer',desc:'Case management and client interaction',badge:'8 Users',badgeCls:'bg-green-100 text-green-700',level:'Standard Level',perms:[['Assigned cases',true],['Client communication',true],['Document management',true],['Financial access',false]]},
+                {iconBg:'bg-purple-100',icon:'fa-solid fa-user-shield',iconColor:'text-purple-600',title:'Legal Secretary',desc:'Administrative and support functions',badge:'6 Users',badgeCls:'bg-purple-100 text-purple-700',level:'Limited Level',perms:[['Schedule management',true],['Document filing',true],['Client intake',true],['Case creation',false]]}
+              ]; track role.title) {
+                <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-amber-500 transition-all">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="w-12 h-12 rounded-lg flex items-center justify-center" [ngClass]="role.iconBg">
+                      <i [ngClass]="[role.icon, role.iconColor, 'text-xl']"></i>
+                    </div>
+                    <button class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                  </div>
+                  <h3 class="text-lg font-bold text-gray-900 mb-1">{{ role.title }}</h3>
+                  <p class="text-sm text-gray-600 mb-4">{{ role.desc }}</p>
+                  <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="role.badgeCls">{{ role.badge }}</span>
+                    <span class="text-xs text-gray-500">{{ role.level }}</span>
+                  </div>
+                  <div class="space-y-2 mb-4">
+                    @for (p of role.perms; track p[0]) {
+                      <div class="flex items-center text-xs text-gray-700">
+                        <i class="mr-2" [ngClass]="p[1] ? 'fa-solid fa-check text-green-500' : 'fa-solid fa-times text-red-500'"></i>
+                        {{ p[0] }}
+                      </div>
+                    }
+                  </div>
+                  <button class="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">Edit Permissions</button>
+                </div>
+              }
+            </div>
+
+            <!-- Permission Matrix -->
+            <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+              <h3 class="text-lg font-bold text-gray-900 mb-6">Detailed Permission Matrix</h3>
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead class="bg-white border-b border-gray-200">
+                    <tr>
+                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Feature / Module</th>
+                      <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Senior Partner</th>
+                      <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Associate</th>
+                      <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Secretary</th>
+                      <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Paralegal</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100 bg-white">
+                    @for (row of permMatrix; track row.feature) {
+                      <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ row.feature }}</td>
+                        <td class="px-6 py-4 text-center"><i class="text-lg" [ngClass]="permIcon(row.partner)"></i></td>
+                        <td class="px-6 py-4 text-center"><i class="text-lg" [ngClass]="permIcon(row.associate)"></i></td>
+                        <td class="px-6 py-4 text-center"><i class="text-lg" [ngClass]="permIcon(row.secretary)"></i></td>
+                        <td class="px-6 py-4 text-center"><i class="text-lg" [ngClass]="permIcon(row.paralegal)"></i></td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+              <div class="mt-6 flex items-center justify-between">
+                <div class="flex items-center space-x-6 text-sm">
+                  <div class="flex items-center"><i class="fa-solid fa-check-circle text-green-500 mr-2"></i><span>Full Access</span></div>
+                  <div class="flex items-center"><i class="fa-solid fa-minus-circle text-amber-500 mr-2"></i><span>Partial Access</span></div>
+                  <div class="flex items-center"><i class="fa-solid fa-times-circle text-red-500 mr-2"></i><span>No Access</span></div>
+                </div>
+                <button class="px-6 py-2.5 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
+                  <i class="fa-solid fa-save mr-2"></i>Save All Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- ══════════════════════════════════════════
+         WEB-CFG-04  BRANDING
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Branding') {
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Branding &amp; Appearance</h2>
+            <p class="text-sm text-gray-600 mt-1">Logo, colors, and the firm name shown across the UI</p>
+          </div>
+          <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
+            <i class="fa-solid fa-eye mr-2"></i>Preview Changes
+          </button>
+        </div>
+        <div class="p-6">
+          <div class="grid grid-cols-2 gap-8">
+
+            <!-- Colors + Firm Name -->
+            <div class="space-y-6">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Firm Name (displayed in UI)</label>
+                <div class="relative">
+                  <input type="text" [ngModel]="firmDisplayName()" (ngModelChange)="firmDisplayName.set($event)"
+                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                  <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Shown in the sidebar header and emails</p>
+              </div>
+
+              <h3 class="text-sm font-semibold text-gray-700">Brand Colors</h3>
+              @for (colorDef of [
+                {label:'Primary Color', sig:primaryColor, note:'Buttons, links, primary actions'},
+                {label:'Secondary Color', sig:secondaryColor, note:'Headers, navigation, accents'},
+                {label:'Accent Color', sig:accentColor, note:'Highlights and notifications'},
+                {label:'Background Color', sig:bgColor, note:'Main background color for pages'}
+              ]; track colorDef.label) {
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">{{ colorDef.label }}</label>
+                  <div class="flex items-center space-x-3">
+                    <input type="color" [ngModel]="colorDef.sig()" (ngModelChange)="colorDef.sig.set($event)" class="w-14 h-11 border border-gray-300 rounded-lg cursor-pointer">
+                    <input type="text" [ngModel]="colorDef.sig()" (ngModelChange)="colorDef.sig.set($event)" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-sm">
+                  </div>
+                  <p class="text-xs text-gray-500 mt-1">{{ colorDef.note }}</p>
+                </div>
+              }
+            </div>
+
+            <!-- Logo + Favicon + Signature -->
+            <div class="space-y-6">
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center">
+                <div class="w-32 h-32 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center mb-4 mx-auto">
+                  <i class="fa-solid fa-scale-balanced text-white text-5xl"></i>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-900 mb-1">Primary Logo</h4>
+                <p class="text-xs text-gray-600 mb-4">Displayed in header, emails, and documents</p>
+                <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"><i class="fa-solid fa-upload mr-2"></i>Upload New Logo</button>
+                <p class="text-xs text-gray-500 mt-2">PNG, SVG recommended · Max 2MB</p>
+              </div>
+
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
+                <div class="w-16 h-16 bg-white border border-gray-300 rounded-lg flex items-center justify-center mb-3 mx-auto">
+                  <i class="fa-solid fa-scale-balanced text-amber-500 text-2xl"></i>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-900 mb-1">Favicon</h4>
+                <p class="text-xs text-gray-600 mb-3">Browser tab icon</p>
+                <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"><i class="fa-solid fa-upload mr-2"></i>Upload Favicon</button>
+                <p class="text-xs text-gray-500 mt-2">32×32px ICO or PNG</p>
+              </div>
+
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Email Signature</label>
+                <textarea rows="6" [ngModel]="emailSignature()" (ngModelChange)="emailSignature.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm resize-none"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Preview -->
+          <div class="mt-8 pt-6 border-t border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-900 mb-4">Live Preview</h3>
+            <div class="bg-white rounded-lg shadow border border-gray-200 p-6 max-w-sm">
+              <div class="flex items-center space-x-3 mb-5">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center" [style.background-color]="primaryColor()">
+                  <i class="fa-solid fa-scale-balanced text-white text-lg"></i>
+                </div>
+                <div>
+                  <h4 class="text-base font-bold text-gray-900">{{ firmDisplayName() }}</h4>
+                  <p class="text-xs text-gray-500">Practice Management</p>
+                </div>
+              </div>
+              <button class="w-full px-4 py-2.5 rounded-lg text-white font-medium text-sm mb-3" [style.background-color]="primaryColor()">Primary Button</button>
+              <button class="w-full px-4 py-2.5 border-2 rounded-lg font-medium text-sm" [style.border-color]="primaryColor()" [style.color]="primaryColor()">Secondary Button</button>
+            </div>
+          </div>
+
+          <div class="flex justify-end mt-6">
+            <button (click)="saveBranding()" [disabled]="brandingSaving()"
+              class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md disabled:opacity-70 flex items-center space-x-2">
+              @if (brandingSaving()) {
+                <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+              } @else {
+                <i class="fa-solid fa-save"></i><span>Save Branding</span>
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- ══════════════════════════════════════════
+         TEAM MEMBERS
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Team Members') {
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Team Members Management</h2>
+            <p class="text-sm text-gray-600 mt-1">Invite, manage, and control team member access</p>
+          </div>
+          <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
+            <i class="fa-solid fa-user-plus mr-2"></i>Invite Team Member
+          </button>
+        </div>
+        <div class="p-6">
+          <div class="mb-6 flex items-center space-x-3">
+            <div class="relative">
+              <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <input type="text" placeholder="Search team members…"
+                [ngModel]="teamSearch()" (ngModelChange)="teamSearch.set($event)"
+                class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 w-72">
+            </div>
+            <select [ngModel]="teamRoleFilter()" (ngModelChange)="teamRoleFilter.set($event)"
+              class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              @for (r of teamMemberRoles; track r) { <option>{{ r }}</option> }
+            </select>
+            <select [ngModel]="teamStatusFilter()" (ngModelChange)="teamStatusFilter.set($event)"
+              class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              @for (s of teamMemberStatuses; track s) { <option>{{ s }}</option> }
+            </select>
+          </div>
+
+          @if (loading()) {
+            <div class="flex items-center justify-center py-16 text-gray-400">
+              <i class="fa-solid fa-spinner fa-spin text-3xl mr-3"></i>
+              <span class="text-sm">Loading team members…</span>
+            </div>
+          } @else if (filteredTeam().length === 0) {
+            <div class="text-center py-16 text-gray-400">
+              <i class="fa-solid fa-users text-4xl mb-3"></i>
+              <p class="text-sm">No team members found</p>
+            </div>
+          } @else {
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Team Member</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Role</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Cases</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Member Since</th>
+                    <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  @for (m of filteredTeam(); track m.id) {
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-6 py-4">
+                        <div class="flex items-center space-x-3">
+                          <img [src]="m.avatar" class="w-10 h-10 rounded-full border-2 object-cover" [ngClass]="m.borderCls" [alt]="m.name">
+                          <div><p class="text-sm font-semibold text-gray-900">{{ m.name }}</p><p class="text-xs text-gray-500">{{ m.email }}</p></div>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="m.roleCls">{{ m.roleLabel }}</span></td>
+                      <td class="px-6 py-4 text-sm text-gray-900">{{ m.phone || '—' }}</td>
+                      <td class="px-6 py-4 text-sm font-semibold text-gray-900">{{ m.cases }}</td>
+                      <td class="px-6 py-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="m.statusCls">{{ m.status }}</span></td>
+                      <td class="px-6 py-4 text-sm text-gray-500">{{ m.since }}</td>
+                      <td class="px-6 py-4 text-right">
+                        @if (m.is_active) {
+                          <button (click)="deactivateTeamMember(m.id)" [disabled]="teamMemberSaving() === m.id"
+                            class="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50">
+                            @if (teamMemberSaving() === m.id) {
+                              <i class="fa-solid fa-spinner fa-spin"></i>
+                            } @else {
+                              Deactivate
+                            }
+                          </button>
+                        } @else {
+                          <span class="text-xs text-gray-400">Inactive</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- ══════════════════════════════════════════
+         WEB-CFG-07  NOTIFICATIONS
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Notifications') {
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200">
+          <h2 class="text-lg font-bold text-gray-900">Firm-Wide Notification Preferences</h2>
+          <p class="text-sm text-gray-600 mt-1">Configure notification channels and triggers for the entire firm</p>
+        </div>
+        <div class="p-6">
+          <div class="grid grid-cols-3 gap-8">
+
+            <!-- Email -->
+            <div>
+              <div class="flex items-center space-x-2 mb-5">
+                <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fa-solid fa-envelope text-blue-600"></i></div>
+                <h3 class="text-sm font-bold text-gray-800">Email Notifications</h3>
+              </div>
+              <div class="space-y-4">
+                @for (n of emailNotifs; track n.label; let i = $index; let last = $last) {
+                  <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
+                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(emailNotifs, i)" class="sr-only peer">
+                      <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- SMS -->
+            <div>
+              <div class="flex items-center space-x-2 mb-5">
+                <div class="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center"><i class="fa-solid fa-mobile-screen text-green-600"></i></div>
+                <h3 class="text-sm font-bold text-gray-800">SMS Notifications</h3>
+              </div>
+              <div class="space-y-4">
+                @for (n of smsNotifs; track n.label; let i = $index; let last = $last) {
+                  <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
+                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(smsNotifs, i)" class="sr-only peer">
+                      <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Push -->
+            <div>
+              <div class="flex items-center space-x-2 mb-5">
+                <div class="w-9 h-9 bg-purple-100 rounded-lg flex items-center justify-center"><i class="fa-solid fa-bell text-purple-600"></i></div>
+                <h3 class="text-sm font-bold text-gray-800">In-App Push</h3>
+              </div>
+              <div class="space-y-4">
+                @for (n of pushNotifs; track n.label; let i = $index; let last = $last) {
+                  <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
+                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(pushNotifs, i)" class="sr-only peer">
+                      <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-8 pt-6 border-t border-gray-200 flex justify-end">
+            <button class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md">
+              <i class="fa-solid fa-save mr-2"></i>Save Preferences
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- ══════════════════════════════════════════
+         WEB-CFG-05  SECURITY
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Security') {
+      <div class="space-y-6">
+
+        <!-- 2FA + Session + IP -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200">
+            <h2 class="text-lg font-bold text-gray-900">Security Settings</h2>
+            <p class="text-sm text-gray-600 mt-1">Enforce authentication policies and control access for all users</p>
+          </div>
+          <div class="p-6 space-y-8">
+
+            <!-- 2FA -->
+            <div class="flex items-start justify-between">
+              <div class="flex items-start space-x-4">
+                <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <i class="fa-solid fa-mobile-screen-button text-green-600 text-xl"></i>
+                </div>
+                <div>
+                  <p class="text-sm font-bold text-gray-900">Enforce Two-Factor Authentication</p>
+                  <p class="text-xs text-gray-500 mt-0.5">Require all team members to verify via 2FA when logging in</p>
+                  @if (enforce2FA()) {
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium mt-1 inline-block">Active — applied to all users</span>
+                  }
+                </div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input type="checkbox" [checked]="enforce2FA()" (change)="enforce2FA.set(!enforce2FA())" class="sr-only peer">
+                <div class="w-12 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+              </label>
+            </div>
+
+            <div class="border-t border-gray-100"></div>
+
+            <!-- Session Timeout -->
+            <div class="flex items-start justify-between">
+              <div class="flex items-start space-x-4">
+                <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <i class="fa-solid fa-clock text-amber-600 text-xl"></i>
+                </div>
+                <div>
+                  <p class="text-sm font-bold text-gray-900">Session Timeout</p>
+                  <p class="text-xs text-gray-500 mt-0.5">Automatically log out inactive users after the specified period</p>
+                </div>
+              </div>
+              <select [ngModel]="sessionTimeout()" (ngModelChange)="sessionTimeout.set($event)"
+                class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+                <option value="120">2 hours</option>
+                <option value="480">8 hours</option>
+                <option value="0">Never</option>
+              </select>
+            </div>
+
+            <div class="border-t border-gray-100"></div>
+
+            <!-- IP Whitelist -->
+            <div>
+              <div class="flex items-start justify-between mb-4">
+                <div class="flex items-start space-x-4">
+                  <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-network-wired text-blue-600 text-xl"></i>
+                  </div>
+                  <div>
+                    <p class="text-sm font-bold text-gray-900">IP Address Whitelist</p>
+                    <p class="text-xs text-gray-500 mt-0.5">Restrict login to specific IP ranges only</p>
+                  </div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                  <input type="checkbox" [checked]="ipWhitelistEnabled()" (change)="ipWhitelistEnabled.set(!ipWhitelistEnabled())" class="sr-only peer">
+                  <div class="w-12 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                </label>
+              </div>
+              @if (ipWhitelistEnabled()) {
+                <div class="ml-16">
+                  <label class="block text-xs font-semibold text-gray-600 mb-2">Allowed IP Ranges (one per line, CIDR notation)</label>
+                  <textarea rows="4" [ngModel]="ipWhitelist()" (ngModelChange)="ipWhitelist.set($event)"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm font-mono resize-none"></textarea>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- Password Policy -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200">
+            <h2 class="text-base font-bold text-gray-900">Password Policy</h2>
+            <p class="text-sm text-gray-600 mt-0.5">Rules applied to all user passwords firm-wide</p>
+          </div>
+          <div class="p-6 grid grid-cols-2 gap-8">
+            <div class="space-y-5">
+              @for (rule of [
+                {label:'Require Uppercase Letters', sig:passwordRequireUppercase},
+                {label:'Require Numbers', sig:passwordRequireNumbers},
+                {label:'Require Special Symbols', sig:passwordRequireSymbols}
+              ]; track rule.label) {
+                <div class="flex items-center justify-between">
+                  <p class="text-sm font-medium text-gray-900">{{ rule.label }}</p>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" [checked]="rule.sig()" (change)="rule.sig.set(!rule.sig())" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                  </label>
+                </div>
+              }
+            </div>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Minimum Password Length</label>
+                <select [ngModel]="passwordMinLength()" (ngModelChange)="passwordMinLength.set($event)"
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  <option value="8">8 characters</option><option value="10">10 characters</option><option value="12">12 characters</option><option value="16">16 characters</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Password Expiry</label>
+                <select [ngModel]="passwordExpiry()" (ngModelChange)="passwordExpiry.set($event)"
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  <option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option><option value="180">180 days</option><option value="0">Never expire</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Max Failed Login Attempts</label>
+                <select [ngModel]="loginAttempts()" (ngModelChange)="loginAttempts.set($event)"
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  <option value="3">3 attempts</option><option value="5">5 attempts</option><option value="10">10 attempts</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audit Log -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h2 class="text-base font-bold text-gray-900">Security Audit Log</h2>
+              <p class="text-sm text-gray-600 mt-0.5">Recent authentication and security events</p>
+            </div>
+            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">
+              <i class="fa-solid fa-download mr-2"></i>Export Log
+            </button>
+          </div>
+          <div class="p-6 space-y-4">
+            @for (e of securityEvents; track e.title) {
+              <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="e.iconBg">
+                  <i [ngClass]="[e.icon, e.iconColor]"></i>
+                </div>
+                <div class="flex-1">
+                  <p class="text-sm font-semibold text-gray-900">{{ e.title }}</p>
+                  <p class="text-xs text-gray-500">{{ e.user }} · IP: {{ e.ip }}</p>
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">{{ e.when }}</span>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <button class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md">
+            <i class="fa-solid fa-save mr-2"></i>Save Security Settings
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- ══════════════════════════════════════════
+         WEB-CFG-06  INTEGRATIONS
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Integrations') {
+      <div class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 border-b-0">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">Integrations</h2>
+              <p class="text-sm text-gray-600 mt-1">Connect your favorite tools with LegalFlow</p>
+            </div>
+            <span class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-medium">3 of 5 connected</span>
+          </div>
+        </div>
+
+        @for (group of integrations; track group.category) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-100">
+              <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wider">{{ group.category }}</h3>
+            </div>
+            <div class="p-6 grid grid-cols-2 gap-4">
+              @for (intg of group.items; track intg.name) {
+                <div class="border-2 rounded-xl p-5 transition-all"
+                     [ngClass]="intg.connected ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-amber-300'">
+                  <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" [ngClass]="intg.iconBg">
+                        <i [ngClass]="[intg.icon, intg.iconColor, 'text-xl']"></i>
+                      </div>
+                      <div>
+                        <p class="text-sm font-bold text-gray-900">{{ intg.name }}</p>
+                        <span class="text-xs px-2 py-0.5 rounded-full font-medium" [ngClass]="intg.statusCls">
+                          {{ intg.connected ? 'Connected' : 'Not connected' }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="text-xs text-gray-600 mb-3">{{ intg.desc }}</p>
+                  @if (intg.connected && intg.connectedAs) {
+                    <p class="text-xs text-gray-500 mb-3"><i class="fa-solid fa-link mr-1 text-green-500"></i>{{ intg.connectedAs }}</p>
+                  }
+                  <div class="flex items-center space-x-2">
+                    @if (intg.connected) {
+                      <button class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium hover:bg-white transition-colors">
+                        <i class="fa-solid fa-gear mr-1"></i>Configure
+                      </button>
+                      <button class="flex-1 px-3 py-2 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors">
+                        <i class="fa-solid fa-unlink mr-1"></i>Disconnect
+                      </button>
+                    } @else {
+                      <button class="w-full px-3 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-xs font-medium hover:shadow-md transition-all">
+                        <i class="fa-solid fa-plug mr-1"></i>Connect
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- ══════════════════════════════════════════
+         WEB-CFG-08  STORAGE
+    ══════════════════════════════════════════ -->
+    @if (activeTab() === 'Storage') {
+      <div class="space-y-6">
+
+        <!-- Usage Overview -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">Storage Management</h2>
+              <p class="text-sm text-gray-600 mt-1">Monitor usage and upgrade your storage plan</p>
+            </div>
+            <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
+              <i class="fa-solid fa-arrow-up mr-2"></i>Upgrade Storage
+            </button>
+          </div>
+          <div class="p-6">
+
+            <!-- Big usage bar -->
+            <div class="bg-gray-50 rounded-xl p-6 border border-gray-200 mb-6">
+              <div class="flex items-end justify-between mb-3">
+                <div>
+                  <p class="text-3xl font-bold text-gray-900">670 GB <span class="text-lg font-normal text-gray-500">/ 2 TB used</span></p>
+                  <p class="text-sm text-gray-500 mt-1">Business Plan · 33% capacity remaining</p>
+                </div>
+                <span class="text-sm font-semibold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full">67% used</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-4">
+                <div class="h-4 rounded-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all" style="width:67%"></div>
+              </div>
+            </div>
+
+            <!-- Breakdown -->
+            <div class="grid grid-cols-4 gap-4 mb-6">
+              @for (s of storageBreakdown; track s.label) {
+                <div class="bg-white border border-gray-200 rounded-xl p-5">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3" [ngClass]="s.iconBg">
+                    <i [ngClass]="[s.icon, s.iconColor]"></i>
+                  </div>
+                  <p class="text-sm font-semibold text-gray-900 mb-1">{{ s.label }}</p>
+                  <p class="text-xl font-bold text-gray-900 mb-2">{{ s.used }}</p>
+                  <div class="w-full bg-gray-200 rounded-full h-1.5">
+                    <div class="h-1.5 rounded-full" [ngClass]="s.color" [style.width.%]="s.pct"></div>
+                  </div>
+                  <p class="text-xs text-gray-500 mt-1">{{ s.pct }}% of total</p>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- Storage Plans -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200">
+            <h2 class="text-base font-bold text-gray-900">Storage Plans</h2>
+            <p class="text-sm text-gray-600 mt-0.5">Choose a plan that fits your firm's needs</p>
+          </div>
+          <div class="p-6">
+            <div class="grid grid-cols-4 gap-4">
+              @for (sp of storagePlans; track sp.name) {
+                <div class="border-2 rounded-xl p-5 text-center transition-all"
+                     [ngClass]="sp.current ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-amber-300 cursor-pointer'">
+                  @if (sp.current) {
+                    <span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full font-medium">Current</span>
+                  }
+                  <p class="text-lg font-bold text-gray-900 mt-3">{{ sp.name }}</p>
+                  <p class="text-3xl font-black text-gray-900 my-2">{{ sp.size }}</p>
+                  <p class="text-sm font-semibold mb-4" [ngClass]="sp.current ? 'text-amber-600' : 'text-gray-600'">{{ sp.price }}</p>
+                  <button class="w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    [ngClass]="sp.current ? 'bg-amber-500 text-white' : 'border border-gray-300 hover:bg-gray-50'">
+                    {{ sp.current ? 'Current Plan' : 'Select' }}
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- Usage History -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+            <h2 class="text-base font-bold text-gray-900">Storage Growth History</h2>
+            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"><i class="fa-solid fa-download mr-2"></i>Export</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Month</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Total Used</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Growth</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Usage Bar</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                @for (h of storageHistory; track h.month) {
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ h.month }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900">{{ h.used }}</td>
+                    <td class="px-6 py-4"><span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{{ h.change }}</span></td>
+                    <td class="px-6 py-4 w-48">
+                      <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="h-2 rounded-full bg-amber-500" [style.width.%]="h.pct"></div>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    }
+
+  </section>
+
+</main>

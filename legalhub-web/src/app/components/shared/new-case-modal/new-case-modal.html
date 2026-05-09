@@ -1,0 +1,331 @@
+@if (showModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.5)"
+     (click)="closeModal()">
+
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
+       style="max-height:92vh"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid fa-briefcase text-amber-600"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">
+              @if (modalStep() === 4) { Case Created! }
+              @else { Add New Case }
+            </h2>
+            <p class="text-xs text-gray-500">Fill in case details to open a new legal file</p>
+          </div>
+        </div>
+        <button (click)="closeModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+
+      @if (modalStep() < 4) {
+        <div class="flex items-center justify-between mb-2 text-xs font-semibold">
+          <span class="text-gray-500">Progress</span>
+          <span class="text-gray-700">Step {{ modalStep() }} of 3</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+          <div class="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300" [style.width]="progressPct + '%'"></div>
+        </div>
+        <div class="flex items-center justify-between mt-1">
+          @for (sl of stepLabels; track sl.label) {
+            <span class="text-xs font-medium transition-colors"
+                  [ngClass]="sl.active ? 'text-amber-600 font-bold' : sl.done ? 'text-green-500' : 'text-gray-400'">
+              @if (sl.done) { <i class="fa-solid fa-check mr-1"></i> }
+              {{ sl.label }}
+            </span>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Scrollable Body -->
+    <div class="overflow-y-auto flex-1">
+
+      <!-- ════ STEP 1 — Case Info ════ -->
+      @if (modalStep() === 1) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Case Information</h3>
+            <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Case Title <span class="text-red-500">*</span></label>
+            <div class="relative">
+              <input type="text" placeholder="e.g., State vs. Johnson"
+                     [ngModel]="f1().title" (ngModelChange)="f1.update(v=>({...v,title:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Case Number</label>
+            <div class="relative">
+              <input type="text" placeholder="e.g., CR-2024-1247"
+                     [ngModel]="f1().number" (ngModelChange)="f1.update(v=>({...v,number:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-hashtag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Case Type <span class="text-red-500">*</span></label>
+              <div class="relative">
+                <select [ngModel]="f1().caseType" (ngModelChange)="f1.update(v=>({...v,caseType:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                  <option value="">Select type</option>
+                  @for (t of caseTypes; track t) { <option>{{ t }}</option> }
+                </select>
+                <i class="fa-solid fa-gavel absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Practice Area</label>
+              <div class="relative">
+                <select [ngModel]="f1().practiceArea" (ngModelChange)="f1.update(v=>({...v,practiceArea:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                  <option value="">Select area</option>
+                  @for (a of practiceAreas; track a) { <option>{{ a }}</option> }
+                </select>
+                <i class="fa-solid fa-scale-balanced absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Priority Level <span class="text-red-500">*</span></label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (p of [['Normal','bg-green-50','border-green-200','text-green-700'],['Medium','bg-amber-50','border-amber-200','text-amber-700'],['Urgent','bg-red-50','border-red-200','text-red-700']]; track p[0]) {
+                <button (click)="setPriority(p[0])"
+                        class="border-2 rounded-xl py-3 text-sm font-semibold transition-all flex flex-col items-center"
+                        [ngClass]="f1().priority === p[0]
+                          ? [p[1], p[2], p[3], 'ring-2 ring-offset-1']
+                          : [p[1], p[2], p[3]]">
+                  <i class="fa-solid fa-circle text-xs mb-1"></i>{{ p[0] }}
+                </button>
+              }
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Case Description</label>
+            <textarea rows="4" placeholder="Provide a brief description of the case..."
+                      [ngModel]="f1().description" (ngModelChange)="f1.update(v=>({...v,description:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 2 — Client & Court ════ -->
+      @if (modalStep() === 2) {
+        <div class="px-6 py-5 space-y-5">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-base font-bold text-gray-900">Client Association</h3>
+              <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
+            </div>
+            <div class="relative">
+              <select [ngModel]="f2().clientId" (ngModelChange)="f2.update(v=>({...v,clientId:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                <option value="">Select a client</option>
+                @for (cl of clients; track cl.id) {
+                  <option [value]="cl.id">{{ cl.name }}{{ cl.company ? ' — ' + cl.company : '' }}</option>
+                }
+              </select>
+              <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+            </div>
+            @if (clients.length === 0) {
+              <p class="text-xs text-amber-600 mt-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>No clients found. Add a client first.</p>
+            }
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Opposing Party</label>
+              <div class="relative">
+                <input type="text" placeholder="Name of opposing party"
+                       [ngModel]="f2().opposingParty" (ngModelChange)="f2.update(v=>({...v,opposingParty:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-user-xmark absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Opposing Counsel</label>
+              <div class="relative">
+                <input type="text" placeholder="Attorney name"
+                       [ngModel]="f2().opposingCounsel" (ngModelChange)="f2.update(v=>({...v,opposingCounsel:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+          <div class="pt-2 border-t border-gray-100">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-base font-bold text-gray-900">Court & Dates</h3>
+              <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+            </div>
+            <div class="space-y-4">
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-800 mb-2">Court Name</label>
+                  <div class="relative">
+                    <input type="text" placeholder="e.g., Superior Court"
+                           [ngModel]="f2().courtName" (ngModelChange)="f2.update(v=>({...v,courtName:$event}))"
+                           class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                    <i class="fa-solid fa-landmark absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-800 mb-2">Judge Name</label>
+                  <div class="relative">
+                    <input type="text" placeholder="Honorable..."
+                           [ngModel]="f2().judgeName" (ngModelChange)="f2.update(v=>({...v,judgeName:$event}))"
+                           class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                    <i class="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  </div>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-800 mb-2">Filing Date</label>
+                  <input type="date"
+                         [ngModel]="f2().filingDate" (ngModelChange)="f2.update(v=>({...v,filingDate:$event}))"
+                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-800 mb-2">First Hearing Date</label>
+                  <input type="date"
+                         [ngModel]="f2().hearingDate" (ngModelChange)="f2.update(v=>({...v,hearingDate:$event}))"
+                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 3 — Financial ════ -->
+      @if (modalStep() === 3) {
+        <div class="px-6 py-5 space-y-6">
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-bold text-gray-900">Financial Information</h3>
+              <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Billing Type</label>
+              <div class="relative">
+                <select [ngModel]="f3().billingType" (ngModelChange)="f3.update(v=>({...v,billingType:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                  <option value="">Select billing type</option>
+                  @for (b of billingTypes; track b) { <option>{{ b }}</option> }
+                </select>
+                <i class="fa-solid fa-file-invoice-dollar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Estimated Case Value</label>
+              <div class="relative">
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-sm">$</span>
+                <input type="number" placeholder="50000"
+                       [ngModel]="f3().caseValue" (ngModelChange)="f3.update(v=>({...v,caseValue:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-8 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              </div>
+            </div>
+          </div>
+          <div class="space-y-3 pt-2 border-t border-gray-100">
+            <h3 class="text-base font-bold text-gray-900">Case Settings</h3>
+            @for (setting of [
+              {key:'notificationsEnabled', icon:'fa-bell',  iconBg:'bg-amber-100', iconColor:'text-amber-600', label:'Enable Notifications',  desc:'Get updates for this case'},
+              {key:'aiAnalysis',           icon:'fa-robot', iconBg:'bg-purple-100',iconColor:'text-purple-600',label:'AI Case Analysis',       desc:'Auto-analyze documents'},
+              {key:'confidential',         icon:'fa-lock',  iconBg:'bg-green-100', iconColor:'text-green-600', label:'Confidential Case',      desc:'Restrict access to team only'}
+            ]; track setting.key) {
+              <label class="flex items-center space-x-4 cursor-pointer bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-amber-300 transition-colors">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" [ngClass]="setting.iconBg">
+                  <i [ngClass]="['fa-solid', setting.icon, setting.iconColor]"></i>
+                </div>
+                <div class="flex-1">
+                  <p class="text-sm font-semibold text-gray-900">{{ setting.label }}</p>
+                  <p class="text-xs text-gray-500">{{ setting.desc }}</p>
+                </div>
+                <input type="checkbox"
+                       [ngModel]="getF3Bool(setting.key)"
+                       (ngModelChange)="setF3Bool(setting.key, $event)"
+                       class="w-5 h-5 accent-amber-500 rounded">
+              </label>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 4 — Success ════ -->
+      @if (modalStep() === 4) {
+        <div class="flex flex-col items-center justify-center py-14 px-8 text-center">
+          <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-5">
+            <i class="fa-solid fa-check text-green-500 text-4xl"></i>
+          </div>
+          <h3 class="text-2xl font-bold text-gray-900 mb-2">Case Created!</h3>
+          <p class="text-gray-500 mb-2">
+            <span class="font-semibold text-gray-800">{{ f1().title }}</span> has been added successfully.
+          </p>
+          <div class="flex items-center space-x-3 bg-gray-100 rounded-full px-5 py-2 mb-8 text-sm text-gray-600">
+            <i class="fa-solid fa-briefcase text-amber-600"></i>
+            <span>{{ f1().caseType }}</span>
+          </div>
+          <div class="flex items-center space-x-3 w-full max-w-xs">
+            <button (click)="openModal()"
+                    class="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors">
+              <i class="fa-solid fa-plus mr-2"></i>Add Another
+            </button>
+            <button (click)="goToNewCase()"
+                    class="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl text-sm font-semibold hover:shadow-md transition-all">
+              View Case
+            </button>
+          </div>
+        </div>
+      }
+
+    </div><!-- /scrollable body -->
+
+    <!-- Sticky Footer -->
+    @if (modalStep() < 4) {
+      <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+        @if (modalStep() > 1) {
+          <button (click)="prevStep()"
+                  class="px-4 py-3.5 border border-gray-300 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-100 transition-colors">
+            <i class="fa-solid fa-arrow-left mr-2"></i>Back
+          </button>
+        }
+        <button (click)="closeModal()"
+                class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+          Cancel
+        </button>
+        <button (click)="nextStep()"
+                [disabled]="(modalStep()===1 && !step1Valid) || (modalStep()===2 && !step2Valid) || isSubmitting()"
+                class="flex-1 py-3.5 rounded-xl font-bold text-sm transition-all"
+                [ngClass]="((modalStep()===1 && !step1Valid) || (modalStep()===2 && !step2Valid))
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'">
+          @if (isSubmitting()) {
+            <i class="fa-solid fa-spinner fa-spin mr-2"></i>Creating...
+          } @else if (modalStep() === 3) {
+            <i class="fa-solid fa-check mr-2"></i>Create Case
+          } @else {
+            Continue <i class="fa-solid fa-arrow-right ml-2"></i>
+          }
+        </button>
+      </div>
+    }
+
+  </div><!-- /panel -->
+</div><!-- /backdrop -->
+}
