@@ -1160,7 +1160,7 @@ const tk = StyleSheet.create({
 // ═════════════════════════════════════════════════════════════════════════════
 const AMBER = '#D97706';
 
-const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId }) => {
+const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, navigation, caseData }) => {
   const [notes,         setNotes]         = useState(propNotes);
   const [showAdd,       setShowAdd]       = useState(false);
   const [expanded,      setExpanded]      = useState({});
@@ -1231,7 +1231,24 @@ const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId }
   return (
     <View style={{ paddingTop: 4 }}>
       <Card accent={C.purple600}>
-        <SectionHead icon="sticky-note" iconColor={C.purple600} title={`Notes (${count})`} action="+ Add Note" onAction={() => setShowAdd(true)} />
+        <View style={util.sHead}>
+          <View style={[util.sHeadIcon, { backgroundColor: C.purple600 + '18' }]}>
+            <FontAwesome5 name="sticky-note" size={13} color={C.purple600} />
+          </View>
+          <Text style={util.sHeadTitle}>{`Notes (${count})`}</Text>
+          <TouchableOpacity onPress={() => setShowAdd(true)} style={util.sHeadAction}>
+            <Text style={util.sHeadActionTxt}>+ Add Note</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation?.navigate?.('VoiceNote', {
+              lockedCase: { id: caseData?._id, case_number: caseData?.id, title: caseData?.title },
+            })}
+            style={[util.sHeadAction, { backgroundColor: C.red50, marginLeft: 6, flexDirection: 'row', alignItems: 'center' }]}
+          >
+            <FontAwesome5 name="microphone" size={11} color={C.red600} style={{ marginRight: 5 }} />
+            <Text style={[util.sHeadActionTxt, { color: C.red600 }]}>Voice Note</Text>
+          </TouchableOpacity>
+        </View>
         {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
         {!loading && items.length === 0 && (
           <View style={ov.emptyBox}>
@@ -2008,7 +2025,7 @@ export default function CaseDetailsScreen({ navigation, route }) {
       case 'documents': return <DocumentsTab documents={documents} stats={stats} loading={tabLoading} caseId={caseData._id} onUploaded={(n) => setStats(s => ({ ...s, docs: n }))} />;
       case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} caseId={caseData._id} />;
       case 'invoices':  return <InvoicesTab  invoices={invoices}            loading={tabLoading} />;
-      case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} caseId={caseData._id} />;
+      case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} caseId={caseData._id} navigation={navigation} caseData={caseData} />;
       case 'timeline':  return <TimelineTab  timeline={timeline}            loading={tabLoading} />;
     }
   };

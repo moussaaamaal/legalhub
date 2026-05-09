@@ -16,7 +16,12 @@ const C = {
 
 // phase: 'idle' | 'recording' | 'processing' | 'asking' | 'saved'
 
-export default function VoiceNoteScreen({ navigation }) {
+export default function VoiceNoteScreen({ navigation, route }) {
+  const lockedCase = route?.params?.lockedCase || null;
+  const lockedPartial = lockedCase
+    ? { case_identifier: lockedCase.case_number || lockedCase.title }
+    : null;
+
   const [phase, setPhase]             = useState('idle');
   const [seconds, setSeconds]         = useState(0);
   const [isPaused, setIsPaused]       = useState(false);
@@ -24,7 +29,7 @@ export default function VoiceNoteScreen({ navigation }) {
   const [loadingNotes, setLoadingNotes] = useState(true);
   const [question, setQuestion]       = useState('');
   const [successMsg, setSuccessMsg]   = useState('');
-  const [partialData, setPartialData]               = useState(null);
+  const [partialData, setPartialData]               = useState(lockedPartial);
   const [transcriptions, setTranscriptions]         = useState([]);
   const [latestTranscription, setLatestTranscription] = useState('');
   const [confirmedNote, setConfirmedNote]           = useState(null);
@@ -116,7 +121,7 @@ export default function VoiceNoteScreen({ navigation }) {
         setPhase('confirming');
       } else if (result.status === 'saved') {
         setSuccessMsg(result.message);
-        setPartialData(null);
+        setPartialData(lockedPartial);
         setTranscriptions([]);
         setLatestTranscription('');
         setConfirmedNote(null);
@@ -188,7 +193,7 @@ export default function VoiceNoteScreen({ navigation }) {
     try {
       const result = await documentsAPI.voiceNoteConfirm(confirmedNote);
       setSuccessMsg(result.message);
-      setPartialData(null);
+      setPartialData(lockedPartial);
       setTranscriptions([]);
       setLatestTranscription('');
       setConfirmedNote(null);
@@ -203,9 +208,11 @@ export default function VoiceNoteScreen({ navigation }) {
   };
 
   const handleReRecord = () => {
-    // Keep partialData & transcriptions so the next recording keeps context
     setConfirmedNote(null);
     setLatestTranscription('');
+    if (lockedCase) {
+      setPartialData(prev => ({ ...(prev || {}), case_identifier: lockedCase.case_number || lockedCase.title }));
+    }
     setPhase('asking');
   };
 
@@ -258,8 +265,10 @@ export default function VoiceNoteScreen({ navigation }) {
       <View style={[s.bubble, s.bubbleNeutral]}>
         <FontAwesome5 name="microphone" size={14} color={C.gray500} style={{ marginRight: 8 }} />
         <Text style={[s.bubbleText, { color: C.gray500, flex: 1 }]}>
-          {partialData
+          {partialData && !lockedCase
             ? 'Tap the microphone to continue answering.'
+            : lockedCase
+            ? 'Tap the microphone and say the note title and content.'
             : 'Tap the microphone and say the note title, content, and case name.'}
         </Text>
       </View>
@@ -268,9 +277,10 @@ export default function VoiceNoteScreen({ navigation }) {
 
   // ── Partial data preview ─────────────────────────────────────────────────
   const renderPartialPreview = () => {
-    if (phase === 'idle' || phase === 'saved') return null;
+    if (phase === 'saved') return null;
+    // In idle, only show if there's a locked case to display
+    if (phase === 'idle' && !lockedCase) return null;
 
-    // In confirming phase use the fully matched data
     let title = '', content = '', caseStr = '';
     if (phase === 'confirming' && confirmedNote) {
       title    = confirmedNote.title   || '';
@@ -284,14 +294,21 @@ export default function VoiceNoteScreen({ navigation }) {
       caseStr  = partialData.case_identifier || '';
     }
 
+    // If locked case and caseStr still empty, use the locked case label
+    if (lockedCase && !caseStr) {
+      caseStr = lockedCase.case_number
+        ? `${lockedCase.case_number} — ${lockedCase.title}`
+        : lockedCase.title || '';
+    }
+
     if (!title && !content && !caseStr) return null;
 
-    const Row = ({ label, value }) => (
+    const Row = ({ label, value, locked }) => (
       <View style={s.previewRow}>
         <FontAwesome5
-          name={value ? 'check-circle' : 'circle'}
+          name={locked ? 'lock' : (value ? 'check-circle' : 'circle')}
           size={13}
-          color={value ? C.green : 'rgba(255,255,255,0.4)'}
+          color={locked ? 'rgba(255,255,255,0.7)' : (value ? C.green : 'rgba(255,255,255,0.4)')}
           style={{ width: 18 }}
         />
         <Text style={s.previewLabel}>{label}</Text>
@@ -303,7 +320,7 @@ export default function VoiceNoteScreen({ navigation }) {
       <View style={s.previewCard}>
         <Row label="Title"   value={title} />
         <Row label="Content" value={content} />
-        <Row label="Case"    value={caseStr} />
+        <Row label="Case"    value={caseStr} locked={!!lockedCase} />
       </View>
     );
   };

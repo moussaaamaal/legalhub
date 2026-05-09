@@ -9,6 +9,7 @@ import { casesAPI, calendarAPI, dashboardAPI } from '../../services/api';
 
 import CaseDetailsScreen from './CaseDetailsScreen';
 import AddCaseScreen from './AddCaseScreen';
+import VoiceNoteScreen from '../TasksNotes/VoiceNoteScreen';
 
 // ─── COULEURS ──────────────────────────────────────────────────────────────
 const C = {
@@ -912,6 +913,7 @@ const aa = StyleSheet.create({
 // ─── ÉCRAN ─────────────────────────────────────────────────────────────────
 export default function CaseManagement({ navigation }) {
   const [selectedCase,     setSelectedCase]     = useState(null);
+  const [voiceNoteCase,    setVoiceNoteCase]    = useState(null);
   const [showAddCase,      setShowAddCase]      = useState(false);
   const [showAllActivity,  setShowAllActivity]  = useState(false);
   const [cases,            setCases]            = useState([]);
@@ -1081,6 +1083,16 @@ export default function CaseManagement({ navigation }) {
   const activeCount = tabCounts.active;
   const totalCount  = cases.length;
 
+  // VoiceNoteScreen depuis CaseDetails (case verrouillé)
+  if (voiceNoteCase) {
+    return (
+      <VoiceNoteScreen
+        navigation={{ goBack: () => setVoiceNoteCase(null) }}
+        route={{ params: { lockedCase: voiceNoteCase } }}
+      />
+    );
+  }
+
   // Afficher AddCaseScreen en plein écran (inline)
   if (showAddCase) {
     return (
@@ -1100,7 +1112,12 @@ export default function CaseManagement({ navigation }) {
   if (selectedCase) {
     return (
       <CaseDetailsScreen
-        navigation={{ goBack: () => { setSelectedCase(null); loadCases(); } }}
+        navigation={{
+          goBack: () => { setSelectedCase(null); loadCases(); },
+          navigate: (screen, params) => {
+            if (screen === 'VoiceNote') setVoiceNoteCase(params?.lockedCase);
+          },
+        }}
         route={{ params: { caseData: selectedCase } }}
       />
     );
