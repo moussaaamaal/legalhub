@@ -24,8 +24,11 @@ export default function VoiceNoteScreen({ navigation }) {
   const [loadingNotes, setLoadingNotes] = useState(true);
   const [question, setQuestion]       = useState('');
   const [successMsg, setSuccessMsg]   = useState('');
-  const [partialData, setPartialData] = useState(null);
-  const [error, setError]             = useState('');
+  const [partialData, setPartialData]               = useState(null);
+  const [transcriptions, setTranscriptions]         = useState([]);
+  const [latestTranscription, setLatestTranscription] = useState('');
+  const [confirmedNote, setConfirmedNote]           = useState(null);
+  const [error, setError]                           = useState('');
 
   const recordingRef = useRef(null);
   const intervalRef  = useRef(null);
@@ -84,6 +87,7 @@ export default function VoiceNoteScreen({ navigation }) {
       setSeconds(0);
       setIsPaused(false);
       setError('');
+      setLatestTranscription('');
       setPhase('recording');
     } catch (e) {
       setError('Could not start recording. Check microphone permissions.');
@@ -104,33 +108,48 @@ export default function VoiceNoteScreen({ navigation }) {
     setPhase('processing');
 
     try {
-      const result = await documentsAPI.voiceNoteAI(uri, partialData);
+      const result = await documentsAPI.voiceNoteAI(uri, partialData, transcriptions);
 
-      if (result.status === 'saved') {
+      if (result.status === 'confirm') {
+        setConfirmedNote(result.note_data);
+        if (result.transcription) setLatestTranscription(result.transcription);
+        setPhase('confirming');
+      } else if (result.status === 'saved') {
         setSuccessMsg(result.message);
         setPartialData(null);
+        setTranscriptions([]);
+        setLatestTranscription('');
+        setConfirmedNote(null);
         setPhase('saved');
         Speech.speak(result.message, { language: 'en-US', rate: 0.9 });
-        // Prepend to list
         if (result.note) {
           setNotes(prev => [result.note, ...prev]);
         }
-        // Return to idle after 3 s
         setTimeout(() => {
           setSuccessMsg('');
           setPhase('idle');
         }, 3500);
       } else {
-        // needs_info
+        // needs_info — store the transcription so the next call sends full history
         const q = result.question || 'Could you provide more details?';
         setQuestion(q);
         setPartialData(result.partial_data || null);
+        if (result.transcription) {
+          setLatestTranscription(result.transcription);
+          setTranscriptions(prev => [...prev, result.transcription]);
+        }
         setPhase('asking');
         Speech.speak(q, { language: 'en-US', rate: 0.9 });
       }
     } catch (e) {
-      setError(e.message || 'Something went wrong. Please try again.');
-      setPhase('idle');
+      const msg = e.message || '';
+      const isRateLimit = msg.toLowerCase().includes('busy') || msg.includes('429');
+      setError(
+        isRateLimit
+          ? 'The AI service is busy right now. Wait a few seconds and try again.'
+          : msg || 'Something went wrong. Please try again.'
+      );
+      setPhase(partialData ? 'asking' : 'idle');
     }
   };
 
@@ -163,6 +182,33 @@ export default function VoiceNoteScreen({ navigation }) {
     }
   };
 
+  const handleConfirm = async () => {
+    if (!confirmedNote) return;
+    setPhase('processing');
+    try {
+      const result = await documentsAPI.voiceNoteConfirm(confirmedNote);
+      setSuccessMsg(result.message);
+      setPartialData(null);
+      setTranscriptions([]);
+      setLatestTranscription('');
+      setConfirmedNote(null);
+      setPhase('saved');
+      Speech.speak(result.message, { language: 'en-US', rate: 0.9 });
+      if (result.note) setNotes(prev => [result.note, ...prev]);
+      setTimeout(() => { setSuccessMsg(''); setPhase('idle'); }, 3500);
+    } catch (e) {
+      setError(e.message || 'Save failed. Please try again.');
+      setPhase('confirming');
+    }
+  };
+
+  const handleReRecord = () => {
+    // Keep partialData & transcriptions so the next recording keeps context
+    setConfirmedNote(null);
+    setLatestTranscription('');
+    setPhase('asking');
+  };
+
   // ── Conversation bubble ──────────────────────────────────────────────────
   const renderBubble = () => {
     if (phase === 'processing') {
@@ -178,6 +224,16 @@ export default function VoiceNoteScreen({ navigation }) {
         <View style={[s.bubble, s.bubbleGreen]}>
           <FontAwesome5 name="check-circle" size={16} color={C.green} style={{ marginRight: 8 }} />
           <Text style={[s.bubbleText, { color: C.green }]}>{successMsg}</Text>
+        </View>
+      );
+    }
+    if (phase === 'confirming') {
+      return (
+        <View style={[s.bubble, s.bubbleAmber]}>
+          <FontAwesome5 name="exclamation-circle" size={14} color={C.amber} style={{ marginRight: 8 }} />
+          <Text style={[s.bubbleText, { color: '#92400e', flex: 1 }]}>
+            Please review the note below before saving.
+          </Text>
         </View>
       );
     }
@@ -210,6 +266,48 @@ export default function VoiceNoteScreen({ navigation }) {
     );
   };
 
+  // ── Partial data preview ─────────────────────────────────────────────────
+  const renderPartialPreview = () => {
+    if (phase === 'idle' || phase === 'saved') return null;
+
+    // In confirming phase use the fully matched data
+    let title = '', content = '', caseStr = '';
+    if (phase === 'confirming' && confirmedNote) {
+      title    = confirmedNote.title   || '';
+      content  = confirmedNote.content || '';
+      caseStr  = confirmedNote.case_number
+        ? `${confirmedNote.case_number} — ${confirmedNote.case_title}`
+        : '';
+    } else if (partialData) {
+      title    = partialData.title           || '';
+      content  = partialData.content         || '';
+      caseStr  = partialData.case_identifier || '';
+    }
+
+    if (!title && !content && !caseStr) return null;
+
+    const Row = ({ label, value }) => (
+      <View style={s.previewRow}>
+        <FontAwesome5
+          name={value ? 'check-circle' : 'circle'}
+          size={13}
+          color={value ? C.green : 'rgba(255,255,255,0.4)'}
+          style={{ width: 18 }}
+        />
+        <Text style={s.previewLabel}>{label}</Text>
+        <Text style={s.previewValue} numberOfLines={1}>{value || '—'}</Text>
+      </View>
+    );
+
+    return (
+      <View style={s.previewCard}>
+        <Row label="Title"   value={title} />
+        <Row label="Content" value={content} />
+        <Row label="Case"    value={caseStr} />
+      </View>
+    );
+  };
+
   // ── Note list item ───────────────────────────────────────────────────────
   const extractTitle = content => {
     const match = content?.match(/^\*\*(.+?)\*\*/);
@@ -224,6 +322,45 @@ export default function VoiceNoteScreen({ navigation }) {
     if (diff === 0) return 'Today';
     if (diff === 1) return 'Yesterday';
     return d.toLocaleDateString();
+  };
+
+  // ── Confirmation card ─────────────────────────────────────────────────────
+  const renderConfirmCard = () => {
+    if (!confirmedNote) return null;
+    const { title, content, case_number, case_title } = confirmedNote;
+    return (
+      <View style={s.confirmCard}>
+        <Text style={s.confirmCardTitle}>Review before saving</Text>
+
+        <View style={s.confirmField}>
+          <Text style={s.confirmFieldLabel}>Title</Text>
+          <Text style={s.confirmFieldValue}>{title}</Text>
+        </View>
+        <View style={s.confirmField}>
+          <Text style={s.confirmFieldLabel}>Content</Text>
+          <Text style={s.confirmFieldValue}>{content}</Text>
+        </View>
+        <View style={s.confirmField}>
+          <Text style={s.confirmFieldLabel}>Case</Text>
+          <Text style={s.confirmFieldValue}>{case_number} — {case_title}</Text>
+        </View>
+
+        {!!error && (
+          <Text style={{ color: C.red, fontSize: 12, marginTop: 6 }}>{error}</Text>
+        )}
+
+        <View style={s.confirmActions}>
+          <TouchableOpacity style={s.confirmBtnSave} onPress={handleConfirm}>
+            <FontAwesome5 name="check" size={14} color={C.white} style={{ marginRight: 6 }} />
+            <Text style={s.confirmBtnSaveText}>Save Note</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.confirmBtnRedo} onPress={handleReRecord}>
+            <FontAwesome5 name="microphone" size={14} color={C.dark} style={{ marginRight: 6 }} />
+            <Text style={s.confirmBtnRedoText}>Re-record</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -244,88 +381,108 @@ export default function VoiceNoteScreen({ navigation }) {
       </View>
 
       {/* Recorder area */}
-      <View style={s.recorderArea}>
+      <View style={[s.recorderArea, phase === 'confirming' && { paddingVertical: 8 }]}>
 
         {/* Conversation bubble */}
         <View style={s.bubbleWrap}>{renderBubble()}</View>
 
-        {/* Timer */}
-        <Text style={s.timer}>{fmt(seconds)}</Text>
-        <Text style={s.timerSub}>
-          {phase === 'recording'
-            ? (isPaused ? 'Paused' : 'Recording…')
-            : phase === 'processing'
-            ? 'Analysing…'
-            : 'Tap to start'}
-        </Text>
+        {/* Extracted fields preview */}
+        {renderPartialPreview()}
 
-        {/* Waveform */}
-        <View style={s.waveform}>
-          {Array.from({ length: 24 }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                s.waveBar,
-                {
-                  height: isActive && !isPaused ? 8 + Math.random() * 32 : 12,
-                  backgroundColor: isActive ? C.white : 'rgba(255,255,255,0.3)',
-                },
-              ]}
-            />
-          ))}
-        </View>
-
-        {/* Pulse ring + mic button */}
-        <Animated.View
-          style={[
-            s.pulseRing,
-            { transform: [{ scale: isActive ? pulseAnim : 1 }], opacity: isActive ? 0.3 : 0 },
-          ]}
-        />
-        <TouchableOpacity
-          style={[s.recordBtn, isActive && s.recordBtnActive]}
-          onPress={canTapMic ? handleMicButton : undefined}
-          disabled={phase === 'processing' || phase === 'saved'}
-        >
-          {phase === 'processing' ? (
-            <ActivityIndicator color={C.red} size="large" />
-          ) : (
-            <FontAwesome5
-              name={isActive ? 'stop' : 'microphone'}
-              size={28}
-              color={isActive ? C.red : C.white}
-            />
-          )}
-        </TouchableOpacity>
-
-        {/* Controls (only while recording) */}
-        {phase === 'recording' && (
-          <View style={s.controls}>
-            <TouchableOpacity style={s.controlBtn} onPress={togglePause}>
-              <FontAwesome5 name={isPaused ? 'play' : 'pause'} size={18} color={C.white} />
-              <Text style={s.controlLabel}>{isPaused ? 'Resume' : 'Pause'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.controlBtn, { backgroundColor: 'rgba(255,255,255,0.3)' }]}
-              onPress={discardRecording}
-            >
-              <FontAwesome5 name="trash" size={18} color={C.white} />
-              <Text style={s.controlLabel}>Discard</Text>
-            </TouchableOpacity>
+        {/* Last transcription */}
+        {!!latestTranscription && phase !== 'recording' && phase !== 'idle' && (
+          <View style={s.transcriptBox}>
+            <FontAwesome5 name="quote-left" size={10} color="rgba(255,255,255,0.5)" style={{ marginRight: 6, marginTop: 2 }} />
+            <Text style={s.transcriptText} numberOfLines={3}>{latestTranscription}</Text>
           </View>
         )}
 
-        <Text style={s.hint}>
-          {phase === 'recording' ? 'Tap stop to submit' : 'Max 30 minutes per recording'}
-        </Text>
+        {/* Timer + waveform — hidden during confirmation */}
+        {phase !== 'confirming' && <>
+          <Text style={s.timer}>{fmt(seconds)}</Text>
+          <Text style={s.timerSub}>
+            {phase === 'recording'
+              ? (isPaused ? 'Paused' : 'Recording…')
+              : phase === 'processing'
+              ? 'Analysing…'
+              : 'Tap to start'}
+          </Text>
+          <View style={s.waveform}>
+            {Array.from({ length: 24 }).map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  s.waveBar,
+                  {
+                    height: isActive && !isPaused ? 8 + Math.random() * 32 : 12,
+                    backgroundColor: isActive ? C.white : 'rgba(255,255,255,0.3)',
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        </>}
+
+        {/* Mic button + controls + hint — hidden during confirmation */}
+        {phase !== 'confirming' && <>
+          <Animated.View
+            style={[
+              s.pulseRing,
+              { transform: [{ scale: isActive ? pulseAnim : 1 }], opacity: isActive ? 0.3 : 0 },
+            ]}
+          />
+          <TouchableOpacity
+            style={[s.recordBtn, isActive && s.recordBtnActive]}
+            onPress={canTapMic ? handleMicButton : undefined}
+            disabled={phase === 'processing' || phase === 'saved'}
+          >
+            {phase === 'processing' ? (
+              <ActivityIndicator color={C.red} size="large" />
+            ) : (
+              <FontAwesome5
+                name={isActive ? 'stop' : 'microphone'}
+                size={28}
+                color={isActive ? C.red : C.white}
+              />
+            )}
+          </TouchableOpacity>
+          {phase === 'recording' && (
+            <View style={s.controls}>
+              <TouchableOpacity style={s.controlBtn} onPress={togglePause}>
+                <FontAwesome5 name={isPaused ? 'play' : 'pause'} size={18} color={C.white} />
+                <Text style={s.controlLabel}>{isPaused ? 'Resume' : 'Pause'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.controlBtn, { backgroundColor: 'rgba(255,255,255,0.3)' }]}
+                onPress={discardRecording}
+              >
+                <FontAwesome5 name="trash" size={18} color={C.white} />
+                <Text style={s.controlLabel}>Discard</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <Text style={s.hint}>
+            {phase === 'recording' ? 'Tap stop to submit' : 'Max 30 minutes per recording'}
+          </Text>
+        </>}
       </View>
 
-      {/* Saved notes */}
+      {/* Confirmation card OR saved notes list */}
       <View style={s.listArea}>
+        {phase === 'confirming' ? (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 32 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            {renderConfirmCard()}
+          </ScrollView>
+        ) : null}
+        {phase !== 'confirming' && (
         <Text style={s.listTitle}>
           Saved Voice Notes ({notes.length})
-        </Text>
-        {loadingNotes ? (
+        </Text>)}
+        {phase !== 'confirming' && (loadingNotes ? (
           <ActivityIndicator color={C.red} style={{ marginTop: 20 }} />
         ) : notes.length === 0 ? (
           <Text style={s.emptyText}>No voice notes yet. Record your first one above.</Text>
@@ -347,7 +504,7 @@ export default function VoiceNoteScreen({ navigation }) {
               </View>
             ))}
           </ScrollView>
-        )}
+        ))}
       </View>
     </SafeAreaView>
   );
@@ -406,6 +563,31 @@ const s = StyleSheet.create({
   controlLabel: { fontSize: 13, color: C.white, fontWeight: '600' },
   hint: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
 
+  transcriptBox: {
+    width: '100%', flexDirection: 'row', alignItems: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8,
+  },
+  transcriptText: {
+    flex: 1, fontSize: 12, color: 'rgba(255,255,255,0.85)',
+    fontStyle: 'italic', lineHeight: 18,
+  },
+
+  previewCard: {
+    width: '100%', backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    marginBottom: 10, gap: 6,
+  },
+  previewRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  previewLabel: {
+    fontSize: 12, color: 'rgba(255,255,255,0.6)', width: 52,
+  },
+  previewValue: {
+    fontSize: 12, color: C.white, fontWeight: '600', flex: 1,
+  },
+
   listArea: {
     flex: 1, backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingHorizontal: 20, paddingTop: 20,
@@ -423,4 +605,29 @@ const s = StyleSheet.create({
   },
   recTitle: { fontSize: 14, fontWeight: '600', color: C.dark },
   recMeta:  { fontSize: 12, color: C.gray500, marginTop: 2 },
+
+  confirmCard: {
+    backgroundColor: C.white, borderRadius: 16,
+    paddingHorizontal: 4, paddingTop: 4, paddingBottom: 8,
+  },
+  confirmCardTitle: {
+    fontSize: 15, fontWeight: '700', color: C.dark, marginBottom: 14,
+  },
+  confirmField: {
+    borderBottomWidth: 1, borderBottomColor: C.gray100,
+    paddingVertical: 10, gap: 2,
+  },
+  confirmFieldLabel: { fontSize: 11, color: C.gray400, textTransform: 'uppercase', letterSpacing: 0.5 },
+  confirmFieldValue: { fontSize: 14, color: C.dark, fontWeight: '500' },
+  confirmActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  confirmBtnSave: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.green, borderRadius: 12, paddingVertical: 13,
+  },
+  confirmBtnSaveText: { color: C.white, fontWeight: '700', fontSize: 14 },
+  confirmBtnRedo: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.gray100, borderRadius: 12, paddingVertical: 13,
+  },
+  confirmBtnRedoText: { color: C.dark, fontWeight: '600', fontSize: 14 },
 });

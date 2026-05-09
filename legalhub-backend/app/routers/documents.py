@@ -1,8 +1,10 @@
+import asyncio
 import uuid
 import re
 import unicodedata
 import logging
 from urllib.parse import unquote
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
@@ -49,6 +51,31 @@ def _mistral_headers() -> dict:
     if not settings.MISTRAL_API_KEY:
         raise HTTPException(status_code=503, detail="Mistral AI service not configured")
     return {"Authorization": f"Bearer {settings.MISTRAL_API_KEY}"}
+
+async def _mistral_post(url: str, max_retries: int = 3, **kwargs) -> httpx.Response:
+    """POST to Mistral with exponential-backoff retry on 429."""
+    delay = 5
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for attempt in range(max_retries + 1):
+            resp = await client.post(url, **kwargs)
+            if resp.status_code == 429 and attempt < max_retries:
+                wait = delay
+                try:
+                    wait = int(float(resp.headers.get("retry-after", delay)))
+                except (ValueError, TypeError):
+                    wait = delay
+                logger.warning("Mistral rate-limited; waiting %ds (attempt %d/%d)", wait, attempt + 1, max_retries)
+                await asyncio.sleep(wait)
+                delay = min(delay * 2, 60)
+                continue
+            if resp.status_code == 429:
+                raise HTTPException(
+                    status_code=429,
+                    detail="The AI service is busy. Please wait a moment and try again.",
+                )
+            resp.raise_for_status()
+            return resp
+    raise HTTPException(status_code=429, detail="The AI service is busy. Please wait a moment and try again.")
 
 # ─── GET /api/documents ─────────────────────────────────
 
@@ -262,49 +289,65 @@ _NOTE_TOOLS = [
 async def voice_note_ai(
     file: UploadFile = File(...),
     partial_data: Optional[str] = Form(None),
+    prior_transcriptions: Optional[str] = Form(None),
     current_user=Depends(get_lawyer),
 ):
     """
-    Mistral/Voxtral pipeline: STT → LLM (tool calling) → save note or ask for missing field.
+    Mistral/Voxtral pipeline: STT → LLM (tool calling) → save note or ask.
+
+    The frontend accumulates raw transcriptions and sends them back each turn
+    via prior_transcriptions. The backend combines them so the LLM always sees
+    the full conversation. partial_data carries already-confirmed field values
+    as a safety fallback in case the LLM misses something.
 
     Returns:
-      { status: "saved",     message, note }
+      { status: "saved",      message, note }
       { status: "needs_info", transcription, question, missing_fields, partial_data }
     """
     import json
-    import httpx
 
     headers = _mistral_headers()
 
-    # Parse accumulated data from prior turns
+    # ── Parse prior context ──────────────────────────────────────────────────
+    # existing: already-extracted fields (title, content, case_identifier)
     existing: dict = {}
     if partial_data:
         try:
             existing = json.loads(partial_data)
+            existing.pop("_history", None)   # drop legacy key if present
         except Exception:
             existing = {}
 
-    # Read uploaded audio
-    audio_content = await file.read()
-    file_name = file.filename or "voice.m4a"
-    content_type = file.content_type or "audio/mp4"
+    # prior: raw transcriptions from earlier recordings, sent by the frontend
+    prior: list = []
+    if prior_transcriptions:
+        try:
+            prior = json.loads(prior_transcriptions)
+            if not isinstance(prior, list):
+                prior = []
+        except Exception:
+            prior = []
 
-    # ── Step 1: STT via Voxtral (/v1/audio/transcriptions) ──────────────────
+    # ── Step 1: STT ──────────────────────────────────────────────────────────
+    audio_content = await file.read()
+    file_name     = file.filename or "voice.m4a"
+    content_type  = file.content_type or "audio/mp4"
+
     try:
-        async with httpx.AsyncClient(timeout=60.0) as http:
-            stt_resp = await http.post(
-                f"{MISTRAL_BASE}/audio/transcriptions",
-                headers=headers,
-                files={"file": (file_name, audio_content, content_type)},
-                data={"model": "voxtral-mini-2507"},
-            )
-            stt_resp.raise_for_status()
-            transcription: str = stt_resp.json().get("text", "")
+        stt_resp = await _mistral_post(
+            f"{MISTRAL_BASE}/audio/transcriptions",
+            headers=headers,
+            files={"file": (file_name, audio_content, content_type)},
+            data={"model": "voxtral-mini-2507"},
+        )
+        transcription: str = stt_resp.json().get("text", "")
+    except HTTPException:
+        raise
     except httpx.HTTPStatusError as exc:
-        logger.error(f"Voxtral STT failed: {exc.response.text}")
+        logger.error("Voxtral STT failed: %s", exc.response.text)
         raise HTTPException(status_code=500, detail=f"Speech transcription failed: {exc.response.text}")
     except Exception as exc:
-        logger.error(f"Voxtral STT error: {exc!r}")
+        logger.error("Voxtral STT error: %r", exc)
         raise HTTPException(status_code=500, detail=f"Speech transcription failed: {exc}")
 
     if not transcription.strip():
@@ -316,7 +359,7 @@ async def voice_note_ai(
             "partial_data": existing,
         }
 
-    # ── Step 2: Fetch available cases for context ────────────────────────────
+    # ── Step 2: Fetch cases ──────────────────────────────────────────────────
     cases_res = (
         supabase.table("case_file")
         .select("id, case_number, title")
@@ -324,11 +367,22 @@ async def voice_note_ai(
         .limit(100)
         .execute()
     )
-    cases = cases_res.data or []
+    cases      = cases_res.data or []
     cases_list = "\n".join(f"- {c['case_number']}: {c['title']}" for c in cases) or "No cases found."
 
-    # ── Step 3: LLM extraction with tool calling ─────────────────────────────
-    partial_str = json.dumps(existing, ensure_ascii=False) if existing else "none"
+    # ── Step 3: Build LLM prompt ─────────────────────────────────────────────
+    # Combine ALL recordings into one user message so the LLM sees everything.
+    all_recordings = prior + [transcription]
+    if len(all_recordings) > 1:
+        lines = "\n".join(
+            f"[Recording {i + 1}]: {t}" for i, t in enumerate(all_recordings)
+        )
+        user_content = (
+            f"The user made {len(all_recordings)} separate voice recordings. "
+            f"Use ALL of them together to extract the note data:\n\n{lines}"
+        )
+    else:
+        user_content = transcription
 
     llm_payload = {
         "model": "mistral-large-latest",
@@ -337,132 +391,180 @@ async def voice_note_ai(
                 "role": "system",
                 "content": (
                     "You are a legal assistant that extracts voice note data.\n"
-                    "You must extract exactly three fields from what the user said:\n"
-                    "  • title         — short, descriptive note title\n"
-                    "  • content       — full note body text\n"
-                    "  • case_identifier — case number or case title from the available list\n\n"
-                    f"Already extracted in this conversation: {partial_str}\n\n"
+                    "Extract exactly three fields:\n"
+                    "  • title           — short, descriptive note title\n"
+                    "  • content         — full note body\n"
+                    "  • case_identifier — case number or title from the list below\n\n"
                     f"Available cases:\n{cases_list}\n\n"
                     "Rules:\n"
-                    "1. If all three fields are present and the case matches an available case, call save_note.\n"
-                    "2. If any field is missing or the case cannot be matched, call request_clarification "
-                    "   with a short, natural question asking for ONE missing piece.\n"
-                    "3. Preserve already-extracted fields in partial_data when calling request_clarification."
+                    "1. If all three fields are identifiable and the case matches, call save_note.\n"
+                    "2. Otherwise call request_clarification with one short question for the ONE missing piece.\n"
+                    "3. In request_clarification.partial_data always echo back every field you did extract."
                 ),
             },
-            {"role": "user", "content": f'User said: "{transcription}"'},
+            {"role": "user", "content": user_content},
         ],
         "tools": _NOTE_TOOLS,
         "tool_choice": "any",
     }
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as http:
-            llm_resp = await http.post(
-                f"{MISTRAL_BASE}/chat/completions",
-                headers={**headers, "Content-Type": "application/json"},
-                json=llm_payload,
-            )
-            llm_resp.raise_for_status()
-            llm_data = llm_resp.json()
+        llm_resp = await _mistral_post(
+            f"{MISTRAL_BASE}/chat/completions",
+            headers={**headers, "Content-Type": "application/json"},
+            json=llm_payload,
+        )
+        llm_data = llm_resp.json()
+    except HTTPException:
+        raise
     except httpx.HTTPStatusError as exc:
-        logger.error(f"Mistral LLM failed: {exc.response.text}")
+        logger.error("Mistral LLM failed: %s", exc.response.text)
         raise HTTPException(status_code=500, detail=f"LLM extraction failed: {exc.response.text}")
     except Exception as exc:
-        logger.error(f"Mistral LLM error: {exc!r}")
+        logger.error("Mistral LLM error: %r", exc)
         raise HTTPException(status_code=500, detail=f"LLM extraction failed: {exc}")
 
     msg = llm_data["choices"][0]["message"]
 
-    # ── Step 4: Handle tool call ─────────────────────────────────────────────
-    if not msg.get("tool_calls"):
-        return {
-            "status": "needs_info",
-            "transcription": transcription,
-            "question": "Could you please say the note title, content, and case name?",
-            "missing_fields": ["title", "content", "case_identifier"],
-            "partial_data": existing,
-        }
+    # ── Step 4: Parse LLM tool call ──────────────────────────────────────────
+    llm_fields   = {}   # field values the LLM extracted
+    llm_question = None
+    llm_missing  = []
 
-    tool_call = msg["tool_calls"][0]
-    func_name = tool_call["function"]["name"]
-    args = json.loads(tool_call["function"]["arguments"])
+    if msg.get("tool_calls"):
+        tc        = msg["tool_calls"][0]
+        func_name = tc["function"]["name"]
+        try:
+            tc_args = json.loads(tc["function"]["arguments"])
+        except Exception:
+            tc_args = {}
 
-    if func_name == "save_note":
-        identifier = args.get("case_identifier", "").lower().strip()
+        if func_name == "save_note":
+            llm_fields = tc_args
+        else:
+            # request_clarification: fields are nested under partial_data
+            llm_question = tc_args.get("question")
+            llm_missing  = tc_args.get("missing_fields", [])
+            pd = tc_args.get("partial_data") or {}
+            llm_fields = {k: v for k, v in pd.items() if v and str(v).strip()}
 
-        # Fuzzy-match case
+    # ── Step 5: Backend merge ────────────────────────────────────────────────
+    # existing (confirmed from prior turns) wins over an empty LLM value;
+    # a non-empty LLM value overwrites existing (user may have corrected it).
+    def pick(key):
+        v = (llm_fields.get(key) or "").strip()
+        return v if v else existing.get(key, "")
+
+    note_title   = pick("title")
+    note_content = pick("content")
+    note_case_id = pick("case_identifier")
+
+    # ── Step 6: Save immediately if all three fields are present ─────────────
+    # We do this regardless of which tool the LLM called: if the merge gives us
+    # everything we need, there is no reason to ask another question.
+    if note_title and note_content and note_case_id:
+        identifier   = note_case_id.lower().strip()
         matched_case = None
+
         for c in cases:
             num = c["case_number"].lower()
-            title = c["title"].lower()
-            if identifier in num or identifier in title or num in identifier or title in identifier:
+            ttl = c["title"].lower()
+            if identifier in num or identifier in ttl or num in identifier or ttl in identifier:
                 matched_case = c
                 break
-
-        # Fallback: substring word match
         if not matched_case:
-            words = identifier.split()
+            words = [w for w in identifier.split() if len(w) > 2]
             for c in cases:
                 haystack = f"{c['case_number']} {c['title']}".lower()
-                if any(w in haystack for w in words if len(w) > 2):
+                if any(w in haystack for w in words):
                     matched_case = c
                     break
 
-        if not matched_case:
+        if matched_case:
+            # Return data for user confirmation before writing to DB
             return {
-                "status": "needs_info",
+                "status": "confirm",
                 "transcription": transcription,
-                "question": (
-                    f"I couldn't find a case matching '{args['case_identifier']}'. "
-                    "Could you say the case number or name more clearly?"
-                ),
-                "missing_fields": ["case_identifier"],
-                "partial_data": {
-                    "title": args.get("title"),
-                    "content": args.get("content"),
+                "note_data": {
+                    "title":       note_title,
+                    "content":     note_content,
+                    "case_id":     matched_case["id"],
+                    "case_number": matched_case["case_number"],
+                    "case_title":  matched_case["title"],
                 },
             }
 
-        # Store title embedded in content (same convention as AddNoteScreen)
-        formatted_content = f"**{args['title']}**\n{args['content']}"
-
-        note_res = supabase.table("note").insert(
-            {
-                "firm_id": current_user["firm_id"],
-                "case_id": matched_case["id"],
-                "lawyer_id": current_user["id"],
-                "content": formatted_content,
-                "is_voice_note": True,
-            }
-        ).execute()
-
-        supabase.table("case_timeline").insert(
-            {
-                "case_id": matched_case["id"],
-                "firm_id": current_user["firm_id"],
-                "action": f"Voice note added: {args['title']}",
-                "performed_by": current_user["id"],
-            }
-        ).execute()
-
+        # All fields present but case not matched → ask only for the case
         return {
-            "status": "saved",
+            "status": "needs_info",
             "transcription": transcription,
-            "message": (
-                f"Note '{args['title']}' saved successfully "
-                f"for case {matched_case['case_number']}."
+            "question": (
+                f"I couldn't find a case matching '{note_case_id}'. "
+                "Could you say the case number or name more clearly?"
             ),
-            "note": note_res.data[0],
+            "missing_fields": ["case_identifier"],
+            "partial_data": {"title": note_title, "content": note_content},
         }
 
-    # request_clarification
+    # ── Step 7: Still missing fields → ask the user ──────────────────────────
+    still_missing = llm_missing or [
+        f for f in ["title", "content", "case_identifier"]
+        if not {"title": note_title, "content": note_content, "case_identifier": note_case_id}[f]
+    ]
+    question = llm_question or f"Could you provide the {', '.join(still_missing)}?"
+    partial  = {k: v for k, v in {
+        "title": note_title, "content": note_content, "case_identifier": note_case_id,
+    }.items() if v}
     return {
         "status": "needs_info",
         "transcription": transcription,
-        "question": args.get("question", "Could you provide more details?"),
-        "missing_fields": args.get("missing_fields", []),
-        "partial_data": args.get("partial_data", existing),
+        "question": question,
+        "missing_fields": still_missing,
+        "partial_data": partial,
+    }
+
+
+# ─── POST /api/documents/voice-note-ai/confirm ──────────
+
+@router.post("/voice-note-ai/confirm", status_code=201)
+async def voice_note_ai_confirm(
+    note_data: str = Form(...),
+    current_user=Depends(get_lawyer),
+):
+    """Save a voice note that the user has confirmed on the client side."""
+    import json
+    try:
+        data = json.loads(note_data)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid note_data JSON")
+
+    title       = (data.get("title") or "").strip()
+    content     = (data.get("content") or "").strip()
+    case_id     = (data.get("case_id") or "").strip()
+    case_number = data.get("case_number", "")
+
+    if not title or not content or not case_id:
+        raise HTTPException(status_code=400, detail="title, content, and case_id are required")
+
+    note_res = supabase.table("note").insert({
+        "firm_id":       current_user["firm_id"],
+        "case_id":       case_id,
+        "lawyer_id":     current_user["id"],
+        "content":       f"**{title}**\n{content}",
+        "is_voice_note": True,
+    }).execute()
+
+    supabase.table("case_timeline").insert({
+        "case_id":      case_id,
+        "firm_id":      current_user["firm_id"],
+        "action":       f"Voice note added: {title}",
+        "performed_by": current_user["id"],
+    }).execute()
+
+    return {
+        "status": "saved",
+        "message": f"Note '{title}' saved successfully for case {case_number}.",
+        "note": note_res.data[0],
     }
 
 

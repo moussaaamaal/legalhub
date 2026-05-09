@@ -146,11 +146,13 @@ export const documentsAPI = {
     return data;
   },
 
-  voiceNoteAI: async (audioUri, partialData = null) => {
+  voiceNoteAI: async (audioUri, partialData = null, priorTranscriptions = []) => {
     const token = await getStoredToken();
     const formData = new FormData();
     formData.append('file', { uri: audioUri, name: 'voice.m4a', type: 'audio/mp4' });
     if (partialData) formData.append('partial_data', JSON.stringify(partialData));
+    if (priorTranscriptions.length > 0)
+      formData.append('prior_transcriptions', JSON.stringify(priorTranscriptions));
 
     const res = await fetch(`${BASE_URL}/api/documents/voice-note-ai`, {
       method: 'POST',
@@ -159,6 +161,20 @@ export const documentsAPI = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Voice AI request failed');
+    return data;
+  },
+
+  voiceNoteConfirm: async (noteData) => {
+    const token = await getStoredToken();
+    const formData = new FormData();
+    formData.append('note_data', JSON.stringify(noteData));
+    const res = await fetch(`${BASE_URL}/api/documents/voice-note-ai/confirm`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Save failed');
     return data;
   },
 
