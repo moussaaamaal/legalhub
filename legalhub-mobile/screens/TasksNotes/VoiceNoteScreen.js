@@ -118,6 +118,9 @@ export default function VoiceNoteScreen({ navigation, route }) {
       if (result.status === 'confirm') {
         setConfirmedNote(result.note_data);
         if (result.transcription) setLatestTranscription(result.transcription);
+        if (result.note_data?.case_number) {
+          setPartialData(prev => ({ ...(prev || {}), case_identifier: result.note_data.case_number }));
+        }
         setPhase('confirming');
       } else if (result.status === 'saved') {
         setSuccessMsg(result.message);
