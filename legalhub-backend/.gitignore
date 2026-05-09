@@ -1,0 +1,60 @@
+# 🔹 Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 🔹 Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# 🔹 Environment variables (important 🔒)
+.env
+.env.*
+
+# 🔹 Logs
+*.log
+
+# 🔹 SQLite database
+*.sqlite3
+db.sqlite3
+
+# 🔹 VS Code
+.vscode/
+
+# 🔹 PyCharm
+.idea/
+
+# 🔹 Mac / Windows
+.DS_Store
+Thumbs.db
+
+# 🔹 Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# 🔹 Jupyter Notebook
+.ipynb_checkpoints
+
+# 🔹 Coverage / testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 🔹 Migrations (optionnel selon ton projet)
+# migrations/
+# alembic/versions/
+
+# 🔹 Static / media files (si backend web type Django/Flask)
+staticfiles/
+media/
+
+# 🔹 Docker (si utilisé)
+*.pid
+*.sock
+
+# 🔹 Secrets / keys
+*.pem
+*.key
