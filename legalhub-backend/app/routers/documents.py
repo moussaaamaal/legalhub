@@ -86,11 +86,21 @@ async def list_documents(
     status: Optional[str] = None,
     current_user=Depends(get_lawyer)
 ):
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
     query = (
         supabase.table("document")
         .select("*, case_file(id, title, case_number)")
         .eq("firm_id", current_user["firm_id"])
     )
+
+    if not is_admin:
+        team = supabase.table("case_team").select("case_id").eq("user_id", current_user["id"]).execute()
+        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
+        if not lawyer_case_ids:
+            return []
+        query = query.in_("case_id", lawyer_case_ids)
+
     if case_id:
         query = query.eq("case_id", case_id)
     if category:
@@ -163,74 +173,6 @@ async def upload_document(
 
     return result.data[0]
 
-# ─── POST /api/documents/voice-note ─────────────────────
-
-@router.post("/voice-note", status_code=201)
-async def upload_voice_note(
-    file: UploadFile = File(...),
-    case_id: str = Form(...),
-    current_user=Depends(get_lawyer)
-):
-    """Upload an audio file; AI auto-transcribes it and saves as a case note."""
-    audio_content = await file.read()
-    file_name     = file.filename
-
-    storage_path = f"{current_user['firm_id']}/{case_id}/voice/{uuid.uuid4()}_{file_name}"
-    supabase_admin.storage.from_("documents").upload(storage_path, audio_content)
-    storage_url = supabase_admin.storage.from_("documents").get_public_url(storage_path)
-
-    # Save the audio file record
-    doc = supabase.table("document").insert({
-        "firm_id":     current_user["firm_id"],
-        "case_id":     case_id,
-        "uploaded_by": current_user["id"],
-        "file_name":   file_name,
-        "file_type":   "OTHER",
-        "file_size_mb": round(len(audio_content) / (1024 * 1024), 4),
-        "storage_url": storage_url,
-        "category":    DocumentCategory.VOICE_TRANSCRIPT,
-        "status":      DocumentStatus.APPROVED,
-    }).execute()
-
-    transcript = None
-    if settings.OPENAI_API_KEY:
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
-            # Whisper requires a file-like object with a name attribute
-            import io
-            audio_file = io.BytesIO(audio_content)
-            audio_file.name = file_name
-            response = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-            )
-            transcript = response.text
-        except Exception:
-            transcript = None  # Transcription failed; note saved without text
-
-    # Save as a note linked to the case
-    note = supabase.table("note").insert({
-        "firm_id":     current_user["firm_id"],
-        "case_id":     case_id,
-        "lawyer_id":   current_user["id"],
-        "content":     transcript or f"[Voice note: {file_name} — transcription pending]",
-        "is_voice_note": True,
-        "document_id": doc.data[0]["id"],
-    }).execute()
-
-    supabase.table("case_timeline").insert({
-        "case_id":      case_id,
-        "firm_id":      current_user["firm_id"],
-        "action":       "Voice note uploaded and transcribed",
-        "performed_by": current_user["id"],
-    }).execute()
-
-    return {
-        "document": doc.data[0],
-        "note":     note.data[0],
-        "transcript": transcript,
-    }
 
 # ─── POST /api/documents/voice-note-ai ──────────────────
 
@@ -258,7 +200,7 @@ _NOTE_TOOLS = [
         "type": "function",
         "function": {
             "name": "request_clarification",
-            "description": "Ask the user for one piece of missing information.",
+            "description": "Ask the user for the pieces of missing information.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -398,7 +340,7 @@ async def voice_note_ai(
                     f"Available cases:\n{cases_list}\n\n"
                     "Rules:\n"
                     "1. If all three fields are identifiable and the case matches, call save_note.\n"
-                    "2. Otherwise call request_clarification with one short question for the ONE missing piece.\n"
+                    "2. Otherwise call request_clarification with one short question for the missing pieces.\n"
                     "3. In request_clarification.partial_data always echo back every field you did extract."
                 ),
             },
@@ -486,11 +428,9 @@ async def voice_note_ai(
                 "status": "confirm",
                 "transcription": transcription,
                 "note_data": {
-                    "title":       note_title,
-                    "content":     note_content,
-                    "case_id":     matched_case["id"],
-                    "case_number": matched_case["case_number"],
-                    "case_title":  matched_case["title"],
+                    "title":      note_title,
+                    "content":    note_content,
+                    "case_title": matched_case["title"],
                 },
             }
 
@@ -512,8 +452,26 @@ async def voice_note_ai(
         if not {"title": note_title, "content": note_content, "case_identifier": note_case_id}[f]
     ]
     question = llm_question or f"Could you provide the {', '.join(still_missing)}?"
+
+    # Resolve case_identifier to case title for display (if we can match it)
+    display_case = note_case_id
+    if note_case_id:
+        identifier = note_case_id.lower().strip()
+        for c in cases:
+            num = c["case_number"].lower()
+            ttl = c["title"].lower()
+            if identifier in num or identifier in ttl or num in identifier or ttl in identifier:
+                display_case = c["title"]
+                break
+        if display_case == note_case_id:
+            words = [w for w in identifier.split() if len(w) > 2]
+            for c in cases:
+                if any(w in f"{c['case_number']} {c['title']}".lower() for w in words):
+                    display_case = c["title"]
+                    break
+
     partial  = {k: v for k, v in {
-        "title": note_title, "content": note_content, "case_identifier": note_case_id,
+        "title": note_title, "content": note_content, "case_identifier": display_case,
     }.items() if v}
     return {
         "status": "needs_info",
@@ -538,13 +496,26 @@ async def voice_note_ai_confirm(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid note_data JSON")
 
-    title       = (data.get("title") or "").strip()
-    content     = (data.get("content") or "").strip()
-    case_id     = (data.get("case_id") or "").strip()
-    case_number = data.get("case_number", "")
+    title      = (data.get("title") or "").strip()
+    content    = (data.get("content") or "").strip()
+    case_title = (data.get("case_title") or "").strip()
 
-    if not title or not content or not case_id:
-        raise HTTPException(status_code=400, detail="title, content, and case_id are required")
+    if not title or not content or not case_title:
+        raise HTTPException(status_code=400, detail="title, content, and case_title are required")
+
+    # Re-resolve case_id from case_title server-side
+    cases_res = (
+        supabase.table("case_file")
+        .select("id, case_number, title")
+        .eq("firm_id", current_user["firm_id"])
+        .execute()
+    )
+    matched = next((c for c in (cases_res.data or []) if c["title"] == case_title), None)
+    if not matched:
+        raise HTTPException(status_code=404, detail=f"Case '{case_title}' not found")
+
+    case_id     = matched["id"]
+    case_number = matched["case_number"]
 
     note_res = supabase.table("note").insert({
         "firm_id":       current_user["firm_id"],

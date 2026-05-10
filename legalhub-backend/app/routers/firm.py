@@ -63,7 +63,7 @@ async def update_firm_profile(body: UpdateFirmProfileRequest, current_user=Depen
 # ─── GET /api/firm/team ─────────────────────────────────
 
 @router.get("/team")
-async def list_team(current_user=Depends(get_firm_admin)):
+async def list_team(current_user=Depends(get_lawyer)):
     result = (
         supabase.table("app_user")
         .select("id, full_name, email, role, phone, avatar_url, is_active, last_login_at, created_at")

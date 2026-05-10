@@ -19,7 +19,7 @@ const C = {
 export default function VoiceNoteScreen({ navigation, route }) {
   const lockedCase = route?.params?.lockedCase || null;
   const lockedPartial = lockedCase
-    ? { case_identifier: lockedCase.case_number || lockedCase.title }
+    ? { case_identifier: lockedCase.title }
     : null;
 
   const [phase, setPhase]             = useState('idle');
@@ -118,8 +118,8 @@ export default function VoiceNoteScreen({ navigation, route }) {
       if (result.status === 'confirm') {
         setConfirmedNote(result.note_data);
         if (result.transcription) setLatestTranscription(result.transcription);
-        if (result.note_data?.case_number) {
-          setPartialData(prev => ({ ...(prev || {}), case_identifier: result.note_data.case_number }));
+        if (result.note_data?.case_title) {
+          setPartialData(prev => ({ ...(prev || {}), case_identifier: result.note_data.case_title }));
         }
         setPhase('confirming');
       } else if (result.status === 'saved') {
@@ -214,7 +214,7 @@ export default function VoiceNoteScreen({ navigation, route }) {
     setConfirmedNote(null);
     setLatestTranscription('');
     if (lockedCase) {
-      setPartialData(prev => ({ ...(prev || {}), case_identifier: lockedCase.case_number || lockedCase.title }));
+      setPartialData(prev => ({ ...(prev || {}), case_identifier: lockedCase.title }));
     }
     setPhase('asking');
   };
@@ -288,20 +288,16 @@ export default function VoiceNoteScreen({ navigation, route }) {
     if (phase === 'confirming' && confirmedNote) {
       title    = confirmedNote.title   || '';
       content  = confirmedNote.content || '';
-      caseStr  = confirmedNote.case_number
-        ? `${confirmedNote.case_number} — ${confirmedNote.case_title}`
-        : '';
+      caseStr  = confirmedNote.case_title || '';
     } else if (partialData) {
       title    = partialData.title           || '';
       content  = partialData.content         || '';
       caseStr  = partialData.case_identifier || '';
     }
 
-    // If locked case and caseStr still empty, use the locked case label
+    // If locked case and caseStr still empty, fall back to the locked case title
     if (lockedCase && !caseStr) {
-      caseStr = lockedCase.case_number
-        ? `${lockedCase.case_number} — ${lockedCase.title}`
-        : lockedCase.title || '';
+      caseStr = lockedCase.title || '';
     }
 
     if (!title && !content && !caseStr) return null;
@@ -347,7 +343,7 @@ export default function VoiceNoteScreen({ navigation, route }) {
   // ── Confirmation card ─────────────────────────────────────────────────────
   const renderConfirmCard = () => {
     if (!confirmedNote) return null;
-    const { title, content, case_number, case_title } = confirmedNote;
+    const { title, content, case_title } = confirmedNote;
     return (
       <View style={s.confirmCard}>
         <Text style={s.confirmCardTitle}>Review before saving</Text>
@@ -362,7 +358,7 @@ export default function VoiceNoteScreen({ navigation, route }) {
         </View>
         <View style={s.confirmField}>
           <Text style={s.confirmFieldLabel}>Case</Text>
-          <Text style={s.confirmFieldValue}>{case_number} — {case_title}</Text>
+          <Text style={s.confirmFieldValue}>{case_title}</Text>
         </View>
 
         {!!error && (

@@ -4,7 +4,7 @@ import {
   StyleSheet, SafeAreaView, StatusBar, Image, Dimensions, ActivityIndicator, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { casesAPI, tasksAPI, documentsAPI, notesAPI, calendarAPI, billingAPI } from '../../services/api';
+import { casesAPI, tasksAPI, documentsAPI, notesAPI, calendarAPI, billingAPI, firmAPI } from '../../services/api';
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { Linking } from 'react-native';
@@ -310,13 +310,15 @@ const toTaskDisplay = (task) => {
     dueColor = C.primary;
   }
   return {
-    id:       task.id,
-    title:    task.title || 'Task',
-    due:      dueLabel,
+    id:          task.id,
+    title:       task.title || 'Task',
+    description: task.description || '',
+    due:         dueLabel,
     dueColor,
-    priority: TASK_PRI_MAP[(task.priority || '').toUpperCase()] || 'normal',
-    assignee: task.assigned_to_name || task.assigned_to || '',
-    done:     isDone,
+    priority:    TASK_PRI_MAP[(task.priority || '').toUpperCase()] || 'normal',
+    assignee:    task.app_user?.full_name || task.assigned_to_name || '',
+    createdBy:   task.created_user?.full_name || '',
+    done:        isDone,
   };
 };
 
@@ -465,10 +467,166 @@ const toTimelineDisplay = (item) => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  TEAM MANAGE MODAL
+// ═════════════════════════════════════════════════════════════════════════════
+function TeamManageModal({ visible, onClose, caseId, team, onTeamChange, assignedLawyerId }) {
+  const [firmMembers, setFirmMembers] = useState([]);
+  const [actionId, setActionId]       = useState(null);
+
+  useEffect(() => {
+    if (visible) {
+      firmAPI.getTeam().then(data => setFirmMembers(Array.isArray(data) ? data : [])).catch(() => {});
+    }
+  }, [visible]);
+
+  const teamIds = new Set((team || []).map(m => m.user_id || m.app_user?.id));
+  // Hide the assigned lawyer only if they're already in the team; otherwise keep them visible so they can be added
+  const visibleMembers = firmMembers.filter(m => {
+    const uid = m.user_id || m.id;
+    return !(uid === assignedLawyerId && teamIds.has(uid));
+  });
+
+  const handleAdd = async (userId) => {
+    setActionId(userId);
+    try {
+      await casesAPI.addTeamMember(caseId, userId);
+      onTeamChange();
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not add member.');
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleRemove = async (userId) => {
+    Alert.alert('Remove Member', 'Remove this member from the case?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        setActionId(userId);
+        try {
+          await casesAPI.removeTeamMember(caseId, userId);
+          onTeamChange();
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not remove member.');
+        } finally {
+          setActionId(null);
+        }
+      }},
+    ]);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={tm.overlay}>
+        <View style={tm.sheet}>
+          <View style={tm.header}>
+            <Text style={tm.title}>Manage Team</Text>
+            <TouchableOpacity onPress={onClose}>
+              <FontAwesome5 name="times" size={18} color={C.g600} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {visibleMembers.length === 0 ? (
+              <View style={tm.empty}>
+                <FontAwesome5 name="users" size={30} color={C.g300} />
+                <Text style={tm.emptyTxt}>No team members found</Text>
+              </View>
+            ) : visibleMembers.map(member => {
+              const uid      = member.user_id || member.id;
+              const name     = member.app_user?.full_name || member.full_name || 'Unknown';
+              const role     = member.app_user?.role || member.role || '';
+              const avatar   = member.app_user?.avatar_url || member.avatar_url || null;
+              const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+              const isOnTeam = teamIds.has(uid);
+              const isLead   = uid === assignedLawyerId;
+              const busy     = actionId === uid;
+              return (
+                <View key={uid} style={tm.memberRow}>
+                  {avatar
+                    ? <Image source={{ uri: avatar }} style={tm.avatar} />
+                    : <View style={[tm.avatar, tm.avatarFallback]}>
+                        <Text style={tm.avatarInitials}>{initials}</Text>
+                      </View>
+                  }
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={tm.memberName}>{name}</Text>
+                    {role ? <Text style={tm.memberRole}>{role}</Text> : null}
+                  </View>
+                  {busy ? (
+                    <ActivityIndicator size="small" color={C.primary} />
+                  ) : isLead && isOnTeam ? (
+                    <View style={tm.leadBadge}>
+                      <FontAwesome5 name="star" size={9} color={C.amber600} />
+                      <Text style={tm.leadTxt}>Lead</Text>
+                    </View>
+                  ) : isOnTeam ? (
+                    <TouchableOpacity style={tm.removBtn} onPress={() => handleRemove(uid)}>
+                      <FontAwesome5 name="user-minus" size={13} color={C.red600} />
+                      <Text style={tm.removTxt}>Remove</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={tm.addBtn} onPress={() => handleAdd(uid)}>
+                      <FontAwesome5 name="user-plus" size={13} color={C.white} />
+                      <Text style={tm.addTxt}>Add</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const tm = StyleSheet.create({
+  overlay:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet:          { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
+  header:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  title:          { fontSize: 18, fontWeight: '700', color: C.dark },
+  empty:          { alignItems: 'center', paddingVertical: 32, gap: 10 },
+  emptyTxt:       { fontSize: 14, color: C.g500 },
+  memberRow:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  avatar:         { width: 44, height: 44, borderRadius: 12 },
+  avatarFallback: { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' },
+  avatarInitials: { fontSize: 15, fontWeight: '800', color: C.primary },
+  memberName:     { fontSize: 14, fontWeight: '700', color: C.dark },
+  memberRole:     { fontSize: 12, color: C.g500, marginTop: 2 },
+  addBtn:         { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.primary, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
+  addTxt:         { fontSize: 12, fontWeight: '700', color: C.white },
+  removBtn:       { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.red50, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
+  removTxt:       { fontSize: 12, fontWeight: '700', color: C.red600 },
+  leadBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.amber50, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  leadTxt:        { fontSize: 11, fontWeight: '700', color: C.amber600 },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  TAB: OVERVIEW
 // ═════════════════════════════════════════════════════════════════════════════
-const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode, form, setForm }) => {
+const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode, form, setForm, team = [], caseId, onTeamChange, lawyerId }) => {
+  const [teamModal,   setTeamModal]   = useState(false);
+  const [removingId,  setRemovingId]  = useState(null);
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleRemoveMember = (userId, name) => {
+    Alert.alert('Remove Member', `Remove ${name} from this case?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        setRemovingId(userId);
+        try {
+          await casesAPI.removeTeamMember(caseId, userId);
+          onTeamChange?.();
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not remove member.');
+        } finally {
+          setRemovingId(null);
+        }
+      }},
+    ]);
+  };
+
+  const displayTeam = team;
 
   return (
     <View style={{ paddingTop: 4 }}>
@@ -687,6 +845,70 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
       </Card>
 
       {/* Upcoming Events */}
+      {/* Legal Team */}
+      <Card accent={C.teal600}>
+        <SectionHead
+          icon="users"
+          iconColor={C.teal600}
+          title="Legal Team"
+          action="Manage"
+          onAction={() => setTeamModal(true)}
+        />
+        {displayTeam.length === 0 ? (
+          <View style={ov.emptyBox}>
+            <FontAwesome5 name="user-plus" size={26} color={C.g300} />
+            <Text style={ov.emptyTxt}>No team members yet</Text>
+          </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {displayTeam.map(m => {
+              const uid      = m.user_id;
+              const name     = m.app_user?.full_name || 'Unknown';
+              const role     = m.app_user?.role || '';
+              const avatar   = m.app_user?.avatar_url || null;
+              const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+              const removing = removingId === uid;
+              const isLead   = uid === lawyerId;
+              return (
+                <View key={m.id ?? uid} style={ov.teamRow}>
+                  {avatar
+                    ? <Image source={{ uri: avatar }} style={ov.teamAvatar} />
+                    : <View style={[ov.teamAvatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: C.primary }}>{initials}</Text>
+                      </View>
+                  }
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={ov.teamName}>{name}</Text>
+                    {role ? <Text style={ov.teamRole}>{role}</Text> : null}
+                  </View>
+                  {isLead ? (
+                    <View style={ov.leadBadge}>
+                      <FontAwesome5 name="star" size={9} color={C.amber600} />
+                      <Text style={ov.leadBadgeTxt}>Lead</Text>
+                    </View>
+                  ) : removing ? (
+                    <ActivityIndicator size="small" color={C.red600} />
+                  ) : (
+                    <TouchableOpacity style={ov.teamRemoveBtn} onPress={() => handleRemoveMember(uid, name)}>
+                      <FontAwesome5 name="user-minus" size={13} color={C.red600} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </Card>
+
+      <TeamManageModal
+        visible={teamModal}
+        onClose={() => setTeamModal(false)}
+        caseId={caseId}
+        team={displayTeam}
+        assignedLawyerId={lawyerId}
+        onTeamChange={() => { setTeamModal(false); onTeamChange?.(); }}
+      />
+
       <Card accent={C.red600}>
         <SectionHead icon="calendar-alt" iconColor={C.red600} title="Upcoming Events" />
         {events.length === 0 ? (
@@ -801,6 +1023,15 @@ const ov = StyleSheet.create({
   tagTxt:        { fontSize: 12, fontWeight: '700', color: C.primary },
 
   // Events
+  // Team
+  teamRow:       { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g50, borderRadius: 14, padding: 12 },
+  teamAvatar:    { width: 44, height: 44, borderRadius: 12 },
+  teamName:      { fontSize: 13, fontWeight: '700', color: C.dark },
+  teamRole:      { fontSize: 11, color: C.g500, marginTop: 2 },
+  teamRemoveBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.red50, alignItems: 'center', justifyContent: 'center' },
+  leadBadge:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.amber50, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  leadBadgeTxt:  { fontSize: 10, fontWeight: '700', color: C.amber600 },
+
   emptyBox:      { alignItems: 'center', paddingVertical: 20, gap: 8 },
   emptyTxt:      { fontSize: 13, color: C.g400, fontWeight: '600' },
   evRow:         { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g50, borderRadius: 14, padding: 12, marginBottom: 10 },
@@ -840,6 +1071,24 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
   const [localDocs, setLocalDocs] = useState(documents);
 
   useEffect(() => { setLocalDocs(documents); }, [documents]);
+
+  const handleDeleteDoc = (doc) => {
+    Alert.alert('Delete Document', `Delete "${doc.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          await documentsAPI.delete(doc.id);
+          setLocalDocs(prev => {
+            const next = prev.filter(d => d.id !== doc.id);
+            onUploaded?.(next.length);
+            return next;
+          });
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not delete document.');
+        }
+      }},
+    ]);
+  };
 
   const items = localDocs.map(toDocDisplay);
   const count = stats.docs ?? items.length;
@@ -940,8 +1189,8 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
                 </TouchableOpacity>
               </View>
             </View>
-            <TouchableOpacity style={{ padding: 6 }}>
-              <FontAwesome5 name="ellipsis-v" size={14} color={C.g400} />
+            <TouchableOpacity style={{ padding: 6 }} onPress={() => handleDeleteDoc(doc)}>
+              <FontAwesome5 name="trash-alt" size={14} color={C.red500} />
             </TouchableOpacity>
           </View>
         ))}
@@ -972,13 +1221,99 @@ const dc = StyleSheet.create({
 const TASK_PRIORITIES = ['NORMAL', 'MEDIUM', 'HIGH', 'URGENT'];
 const TASK_PRI_COLORS = { NORMAL: C.g500, MEDIUM: C.amber600, HIGH: C.orange600 ?? '#EA580C', URGENT: C.red600 };
 
-const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId }) => {
-  const [tasks,       setTasks]       = useState(propTasks.map(toTaskDisplay));
-  const [showAdd,     setShowAdd]     = useState(false);
-  const [addTitle,    setAddTitle]    = useState('');
-  const [addPriority, setAddPriority] = useState('NORMAL');
-  const [addDue,      setAddDue]      = useState('');
-  const [addLoading,  setAddLoading]  = useState(false);
+const TASK_CATEGORIES = [
+  { label: 'Court Filing',    key: 'COURT_FILING'   },
+  { label: 'Doc Review',      key: 'DOC_REVIEW'     },
+  { label: 'Client Meeting',  key: 'CLIENT_MEETING' },
+  { label: 'Research',        key: 'RESEARCH'       },
+  { label: 'Correspondence',  key: 'CORRESPONDENCE' },
+  { label: 'Discovery',       key: 'DISCOVERY'      },
+  { label: 'Billing',         key: 'BILLING'        },
+  { label: 'Other',           key: 'OTHER'          },
+];
+
+const TASK_TIMES = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'];
+
+const CAL_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const toISODate = (d) => d.toISOString().split('T')[0];
+
+const TaskCalendarStrip = ({ selectedDate, onSelect, calendarBase, onPrev, onNext }) => {
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(calendarBase);
+    d.setDate(calendarBase.getDate() + i);
+    return d;
+  });
+  const todayISO = toISODate(new Date());
+  return (
+    <View style={tkCal.strip}>
+      <View style={tkCal.monthRow}>
+        <TouchableOpacity onPress={onPrev} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+          <FontAwesome5 name="chevron-left" size={13} color={C.amber600} />
+        </TouchableOpacity>
+        <Text style={tkCal.monthText}>
+          {calendarBase.toLocaleString('default', { month: 'long', year: 'numeric' })}
+        </Text>
+        <TouchableOpacity onPress={onNext} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+          <FontAwesome5 name="chevron-right" size={13} color={C.amber600} />
+        </TouchableOpacity>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 8, paddingBottom: 4 }}>
+        {weekDays.map((d, i) => {
+          const iso = toISODate(d);
+          const isSel = selectedDate === iso;
+          const isToday = iso === todayISO;
+          return (
+            <TouchableOpacity
+              key={i}
+              style={[tkCal.dayBtn, isSel && tkCal.dayBtnSel]}
+              onPress={() => onSelect(iso)}
+            >
+              <Text style={[tkCal.dayName, isSel && tkCal.dayNameSel]}>{CAL_DAYS[d.getDay()]}</Text>
+              <Text style={[tkCal.dayNum, isSel && tkCal.dayNumSel]}>{d.getDate()}</Text>
+              {isToday && <View style={[tkCal.todayDot, isSel && { backgroundColor: C.white }]} />}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      <Text style={tkCal.selectedText}>{selectedDate || 'No date selected'}</Text>
+    </View>
+  );
+};
+
+const tkCal = StyleSheet.create({
+  strip:       { backgroundColor: C.g50, borderRadius: 14, borderWidth: 1.5, borderColor: C.g200, paddingVertical: 10, marginBottom: 16 },
+  monthRow:    { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 14, marginBottom: 10, paddingHorizontal: 12 },
+  monthText:   { fontSize: 13, fontWeight: '700', color: C.dark },
+  dayBtn:      { width: 44, height: 60, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 3, backgroundColor: C.white, borderWidth: 1.5, borderColor: C.g200 },
+  dayBtnSel:   { backgroundColor: C.amber600, borderColor: C.amber600 },
+  dayName:     { fontSize: 10, color: C.g500, fontWeight: '600' },
+  dayNameSel:  { color: 'rgba(255,255,255,0.8)' },
+  dayNum:      { fontSize: 15, fontWeight: '800', color: C.dark },
+  dayNumSel:   { color: C.white },
+  todayDot:    { width: 5, height: 5, borderRadius: 3, backgroundColor: C.amber600 },
+  selectedText:{ fontSize: 11, color: C.g500, textAlign: 'center', marginTop: 8, marginBottom: 2, fontWeight: '500' },
+});
+
+const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, team = [] }) => {
+  const [tasks,          setTasks]          = useState(propTasks.map(toTaskDisplay));
+  const [showAdd,        setShowAdd]        = useState(false);
+  const [addTitle,       setAddTitle]       = useState('');
+  const [addPriority,    setAddPriority]    = useState('NORMAL');
+  const [addCategory,    setAddCategory]    = useState('');
+  const [addDue,         setAddDue]         = useState('');
+  const [addDesc,        setAddDesc]        = useState('');
+  const [addAssignedTo,  setAddAssignedTo]  = useState(null);
+  const [addReminder,    setAddReminder]    = useState(false);
+  const [addReminderDate,setAddReminderDate]= useState('');
+  const [addReminderTime,setAddReminderTime]= useState('');
+  const [addLoading,     setAddLoading]     = useState(false);
+  const [calBase,        setCalBase]        = useState(new Date());
+  const [remCalBase,     setRemCalBase]     = useState(new Date());
+
+  const prevWeek    = () => { const d = new Date(calBase);    d.setDate(d.getDate() - 7); setCalBase(d); };
+  const nextWeek    = () => { const d = new Date(calBase);    d.setDate(d.getDate() + 7); setCalBase(d); };
+  const prevRemWeek = () => { const d = new Date(remCalBase); d.setDate(d.getDate() - 7); setRemCalBase(d); };
+  const nextRemWeek = () => { const d = new Date(remCalBase); d.setDate(d.getDate() + 7); setRemCalBase(d); };
 
   useEffect(() => { setTasks(propTasks.map(toTaskDisplay)); }, [propTasks]);
 
@@ -999,21 +1334,42 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId }
     }
   };
 
+  const handleDeleteTask = (id) => {
+    Alert.alert('Delete Task', 'Delete this task permanently?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          await tasksAPI.delete(id);
+          setTasks(prev => prev.filter(t => t.id !== id));
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not delete task.');
+        }
+      }},
+    ]);
+  };
+
   const handleAdd = async () => {
     if (!addTitle.trim()) { Alert.alert('Required', 'Please enter a task title.'); return; }
     setAddLoading(true);
     try {
+      const reminderAt = addReminder && addReminderDate && addReminderTime
+        ? `${addReminderDate}T${addReminderTime}:00`
+        : null;
       const created = await tasksAPI.create({
-        title:    addTitle.trim(),
-        priority: addPriority,
-        due_date: addDue.trim() || null,
-        case_id:  caseId || null,
+        title:       addTitle.trim(),
+        priority:    addPriority,
+        category:    addCategory || null,
+        due_date:    addDue || null,
+        description: addDesc.trim() || null,
+        assigned_to: addAssignedTo || null,
+        reminder_at: reminderAt,
+        case_id:     caseId || null,
       });
       setTasks(prev => [...prev, toTaskDisplay(created)]);
       setShowAdd(false);
-      setAddTitle('');
-      setAddPriority('NORMAL');
-      setAddDue('');
+      setAddTitle(''); setAddPriority('NORMAL'); setAddCategory('');
+      setAddDue(''); setAddDesc(''); setAddAssignedTo(null);
+      setAddReminder(false); setAddReminderDate(''); setAddReminderTime('');
     } catch (err) {
       Alert.alert('Error', err.message || 'Could not create task.');
     } finally {
@@ -1056,6 +1412,9 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId }
               </TouchableOpacity>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={[tk.title, task.done && { textDecorationLine: 'line-through', color: C.g400 }]}>{task.title}</Text>
+                {!!task.description && (
+                  <Text style={tk.taskDesc} numberOfLines={2}>{task.description}</Text>
+                )}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 }}>
                   <View style={[tk.duePill, { backgroundColor: task.dueColor + '18' }]}>
                     <FontAwesome5 name="clock" size={9} color={task.dueColor} />
@@ -1063,8 +1422,26 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId }
                   </View>
                   <Badge label={pr.label} color={pr.color} bg={pr.bg} />
                 </View>
-                {task.assignee ? <Text style={tk.assignee}>{task.assignee}</Text> : null}
+                {(task.assignee || task.createdBy) && (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 6 }}>
+                    {task.assignee ? (
+                      <View style={tk.metaRow}>
+                        <FontAwesome5 name="user-check" size={9} color={C.g400} />
+                        <Text style={tk.metaTxt}>{task.assignee}</Text>
+                      </View>
+                    ) : null}
+                    {task.createdBy ? (
+                      <View style={tk.metaRow}>
+                        <FontAwesome5 name="user-edit" size={9} color={C.g400} />
+                        <Text style={tk.metaTxt}>by {task.createdBy}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                )}
               </View>
+              <TouchableOpacity style={{ padding: 6 }} onPress={() => handleDeleteTask(task.id)}>
+                <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
+              </TouchableOpacity>
             </View>
           );
         })}
@@ -1074,6 +1451,7 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId }
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={tk.modalOverlay}>
           <View style={tk.modalSheet}>
+            {/* Header */}
             <View style={tk.modalHeader}>
               <Text style={tk.modalTitle}>New Task</Text>
               <TouchableOpacity onPress={() => setShowAdd(false)}>
@@ -1081,36 +1459,142 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId }
               </TouchableOpacity>
             </View>
 
-            <Text style={tk.fieldLabel}>Title *</Text>
-            <TextInput
-              style={tk.input}
-              placeholder="Task title"
-              value={addTitle}
-              onChangeText={setAddTitle}
-              autoFocus
-            />
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-            <Text style={tk.fieldLabel}>Priority</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-              {TASK_PRIORITIES.map(p => (
-                <TouchableOpacity
-                  key={p}
-                  onPress={() => setAddPriority(p)}
-                  style={[tk.priChip, addPriority === p && { backgroundColor: TASK_PRI_COLORS[p], borderColor: TASK_PRI_COLORS[p] }]}
-                >
-                  <Text style={[tk.priChipTxt, addPriority === p && { color: C.white }]}>{p}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+              {/* Title */}
+              <Text style={tk.fieldLabel}>Title *</Text>
+              <TextInput
+                style={tk.input}
+                placeholder="Task title"
+                value={addTitle}
+                onChangeText={setAddTitle}
+                autoFocus
+              />
 
-            <Text style={tk.fieldLabel}>Due Date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={tk.input}
-              placeholder="e.g. 2025-06-30"
-              value={addDue}
-              onChangeText={setAddDue}
-              keyboardType="numbers-and-punctuation"
-            />
+              {/* Priority */}
+              <Text style={tk.fieldLabel}>Priority</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                {TASK_PRIORITIES.map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setAddPriority(p)}
+                    style={[tk.priChip, addPriority === p && { backgroundColor: TASK_PRI_COLORS[p], borderColor: TASK_PRI_COLORS[p] }]}
+                  >
+                    <Text style={[tk.priChipTxt, addPriority === p && { color: C.white }]}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Category */}
+              <Text style={tk.fieldLabel}>Category</Text>
+              <View style={tk.catGrid}>
+                {TASK_CATEGORIES.map(cat => (
+                  <TouchableOpacity
+                    key={cat.key}
+                    style={[tk.catChip, addCategory === cat.key && tk.catChipActive]}
+                    onPress={() => setAddCategory(addCategory === cat.key ? '' : cat.key)}
+                  >
+                    <Text style={[tk.catChipTxt, addCategory === cat.key && tk.catChipTxtActive]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Due Date */}
+              <Text style={[tk.fieldLabel, { marginTop: 4 }]}>Due Date</Text>
+              <TaskCalendarStrip
+                selectedDate={addDue}
+                onSelect={setAddDue}
+                calendarBase={calBase}
+                onPrev={prevWeek}
+                onNext={nextWeek}
+              />
+
+              {/* Assigned To */}
+              {team.length > 0 && (
+                <>
+                  <Text style={tk.fieldLabel}>Assigned To</Text>
+                  <View style={tk.memberGrid}>
+                    {team.map(m => {
+                      const uid      = m.user_id;
+                      const name     = m.app_user?.full_name || 'Unknown';
+                      const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                      const isSel    = addAssignedTo === uid;
+                      return (
+                        <TouchableOpacity
+                          key={uid}
+                          style={[tk.memberChip, isSel && tk.memberChipActive]}
+                          onPress={() => setAddAssignedTo(isSel ? null : uid)}
+                        >
+                          <View style={[tk.memberAvatar, isSel && { backgroundColor: C.amber600 }]}>
+                            <Text style={[tk.memberInitials, isSel && { color: C.white }]}>{initials}</Text>
+                          </View>
+                          <Text style={[tk.memberName, isSel && { color: C.amber600 }]} numberOfLines={1}>{name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
+              {/* Reminder At */}
+              <TouchableOpacity
+                style={tk.reminderToggleRow}
+                onPress={() => { setAddReminder(v => !v); if (addReminder) { setAddReminderDate(''); setAddReminderTime(''); } }}
+              >
+                <View style={tk.reminderToggleLeft}>
+                  <View style={[tk.reminderIcon, addReminder && { backgroundColor: C.amber600 + '22' }]}>
+                    <FontAwesome5 name="bell" size={13} color={addReminder ? C.amber600 : C.g500} />
+                  </View>
+                  <View style={{ marginLeft: 10 }}>
+                    <Text style={tk.reminderTitle}>Set Reminder</Text>
+                    <Text style={tk.reminderSub}>
+                      {addReminder && addReminderDate ? `${addReminderDate}${addReminderTime ? ' · ' + addReminderTime : ''}` : 'Get notified before due date'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[tk.toggleTrack, addReminder && { backgroundColor: C.amber600 }]}>
+                  <View style={[tk.toggleKnob, addReminder && { marginLeft: 22 }]} />
+                </View>
+              </TouchableOpacity>
+
+              {addReminder && (
+                <View style={tk.reminderBox}>
+                  <Text style={tk.fieldLabel}>Reminder Date</Text>
+                  <TaskCalendarStrip
+                    selectedDate={addReminderDate}
+                    onSelect={setAddReminderDate}
+                    calendarBase={remCalBase}
+                    onPrev={prevRemWeek}
+                    onNext={nextRemWeek}
+                  />
+                  <Text style={tk.fieldLabel}>Reminder Time</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
+                    {TASK_TIMES.map(t => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[tk.timeChip, addReminderTime === t && tk.timeChipActive]}
+                        onPress={() => setAddReminderTime(t)}
+                      >
+                        <Text style={[tk.timeChipTxt, addReminderTime === t && { color: C.white }]}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Description */}
+              <Text style={[tk.fieldLabel, { marginTop: 16 }]}>Description</Text>
+              <TextInput
+                style={[tk.input, { height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                placeholder="Optional details or context..."
+                placeholderTextColor={C.g400}
+                value={addDesc}
+                onChangeText={setAddDesc}
+                multiline
+              />
+
+              <View style={{ height: 8 }} />
+            </ScrollView>
 
             <TouchableOpacity
               style={[tk.submitBtn, addLoading && { opacity: 0.6 }]}
@@ -1141,7 +1625,10 @@ const tk = StyleSheet.create({
   title:        { fontSize: 13, fontWeight: '700', color: C.dark },
   duePill:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   dueTxt:       { fontSize: 10, fontWeight: '700' },
+  taskDesc:     { fontSize: 12, color: C.g500, marginTop: 4, lineHeight: 17 },
   assignee:     { fontSize: 11, color: C.g500, marginTop: 5 },
+  metaRow:      { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaTxt:      { fontSize: 10, color: C.g400, fontWeight: '500' },
   // modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalSheet:   { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36 },
@@ -1151,6 +1638,32 @@ const tk = StyleSheet.create({
   input:        { borderWidth: 1, borderColor: C.g200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: C.dark, marginBottom: 16 },
   priChip:      { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5, borderColor: C.g200, alignItems: 'center' },
   priChipTxt:   { fontSize: 10, fontWeight: '700', color: C.g500 },
+  // category
+  catGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  catChip:      { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: C.g200, backgroundColor: C.white },
+  catChipActive:{ backgroundColor: C.amber600, borderColor: C.amber600 },
+  catChipTxt:   { fontSize: 11, fontWeight: '600', color: C.g600 },
+  catChipTxtActive: { color: C.white },
+  // assigned to
+  memberGrid:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  memberChip:   { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1.5, borderColor: C.g200, maxWidth: '48%' },
+  memberChipActive: { borderColor: C.amber600, backgroundColor: C.amber50 },
+  memberAvatar: { width: 26, height: 26, borderRadius: 8, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center' },
+  memberInitials: { fontSize: 9, fontWeight: '800', color: C.g600 },
+  memberName:   { fontSize: 11, fontWeight: '600', color: C.dark, flexShrink: 1 },
+  // reminder
+  reminderToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.g50, borderRadius: 12, padding: 12, marginBottom: 12 },
+  reminderToggleLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  reminderIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center' },
+  reminderTitle: { fontSize: 13, fontWeight: '700', color: C.dark },
+  reminderSub:  { fontSize: 11, color: C.g500, marginTop: 1 },
+  toggleTrack:  { width: 44, height: 24, borderRadius: 12, backgroundColor: C.g200, paddingHorizontal: 2, justifyContent: 'center' },
+  toggleKnob:   { width: 20, height: 20, borderRadius: 10, backgroundColor: C.white, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 },
+  reminderBox:  { backgroundColor: C.amber50, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: C.amberBorder ?? '#FDE68A', marginBottom: 4 },
+  // time chips
+  timeChip:     { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5, borderColor: C.g200, backgroundColor: C.white },
+  timeChipActive: { backgroundColor: C.amber600, borderColor: C.amber600 },
+  timeChipTxt:  { fontSize: 12, fontWeight: '600', color: C.g600 },
   submitBtn:    { backgroundColor: C.amber600, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   submitTxt:    { color: C.white, fontWeight: '800', fontSize: 15 },
 });
@@ -1203,6 +1716,20 @@ const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, 
   const resetForm = () => {
     setTitle(''); setContent(''); setSelectedColor('yellow');
     setSelectedTags([]); setActiveFormats({ bold: false, italic: false, underline: false });
+  };
+
+  const handleDeleteNote = (id) => {
+    Alert.alert('Delete Note', 'Delete this note permanently?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          await notesAPI.delete(id);
+          setNotes(prev => prev.filter(n => n.id !== id));
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not delete note.');
+        }
+      }},
+    ]);
   };
 
   const handleSave = async () => {
@@ -1271,6 +1798,9 @@ const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, 
                   <Text style={nt.author}>{note.author}</Text>
                   <Text style={nt.time}>{note.time}</Text>
                 </View>
+                <TouchableOpacity style={{ padding: 4 }} onPress={() => handleDeleteNote(note.id)}>
+                  <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
+                </TouchableOpacity>
               </View>
               <RichText
                 text={note.content}
@@ -1479,13 +2009,32 @@ const STATUS_META = {
   CANCELLED: { label: 'Cancelled', color: C.g400,      bg: C.g100      },
 };
 
-const InvoicesTab = ({ invoices = [], loading = false }) => {
-  const [actionLoading, setActionLoading] = useState({});   // { [invId_action]: true }
-  const [viewInvoice,   setViewInvoice]   = useState(null); // invoice object to preview
+const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
+  const [localInvoices, setLocalInvoices] = useState(propInvoices);
+  const [actionLoading, setActionLoading] = useState({});
+  const [viewInvoice,   setViewInvoice]   = useState(null);
+
+  useEffect(() => { setLocalInvoices(propInvoices); }, [propInvoices]);
+
+  const invoices = localInvoices;
 
   const totalAmount  = invoices.reduce((s, inv) => s + (inv.total_amount || 0), 0);
   const paidAmount   = invoices.filter(i => i.status === 'PAID').reduce((s, i) => s + (i.total_amount || 0), 0);
   const pendingCount = invoices.filter(i => i.status === 'PENDING' || i.status === 'OVERDUE').length;
+
+  const handleDeleteInvoice = (inv) => {
+    Alert.alert('Delete Invoice', `Delete invoice ${inv.invoice_number}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          await billingAPI.deleteInvoice(inv.id);
+          setLocalInvoices(prev => prev.filter(i => i.id !== inv.id));
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not delete invoice.');
+        }
+      }},
+    ]);
+  };
 
   const fmt = (n) => n?.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }) ?? '$0';
 
@@ -1637,6 +2186,15 @@ const InvoicesTab = ({ invoices = [], loading = false }) => {
                   <FontAwesome5 name="eye" size={11} color={C.primary} />
                   <Text style={[inv_s.actionTxt, { color: C.primary }]}>View</Text>
                 </TouchableOpacity>
+                {inv.status !== 'PAID' && (
+                  <TouchableOpacity
+                    style={[inv_s.actionBtn, { backgroundColor: C.red50 }]}
+                    onPress={() => handleDeleteInvoice(inv)}
+                  >
+                    <FontAwesome5 name="trash-alt" size={11} color={C.red600} />
+                    <Text style={[inv_s.actionTxt, { color: C.red600 }]}>Delete</Text>
+                  </TouchableOpacity>
+                )}
                 {inv.status === 'DRAFT' && (
                   <TouchableOpacity
                     style={[inv_s.actionBtn, { backgroundColor: C.green50 }, isLoading(inv.id, 'send') && { opacity: 0.5 }]}
@@ -1916,7 +2474,9 @@ const tl = StyleSheet.create({
 //  MAIN SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
 export default function CaseDetailsScreen({ navigation, route }) {
-  const caseData = route?.params?.caseData || CASE;
+  const rawCase  = route?.params?.caseData || CASE;
+  // Supabase returns `id`; some navigation paths pass `_id` — normalise to `_id`
+  const caseData = rawCase._id ? rawCase : { ...rawCase, _id: rawCase.id };
   const pr = PRIORITY[caseData.priority] || PRIORITY.urgent;
 
   const [activeTab,  setActiveTab]  = useState('overview');
@@ -1927,6 +2487,8 @@ export default function CaseDetailsScreen({ navigation, route }) {
   const [timeline,   setTimeline]   = useState([]);
   const [events,     setEvents]     = useState([]);
   const [invoices,   setInvoices]   = useState([]);
+  const [team,       setTeam]       = useState([]);
+  const [lawyerId,   setLawyerId]   = useState(caseData.lawyer_id ?? null);
   const [stats,      setStats]      = useState(caseData.stats || { docs: 0, tasks: 0, events: 0, notes: 0 });
   const [tabLoading, setTabLoading] = useState(false);
   const [saving,     setSaving]     = useState(false);
@@ -1980,6 +2542,15 @@ export default function CaseDetailsScreen({ navigation, route }) {
     setEditMode(false);
   };
 
+  const loadTeam = useCallback(async () => {
+    const caseId = caseData._id;
+    if (!caseId) return;
+    try {
+      const data = await casesAPI.getTeam(caseId);
+      setTeam(Array.isArray(data) ? data : []);
+    } catch { setTeam([]); }
+  }, [caseData._id]);
+
   useEffect(() => {
     const caseId = caseData._id;
     if (!caseId) return;
@@ -1988,13 +2559,15 @@ export default function CaseDetailsScreen({ navigation, route }) {
       setTabLoading(true);
       try {
         const today = new Date().toISOString().split('T')[0];
-        const [tl, tk, docs, nts, evts, invs] = await Promise.all([
+        const [tl, tk, docs, nts, evts, invs, tm, fullCase] = await Promise.all([
           casesAPI.getTimeline(caseId).catch(() => []),
           tasksAPI.list({ case_id: caseId }).catch(() => []),
           documentsAPI.list({ case_id: caseId }).catch(() => []),
           notesAPI.list({ case_id: caseId }).catch(() => []),
           calendarAPI.listEvents({ case_id: caseId, from_date: today }).catch(() => []),
           billingAPI.listInvoices({ case_id: caseId }).catch(() => []),
+          casesAPI.getTeam(caseId).catch(() => []),
+          casesAPI.getById(caseId).catch(() => null),
         ]);
         if (cancelled) return;
         const safeArr = (v) => (Array.isArray(v) ? v : []);
@@ -2004,12 +2577,14 @@ export default function CaseDetailsScreen({ navigation, route }) {
         const ntsArr  = safeArr(nts);
         const evtsArr = safeArr(evts);
         const invsArr = safeArr(invs);
+        if (fullCase?.lawyer_id) setLawyerId(fullCase.lawyer_id);
         setTimeline(tlArr);
         setTasks(tkArr);
         setDocuments(docsArr);
         setNotes(ntsArr);
         setEvents(evtsArr);
         setInvoices(invsArr);
+        setTeam(safeArr(tm));
         setStats({ docs: docsArr.length, tasks: tkArr.length, events: evtsArr.length, notes: ntsArr.length });
       } finally {
         if (!cancelled) setTabLoading(false);
@@ -2021,9 +2596,9 @@ export default function CaseDetailsScreen({ navigation, route }) {
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} />;
+      case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} team={team} caseId={caseData._id} onTeamChange={loadTeam} lawyerId={lawyerId} />;
       case 'documents': return <DocumentsTab documents={documents} stats={stats} loading={tabLoading} caseId={caseData._id} onUploaded={(n) => setStats(s => ({ ...s, docs: n }))} />;
-      case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} caseId={caseData._id} />;
+      case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} caseId={caseData._id} team={team} />;
       case 'invoices':  return <InvoicesTab  invoices={invoices}            loading={tabLoading} />;
       case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} caseId={caseData._id} navigation={navigation} caseData={caseData} />;
       case 'timeline':  return <TimelineTab  timeline={timeline}            loading={tabLoading} />;

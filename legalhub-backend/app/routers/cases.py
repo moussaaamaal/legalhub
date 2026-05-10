@@ -65,11 +65,21 @@ async def list_cases(
     case_type: Optional[str] = None,
     current_user=Depends(get_lawyer)
 ):
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
     query = (
         supabase.table("case_file")
         .select("*, client(id, first_name, last_name, email)")
         .eq("firm_id", current_user["firm_id"])
     )
+
+    if not is_admin:
+        team = supabase.table("case_team").select("case_id").eq("user_id", current_user["id"]).execute()
+        case_ids = [r["case_id"] for r in (team.data or [])]
+        if not case_ids:
+            return []
+        query = query.in_("id", case_ids)
+
     if status:
         query = query.eq("status", status)
     if priority:
@@ -91,6 +101,13 @@ async def create_case(body: CreateCaseRequest, current_user=Depends(get_lawyer))
 
     result = supabase.table("case_file").insert(data).execute()
     case_id = result.data[0]["id"]
+
+    # Automatically add the assigned lawyer to the case team
+    supabase.table("case_team").insert({
+        "case_id": case_id,
+        "user_id": current_user["id"],
+        "firm_id": current_user["firm_id"],
+    }).execute()
 
     supabase.table("case_timeline").insert({
         "case_id": case_id,

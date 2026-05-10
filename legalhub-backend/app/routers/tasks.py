@@ -50,11 +50,32 @@ async def list_tasks(
     status: Optional[str] = None,
     current_user=Depends(get_lawyer)
 ):
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
     query = (
         supabase.table("task")
-        .select("*, case_file(id, title, case_number), app_user!task_assigned_to_fkey(id, full_name)")
+        .select("*, case_file(id, title, case_number), app_user!task_assigned_to_fkey(id, full_name), created_user:app_user!task_created_by_fkey(id, full_name)")
         .eq("firm_id", current_user["firm_id"])
     )
+
+    if not is_admin:
+        user_id = current_user["id"]
+        firm_id = current_user["firm_id"]
+        assigned_ids = {
+            t["id"] for t in (
+                supabase.table("task").select("id").eq("firm_id", firm_id).eq("assigned_to", user_id).execute()
+            ).data or []
+        }
+        created_ids = {
+            t["id"] for t in (
+                supabase.table("task").select("id").eq("firm_id", firm_id).eq("created_by", user_id).execute()
+            ).data or []
+        }
+        task_ids = list(assigned_ids | created_ids)
+        if not task_ids:
+            return []
+        query = query.in_("id", task_ids)
+
     if case_id:
         query = query.eq("case_id", case_id)
     if status:

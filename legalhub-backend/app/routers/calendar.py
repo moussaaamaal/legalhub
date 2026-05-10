@@ -112,7 +112,13 @@ async def list_events(
     from_date: Optional[str] = None,
     current_user=Depends(get_current_user)
 ):
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
     query = supabase.table("calendar_event").select("*").eq("firm_id", current_user["firm_id"])
+
+    if not is_admin and current_user["role"] == "LAWYER":
+        query = query.eq("created_by", current_user["id"])
+
     if event_type:
         query = query.eq("event_type", event_type)
     if case_id:

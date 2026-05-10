@@ -241,6 +241,26 @@ async def update_invoice(invoice_id: str, body: UpdateInvoiceRequest, current_us
 
     return existing.data
 
+# ─── DELETE /api/invoices/:id ───────────────────────────
+
+@router.delete("/{invoice_id}")
+async def delete_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
+    existing = (
+        supabase.table("invoice")
+        .select("id, status")
+        .eq("id", invoice_id)
+        .eq("firm_id", current_user["firm_id"])
+        .single()
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if existing.data["status"] == "PAID":
+        raise HTTPException(status_code=400, detail="Cannot delete a paid invoice")
+    supabase.table("invoice_item").delete().eq("invoice_id", invoice_id).execute()
+    supabase.table("invoice").delete().eq("id", invoice_id).execute()
+    return {"message": "Invoice deleted"}
+
 # ─── POST /api/invoices/:id/send ────────────────────────
 
 @router.post("/{invoice_id}/send")

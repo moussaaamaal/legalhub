@@ -201,9 +201,10 @@ export const billingAPI = {
   createInvoice: (body)         => request('POST', '/api/invoices',                  body),
   getInvoice:    (id)           => request('GET',  `/api/invoices/${id}`),
   updateInvoice: (id, body)     => request('PUT',  `/api/invoices/${id}`,             body),
-  sendInvoice:   (id)           => request('POST', `/api/invoices/${id}/send`,        {}),
-  sendReminder:  (id)           => request('POST', `/api/invoices/${id}/reminder`,    {}),
-  getAnalytics:  ()             => request('GET',  '/api/invoices/analytics/summary'),
+  sendInvoice:   (id)           => request('POST',   `/api/invoices/${id}/send`,        {}),
+  sendReminder:  (id)           => request('POST',   `/api/invoices/${id}/reminder`,    {}),
+  deleteInvoice: (id)           => request('DELETE', `/api/invoices/${id}`),
+  getAnalytics:  ()             => request('GET',    '/api/invoices/analytics/summary'),
 };
 
 // ─── CALENDAR ─────────────────────────────────────────────────────────────
