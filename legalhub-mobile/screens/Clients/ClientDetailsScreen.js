@@ -225,7 +225,7 @@ export default function ClientDetailsScreen({ navigation, route }) {
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* PROFILE CARD */}
         <View style={s.profileCard}>

@@ -434,7 +434,7 @@ export default function NotificationsScreen({ navigation }) {
         ))}
       </ScrollView>
 
-      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* ── STATS DYNAMIQUES ── */}
         <View style={[s.section, { backgroundColor: C.blue50 }]}>

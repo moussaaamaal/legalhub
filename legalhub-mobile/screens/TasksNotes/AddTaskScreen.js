@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, StatusBar, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { tasksAPI, casesAPI, firmAPI } from '../../services/api';
+import { tasksAPI, casesAPI } from '../../services/api';
 
 const COLORS = {
   amber: '#D97706', amberLight: '#FFFBEB', amberBorder: '#FDE68A',
@@ -33,7 +33,7 @@ const CATEGORIES = [
   { label: 'Other',            key: 'OTHER'           },
 ];
 
-const TIMES = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
+const REMINDER_TIMES = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const toISO = (d) => d.toISOString().split('T')[0];
@@ -136,8 +136,8 @@ export default function AddTaskScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     title: '', priority: 'medium', categoryKey: '',
-    dueDate: '', dueTime: '', description: '',
-    reminder: false, recurringTask: false,
+    dueDate: '', description: '',
+    reminder: false, reminderDate: '', reminderTime: '',
   });
   const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -149,27 +149,22 @@ export default function AddTaskScreen({ navigation }) {
   const caseDebounce = useRef(null);
 
   // ── Assign To ──
-  const [allMembers, setAllMembers]             = useState([]);
+  const [caseMembers, setCaseMembers]           = useState([]);
+  const [loadingMembers, setLoadingMembers]     = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [selectedMemberName, setSelectedMemberName] = useState('');
 
   // ── Calendar ──
-  const [calendarBase, setCalendarBase] = useState(new Date());
-
-  // Load team members once
-  useEffect(() => {
-    firmAPI.getTeam()
-      .then(data => {
-        const members = Array.isArray(data) ? data : (data.members || data.team || []);
-        setAllMembers(members);
-      })
-      .catch(() => {});
-  }, []);
+  const [calendarBase, setCalendarBase]           = useState(new Date());
+  const [reminderCalBase, setReminderCalBase]     = useState(new Date());
 
   // ── Case search ──
   const onCaseChange = (text) => {
     setCaseSearch(text);
     setSelectedCaseId(null);
+    setCaseMembers([]);
+    setSelectedMemberId(null);
+    setSelectedMemberName('');
     if (caseDebounce.current) clearTimeout(caseDebounce.current);
     if (!text.trim()) { setCaseResults([]); setShowCaseDrop(false); return; }
     caseDebounce.current = setTimeout(async () => {
@@ -182,16 +177,30 @@ export default function AddTaskScreen({ navigation }) {
     }, 300);
   };
 
-  const selectCase = (item) => {
+  const selectCase = async (item) => {
     setCaseSearch(caseLabel(item));
     setSelectedCaseId(item.id);
     setCaseResults([]);
     setShowCaseDrop(false);
+    setSelectedMemberId(null);
+    setSelectedMemberName('');
+    setLoadingMembers(true);
+    try {
+      const data = await casesAPI.getTeam(item.id);
+      const members = (Array.isArray(data) ? data : []).map(r => r.app_user || r).filter(Boolean);
+      setCaseMembers(members);
+    } catch {
+      setCaseMembers([]);
+    } finally {
+      setLoadingMembers(false);
+    }
   };
 
   // ── Calendar navigation ──
   const prevWeek = () => { const d = new Date(calendarBase); d.setDate(d.getDate() - 7); setCalendarBase(d); };
   const nextWeek = () => { const d = new Date(calendarBase); d.setDate(d.getDate() + 7); setCalendarBase(d); };
+  const prevReminderWeek = () => { const d = new Date(reminderCalBase); d.setDate(d.getDate() - 7); setReminderCalBase(d); };
+  const nextReminderWeek = () => { const d = new Date(reminderCalBase); d.setDate(d.getDate() + 7); setReminderCalBase(d); };
 
   // ── Submit ──
   const handleCreate = async () => {
@@ -200,15 +209,17 @@ export default function AddTaskScreen({ navigation }) {
 
     setLoading(true);
     try {
+      const reminderAt = form.reminder && form.reminderDate
+        ? `${form.reminderDate}T${form.reminderTime || '08:00'}:00`
+        : null;
+
       await tasksAPI.create({
         title:       form.title,
         priority:    form.priority.toUpperCase(),
         category:    form.categoryKey || null,
         due_date:    form.dueDate  || null,
-        due_time:    form.dueTime  || null,
         description: form.description || null,
-        reminder:    form.reminder,
-        recurring:   form.recurringTask,
+        ...(reminderAt ? { reminder_at: reminderAt } : {}),
         ...(selectedCaseId   ? { case_id: selectedCaseId }       : {}),
         ...(selectedMemberId ? { assigned_to: selectedMemberId } : {}),
       });
@@ -314,9 +325,8 @@ export default function AddTaskScreen({ navigation }) {
 
         {/* Due Date — calendar strip */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Due Date & Time</Text>
+          <Text style={s.sectionTitle}>Due Date</Text>
 
-          <Text style={s.label}>Due Date</Text>
           <CalendarStrip
             selectedDate={form.dueDate}
             onSelect={v => update('dueDate', v)}
@@ -324,30 +334,20 @@ export default function AddTaskScreen({ navigation }) {
             onPrev={prevWeek}
             onNext={nextWeek}
           />
-
-          {/* Due Time */}
-          <Text style={[s.label, { marginTop: 14 }]}>Due Time</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
-            {TIMES.map(t => (
-              <TouchableOpacity
-                key={t}
-                style={[s.timeChip, form.dueTime === t && s.timeChipActive]}
-                onPress={() => update('dueTime', t)}
-              >
-                <Text style={[s.timeChipText, form.dueTime === t && s.timeChipTextActive]}>{t}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
         </View>
 
-        {/* Assign To — real team members */}
+        {/* Assign To — members of the selected case */}
         <View style={s.section}>
           <Text style={s.sectionTitle}>Assign To</Text>
-          {allMembers.length === 0 ? (
+          {!selectedCaseId ? (
+            <Text style={s.emptyText}>Select a related case to see its team members.</Text>
+          ) : loadingMembers ? (
             <Text style={s.emptyText}>Loading team members...</Text>
+          ) : caseMembers.length === 0 ? (
+            <Text style={s.emptyText}>No team members found for this case.</Text>
           ) : (
             <View style={s.assignRow}>
-              {allMembers.map(m => {
+              {caseMembers.map(m => {
                 const name = displayName(m);
                 const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
                 const isSelected = selectedMemberId === m.id;
@@ -384,24 +384,40 @@ export default function AddTaskScreen({ navigation }) {
           />
         </View>
 
-        {/* Options */}
+        {/* Reminder */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Options</Text>
+          <Text style={s.sectionTitle}>Reminder</Text>
           <ToggleRow
             icon="bell"
             title="Set Reminder"
-            sub="Get notified before due date"
+            sub="Get notified at a specific date and time"
             value={form.reminder}
             onToggle={() => update('reminder', !form.reminder)}
           />
-          <View style={{ height: 12 }} />
-          <ToggleRow
-            icon="redo"
-            title="Recurring Task"
-            sub="Repeat this task periodically"
-            value={form.recurringTask}
-            onToggle={() => update('recurringTask', !form.recurringTask)}
-          />
+          {form.reminder && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={s.label}>Reminder Date</Text>
+              <CalendarStrip
+                selectedDate={form.reminderDate}
+                onSelect={v => update('reminderDate', v)}
+                calendarBase={reminderCalBase}
+                onPrev={prevReminderWeek}
+                onNext={nextReminderWeek}
+              />
+              <Text style={[s.label, { marginTop: 14 }]}>Reminder Time</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
+                {REMINDER_TIMES.map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[s.timeChip, form.reminderTime === t && s.timeChipActive]}
+                    onPress={() => update('reminderTime', t)}
+                  >
+                    <Text style={[s.timeChipText, form.reminderTime === t && s.timeChipTextActive]}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </View>
 
         <View style={{ height: 20 }} />
@@ -506,10 +522,10 @@ const s = StyleSheet.create({
   calTodayDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.amber },
   calSelectedText:   { fontSize: 12, color: COLORS.gray500, textAlign: 'center', marginTop: 10, marginBottom: 4, fontWeight: '500' },
 
-  // Time chips
-  timeChip:         { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.gray200, backgroundColor: COLORS.white },
-  timeChipActive:   { backgroundColor: COLORS.amber, borderColor: COLORS.amber },
-  timeChipText:     { fontSize: 13, fontWeight: '600', color: COLORS.gray600 },
+  // Time chips (reminder)
+  timeChip:           { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.gray200, backgroundColor: COLORS.white },
+  timeChipActive:     { backgroundColor: COLORS.amber, borderColor: COLORS.amber },
+  timeChipText:       { fontSize: 13, fontWeight: '600', color: COLORS.gray600 },
   timeChipTextActive: { color: COLORS.white },
 
   // Assign

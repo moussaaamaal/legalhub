@@ -109,6 +109,7 @@ const TABS = [
   { key: 'tasks',     icon: 'check-square', label: 'Tasks'     },
   { key: 'invoices',  icon: 'file-invoice-dollar', label: 'Invoices' },
   { key: 'notes',     icon: 'sticky-note',  label: 'Notes'     },
+  { key: 'team',      icon: 'users',        label: 'Team'      },
   { key: 'timeline',  icon: 'stream',       label: 'Timeline'  },
 ];
 
@@ -604,29 +605,8 @@ const tm = StyleSheet.create({
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: OVERVIEW
 // ═════════════════════════════════════════════════════════════════════════════
-const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode, form, setForm, team = [], caseId, onTeamChange, lawyerId }) => {
-  const [teamModal,   setTeamModal]   = useState(false);
-  const [removingId,  setRemovingId]  = useState(null);
+const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode, form, setForm }) => {
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
-
-  const handleRemoveMember = (userId, name) => {
-    Alert.alert('Remove Member', `Remove ${name} from this case?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => {
-        setRemovingId(userId);
-        try {
-          await casesAPI.removeTeamMember(caseId, userId);
-          onTeamChange?.();
-        } catch (err) {
-          Alert.alert('Error', err.message || 'Could not remove member.');
-        } finally {
-          setRemovingId(null);
-        }
-      }},
-    ]);
-  };
-
-  const displayTeam = team;
 
   return (
     <View style={{ paddingTop: 4 }}>
@@ -660,6 +640,8 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
             style={ov.editInput}
             value={form.description}
             onChangeText={v => upd('description', v)}
+            placeholder="Enter case description..."
+            placeholderTextColor={C.g400}
             multiline
           />
         ) : (
@@ -700,7 +682,7 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
           <>
             <View style={ov.field}>
               <Text style={ov.fieldLabel}>Case Title</Text>
-              <TextInput style={ov.fieldInput} value={form.title} onChangeText={v => upd('title', v)} />
+              <TextInput style={ov.fieldInput} value={form.title} onChangeText={v => upd('title', v)} placeholder="Case title" placeholderTextColor={C.g400} />
             </View>
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -742,11 +724,11 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={[ov.field, { flex: 1 }]}>
                 <Text style={ov.fieldLabel}>Filing Date</Text>
-                <TextInput style={ov.fieldInput} value={form.filingDate} onChangeText={v => upd('filingDate', v)} />
+                <TextInput style={ov.fieldInput} value={form.filingDate} onChangeText={v => upd('filingDate', v)} placeholder="YYYY-MM-DD" placeholderTextColor={C.g400} />
               </View>
               <View style={[ov.field, { flex: 1 }]}>
                 <Text style={ov.fieldLabel}>Next Hearing</Text>
-                <TextInput style={ov.fieldInput} value={form.nextHearing} onChangeText={v => upd('nextHearing', v)} />
+                <TextInput style={ov.fieldInput} value={form.nextHearing} onChangeText={v => upd('nextHearing', v)} placeholder="YYYY-MM-DD" placeholderTextColor={C.g400} />
               </View>
             </View>
 
@@ -760,7 +742,7 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
 
             <View style={ov.field}>
               <Text style={ov.fieldLabel}>Court Location</Text>
-              <TextInput style={ov.fieldInput} value={form.court} onChangeText={v => upd('court', v)} />
+              <TextInput style={ov.fieldInput} value={form.court} onChangeText={v => upd('court', v)} placeholder="e.g. Civil Court, City Hall" placeholderTextColor={C.g400} />
             </View>
 
             <View style={ov.field}>
@@ -844,71 +826,6 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
         )}
       </Card>
 
-      {/* Upcoming Events */}
-      {/* Legal Team */}
-      <Card accent={C.teal600}>
-        <SectionHead
-          icon="users"
-          iconColor={C.teal600}
-          title="Legal Team"
-          action="Manage"
-          onAction={() => setTeamModal(true)}
-        />
-        {displayTeam.length === 0 ? (
-          <View style={ov.emptyBox}>
-            <FontAwesome5 name="user-plus" size={26} color={C.g300} />
-            <Text style={ov.emptyTxt}>No team members yet</Text>
-          </View>
-        ) : (
-          <View style={{ gap: 10 }}>
-            {displayTeam.map(m => {
-              const uid      = m.user_id;
-              const name     = m.app_user?.full_name || 'Unknown';
-              const role     = m.app_user?.role || '';
-              const avatar   = m.app_user?.avatar_url || null;
-              const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-              const removing = removingId === uid;
-              const isLead   = uid === lawyerId;
-              return (
-                <View key={m.id ?? uid} style={ov.teamRow}>
-                  {avatar
-                    ? <Image source={{ uri: avatar }} style={ov.teamAvatar} />
-                    : <View style={[ov.teamAvatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
-                        <Text style={{ fontSize: 14, fontWeight: '800', color: C.primary }}>{initials}</Text>
-                      </View>
-                  }
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={ov.teamName}>{name}</Text>
-                    {role ? <Text style={ov.teamRole}>{role}</Text> : null}
-                  </View>
-                  {isLead ? (
-                    <View style={ov.leadBadge}>
-                      <FontAwesome5 name="star" size={9} color={C.amber600} />
-                      <Text style={ov.leadBadgeTxt}>Lead</Text>
-                    </View>
-                  ) : removing ? (
-                    <ActivityIndicator size="small" color={C.red600} />
-                  ) : (
-                    <TouchableOpacity style={ov.teamRemoveBtn} onPress={() => handleRemoveMember(uid, name)}>
-                      <FontAwesome5 name="user-minus" size={13} color={C.red600} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </Card>
-
-      <TeamManageModal
-        visible={teamModal}
-        onClose={() => setTeamModal(false)}
-        caseId={caseId}
-        team={displayTeam}
-        assignedLawyerId={lawyerId}
-        onTeamChange={() => { setTeamModal(false); onTeamChange?.(); }}
-      />
-
       <Card accent={C.red600}>
         <SectionHead icon="calendar-alt" iconColor={C.red600} title="Upcoming Events" />
         {events.length === 0 ? (
@@ -990,7 +907,7 @@ const ov = StyleSheet.create({
 
   // Description
   descText:      { fontSize: 14, color: C.g600, lineHeight: 22, marginBottom: 16 },
-  editInput:     { borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, padding: 12, fontSize: 14, color: C.dark, height: 100, textAlignVertical: 'top', marginBottom: 16 },
+  editInput:     { borderWidth: 1.5, borderColor: C.g300, borderRadius: 12, padding: 12, fontSize: 14, color: C.dark, backgroundColor: C.white, height: 100, textAlignVertical: 'top', marginBottom: 16 },
   keyGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10, borderTopWidth: 1, borderTopColor: C.g100, paddingTop: 14 },
   keyItem:       { width: (W - 32 - 68 - 10) / 2, flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   keyIcon:       { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 2, flexShrink: 0 },
@@ -1000,7 +917,7 @@ const ov = StyleSheet.create({
   // Fields
   field:         { marginBottom: 14 },
   fieldLabel:    { fontSize: 11, fontWeight: '700', color: C.g500, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  fieldInput:    { borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: C.dark, backgroundColor: C.white },
+  fieldInput:    { borderWidth: 1.5, borderColor: C.g300, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: C.dark, backgroundColor: C.white },
   fieldReadonly: { backgroundColor: C.g50, borderColor: C.g100 },
   fieldTxt:      { fontSize: 14, color: C.dark },
   rowBetween:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -1449,7 +1366,7 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, 
 
       {/* ── Add Task Modal ── */}
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={tk.modalOverlay}>
+        <View style={tk.modalOverlay}>
           <View style={tk.modalSheet}>
             {/* Header */}
             <View style={tk.modalHeader}>
@@ -1468,7 +1385,17 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, 
                 placeholder="Task title"
                 value={addTitle}
                 onChangeText={setAddTitle}
-                autoFocus
+              />
+
+              {/* Description */}
+              <Text style={[tk.fieldLabel, { marginTop: 4 }]}>Description</Text>
+              <TextInput
+                style={[tk.input, { height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                placeholder="Optional details or context..."
+                placeholderTextColor={C.g400}
+                value={addDesc}
+                onChangeText={setAddDesc}
+                multiline
               />
 
               {/* Priority */}
@@ -1582,17 +1509,6 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, 
                 </View>
               )}
 
-              {/* Description */}
-              <Text style={[tk.fieldLabel, { marginTop: 16 }]}>Description</Text>
-              <TextInput
-                style={[tk.input, { height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
-                placeholder="Optional details or context..."
-                placeholderTextColor={C.g400}
-                value={addDesc}
-                onChangeText={setAddDesc}
-                multiline
-              />
-
               <View style={{ height: 8 }} />
             </ScrollView>
 
@@ -1607,7 +1523,7 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, 
               }
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );
@@ -1673,6 +1589,103 @@ const tk = StyleSheet.create({
 // ═════════════════════════════════════════════════════════════════════════════
 const AMBER = '#D97706';
 
+// ═════════════════════════════════════════════════════════════════════════════
+//  TAB: TEAM
+// ═════════════════════════════════════════════════════════════════════════════
+const TeamTab = ({ team = [], caseId, lawyerId, onTeamChange, loading = false }) => {
+  const [teamModal,  setTeamModal]  = useState(false);
+  const [removingId, setRemovingId] = useState(null);
+
+  const handleRemoveMember = (userId, name) => {
+    Alert.alert('Remove Member', `Remove ${name} from this case?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        setRemovingId(userId);
+        try {
+          await casesAPI.removeTeamMember(caseId, userId);
+          onTeamChange?.();
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not remove member.');
+        } finally {
+          setRemovingId(null);
+        }
+      }},
+    ]);
+  };
+
+  return (
+    <View style={{ paddingTop: 4 }}>
+      <Card accent={C.teal600}>
+        <SectionHead
+          icon="users"
+          iconColor={C.teal600}
+          title={`Legal Team (${team.length})`}
+          action="Manage"
+          onAction={() => setTeamModal(true)}
+        />
+        {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
+        {!loading && team.length === 0 && (
+          <View style={ov.emptyBox}>
+            <FontAwesome5 name="user-plus" size={26} color={C.g300} />
+            <Text style={ov.emptyTxt}>No team members yet</Text>
+          </View>
+        )}
+        {!loading && (
+          <View style={{ gap: 10 }}>
+            {team.map(m => {
+              const uid      = m.user_id;
+              const name     = m.app_user?.full_name || 'Unknown';
+              const role     = m.app_user?.role || '';
+              const avatar   = m.app_user?.avatar_url || null;
+              const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+              const removing = removingId === uid;
+              const isLead   = uid === lawyerId;
+              return (
+                <View key={m.id ?? uid} style={ov.teamRow}>
+                  {avatar
+                    ? <Image source={{ uri: avatar }} style={ov.teamAvatar} />
+                    : <View style={[ov.teamAvatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: C.primary }}>{initials}</Text>
+                      </View>
+                  }
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={ov.teamName}>{name}</Text>
+                    {role ? <Text style={ov.teamRole}>{role}</Text> : null}
+                  </View>
+                  {isLead ? (
+                    <View style={ov.leadBadge}>
+                      <FontAwesome5 name="star" size={9} color={C.amber600} />
+                      <Text style={ov.leadBadgeTxt}>Lead</Text>
+                    </View>
+                  ) : removing ? (
+                    <ActivityIndicator size="small" color={C.red600} />
+                  ) : (
+                    <TouchableOpacity style={ov.teamRemoveBtn} onPress={() => handleRemoveMember(uid, name)}>
+                      <FontAwesome5 name="user-minus" size={13} color={C.red600} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </Card>
+
+      <TeamManageModal
+        visible={teamModal}
+        onClose={() => setTeamModal(false)}
+        caseId={caseId}
+        team={team}
+        assignedLawyerId={lawyerId}
+        onTeamChange={() => { setTeamModal(false); onTeamChange?.(); }}
+      />
+    </View>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  TAB: NOTES
+// ═════════════════════════════════════════════════════════════════════════════
 const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, navigation, caseData }) => {
   const [notes,         setNotes]         = useState(propNotes);
   const [showAdd,       setShowAdd]       = useState(false);
@@ -1821,7 +1834,6 @@ const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, 
 
       {/* ── Add Note Modal ── */}
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => { setShowAdd(false); resetForm(); }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View style={nt.modalOverlay}>
             <View style={nt.modalSheet}>
               {/* Header */}
@@ -1957,7 +1969,6 @@ const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, 
               </View>
             </View>
           </View>
-        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -2494,16 +2505,16 @@ export default function CaseDetailsScreen({ navigation, route }) {
   const [saving,     setSaving]     = useState(false);
 
   const initialFormRef = React.useRef({
-    title:       caseData.title,
-    caseType:    caseData.type,
-    phase:       caseData.phase,
-    priority:    caseData.priority,
-    court:       caseData.court,
-    judge:       caseData.judge,
-    attorney:    caseData.attorney,
-    description: caseData.description,
-    filingDate:  caseData.filingDate,
-    nextHearing: caseData.nextHearing?.label || '',
+    title:       caseData.title       ?? '',
+    caseType:    caseData.type        ?? '',
+    phase:       caseData.phase       ?? '',
+    priority:    (caseData.priority   ?? 'normal').toLowerCase(),
+    court:       caseData.court       ?? '',
+    judge:       caseData.judge       ?? '',
+    attorney:    caseData.attorney    ?? '',
+    description: caseData.description ?? '',
+    filingDate:  caseData.filingDate  ?? '',
+    nextHearing: caseData.nextHearing?.label ?? '',
     tags:        [...(caseData.tags || [])],
   });
 
@@ -2596,11 +2607,12 @@ export default function CaseDetailsScreen({ navigation, route }) {
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} team={team} caseId={caseData._id} onTeamChange={loadTeam} lawyerId={lawyerId} />;
+      case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} />;
       case 'documents': return <DocumentsTab documents={documents} stats={stats} loading={tabLoading} caseId={caseData._id} onUploaded={(n) => setStats(s => ({ ...s, docs: n }))} />;
       case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} caseId={caseData._id} team={team} />;
       case 'invoices':  return <InvoicesTab  invoices={invoices}            loading={tabLoading} />;
       case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} caseId={caseData._id} navigation={navigation} caseData={caseData} />;
+      case 'team':      return <TeamTab      team={team}                    loading={tabLoading} caseId={caseData._id} lawyerId={lawyerId} onTeamChange={loadTeam} />;
       case 'timeline':  return <TimelineTab  timeline={timeline}            loading={tabLoading} />;
     }
   };
@@ -2611,6 +2623,7 @@ export default function CaseDetailsScreen({ navigation, route }) {
     tasks:     stats.tasks,
     invoices:  invoices.length || null,
     notes:     stats.notes,
+    team:      team.length || null,
     timeline:  null,
   };
 
@@ -2648,44 +2661,48 @@ export default function CaseDetailsScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {/* Badges row */}
-        <View style={sc.badgeRow}>
-          <View style={[sc.priPill, { backgroundColor: pr.color }]}>
-            <View style={sc.priDot} />
-            <Text style={sc.priTxt}>{pr.label.toUpperCase()}</Text>
-          </View>
-          <View style={sc.typePill}>
-            <Text style={sc.typeTxt}>{caseData.type}</Text>
-          </View>
-          <View style={sc.typePill}>
-            <Text style={sc.typeTxt}>{caseData.phase}</Text>
-          </View>
-        </View>
-
-        {/* Hero title */}
-        <Text style={sc.heroTitle}>{caseData.title}</Text>
-        <Text style={sc.heroSub}>{caseData.subtitle}</Text>
-
-        {/* Stats pills */}
-        <View style={sc.statsPills}>
-          {[
-            { icon: 'file-alt',    value: stats.docs,   label: 'Docs',   color: '#60A5FA' },
-            { icon: 'check-square',value: stats.tasks,  label: 'Tasks',  color: '#FCD34D' },
-            { icon: 'calendar',    value: stats.events, label: 'Events', color: '#6EE7B7' },
-            { icon: 'sticky-note', value: stats.notes,  label: 'Notes',  color: '#C4B5FD' },
-          ].map(s => (
-            <View key={s.label} style={sc.statPill}>
-              <FontAwesome5 name={s.icon} size={12} color={s.color} />
-              <Text style={[sc.statNum, { color: s.color }]}>{s.value ?? 0}</Text>
-              <Text style={sc.statLbl}>{s.label}</Text>
+        {!editMode && (
+          <>
+            {/* Badges row */}
+            <View style={sc.badgeRow}>
+              <View style={[sc.priPill, { backgroundColor: pr.color }]}>
+                <View style={sc.priDot} />
+                <Text style={sc.priTxt}>{pr.label.toUpperCase()}</Text>
+              </View>
+              <View style={sc.typePill}>
+                <Text style={sc.typeTxt}>{caseData.type}</Text>
+              </View>
+              <View style={sc.typePill}>
+                <Text style={sc.typeTxt}>{caseData.phase}</Text>
+              </View>
             </View>
-          ))}
-        </View>
+
+            {/* Hero title */}
+            <Text style={sc.heroTitle}>{caseData.title}</Text>
+            <Text style={sc.heroSub}>{caseData.subtitle}</Text>
+
+            {/* Stats pills */}
+            <View style={sc.statsPills}>
+              {[
+                { icon: 'file-alt',    value: stats.docs,   label: 'Docs',   color: '#60A5FA' },
+                { icon: 'check-square',value: stats.tasks,  label: 'Tasks',  color: '#FCD34D' },
+                { icon: 'calendar',    value: stats.events, label: 'Events', color: '#6EE7B7' },
+                { icon: 'sticky-note', value: stats.notes,  label: 'Notes',  color: '#C4B5FD' },
+              ].map(s => (
+                <View key={s.label} style={sc.statPill}>
+                  <FontAwesome5 name={s.icon} size={12} color={s.color} />
+                  <Text style={[sc.statNum, { color: s.color }]}>{s.value ?? 0}</Text>
+                  <Text style={sc.statLbl}>{s.label}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
 
       </View>
 
       {/* ── CLIENT STRIP ──────────────────────────────────────────── */}
-      <View style={sc.clientStrip}>
+      {!editMode && <View style={sc.clientStrip}>
         <View style={sc.clientLeft}>
           {caseData.client?.avatar ? (
             <Image source={{ uri: caseData.client.avatar }} style={sc.clientAvatar} />
@@ -2737,7 +2754,7 @@ export default function CaseDetailsScreen({ navigation, route }) {
             <FontAwesome5 name="comment" size={12} color={C.purple600} />
           </TouchableOpacity>
         </View>
-      </View>
+      </View>}
 
 
       {/* ── TAB BAR ───────────────────────────────────────────────── */}
@@ -2770,16 +2787,18 @@ export default function CaseDetailsScreen({ navigation, route }) {
       </View>
 
       {/* ── SCROLLABLE CONTENT ────────────────────────────────────── */}
-      <ScrollView
-        style={sc.scroll}
-        contentContainerStyle={{ paddingTop: 8, paddingBottom: 50 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {renderTab()}
-      </ScrollView>
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          style={sc.scroll}
+          contentContainerStyle={{ paddingTop: 8, paddingBottom: editMode ? 100 : 50 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderTab()}
+        </ScrollView>
 
-      {/* ── EDIT MODE FOOTER ──────────────────────────────────────── */}
-      {editMode && (
+        {/* ── EDIT MODE FOOTER ──────────────────────────────────────── */}
+        {editMode && (
         <View style={sc.footer}>
           <TouchableOpacity style={sc.footerCancel} onPress={handleDiscard} disabled={saving}>
             <Text style={sc.footerCancelTxt}>Discard</Text>
@@ -2794,7 +2813,8 @@ export default function CaseDetailsScreen({ navigation, route }) {
             }
           </TouchableOpacity>
         </View>
-      )}
+        )}
+      </View>
     </SafeAreaView>
   );
 }

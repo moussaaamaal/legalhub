@@ -323,7 +323,7 @@ export default function ClientInvoiceDetailScreen({ route, navigation }) {
         </View>
       ) : (
         <>
-          <ScrollView style={s.scroll} contentContainerStyle={{ padding: 16, paddingBottom: canPay ? 110 : 48 }} showsVerticalScrollIndicator={false}>
+          <ScrollView style={s.scroll} contentContainerStyle={{ padding: 16, paddingBottom: canPay ? 110 : 48 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
             {/* Status Banner */}
             <View style={[s.statusBanner, { backgroundColor: st.bg, borderColor: st.color + '30' }]}>

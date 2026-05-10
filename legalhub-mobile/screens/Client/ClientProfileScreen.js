@@ -136,7 +136,7 @@ export default function ClientProfileScreen({ navigation }) {
           <Text style={{ color: C.g500, fontSize: 15, fontWeight: '600', marginTop: 8 }}>Profile not found</Text>
         </View>
       ) : (
-        <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 48 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
           {/* Hero */}
           <View style={s.heroCard}>

@@ -20,13 +20,6 @@ const SERVICE_TEMPLATES = [
   { label: 'Research & Analysis',  rate: '180' },
 ];
 
-const TAX_RATES = [
-  { label: '0%',  value: 0  },
-  { label: '5%',  value: 5  },
-  { label: '10%', value: 10 },
-  { label: '15%', value: 15 },
-  { label: '20%', value: 20 },
-];
 
 // ─── Mini Calendar Picker (teal theme) ────────────────────────────────────
 const MONTH_NAMES = ['January','February','March','April','May','June',
@@ -274,7 +267,7 @@ export default function InvoiceScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* ── Bill To ── */}
         <View style={s.section}>
@@ -440,17 +433,24 @@ export default function InvoiceScreen({ navigation }) {
             <Text style={s.totalVal}>{fmt(subtotal)}</Text>
           </View>
 
-          <Text style={[s.label, { marginTop: 14 }]}>Tax Rate</Text>
-          <View style={s.taxRow}>
-            {TAX_RATES.map(t => (
-              <TouchableOpacity
-                key={t.value}
-                style={[s.taxBtn, form.taxRate === t.value && s.taxBtnActive]}
-                onPress={() => update('taxRate', t.value)}
-              >
-                <Text style={[s.taxText, form.taxRate === t.value && s.taxTextActive]}>{t.label}</Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={[s.label, { marginTop: 14 }]}>Tax Rate (0 – 20%)</Text>
+          <View style={s.taxInputRow}>
+            <TextInput
+              style={s.taxInput}
+              keyboardType="decimal-pad"
+              value={form.taxRate === 0 ? '' : String(form.taxRate)}
+              placeholder="0"
+              placeholderTextColor={COLORS.gray400}
+              maxLength={4}
+              onChangeText={v => {
+                const num = parseFloat(v.replace(',', '.'));
+                if (v === '' || v === '.') { update('taxRate', 0); return; }
+                if (isNaN(num)) return;
+                if (num > 20) return;
+                update('taxRate', num);
+              }}
+            />
+            <Text style={s.taxSymbol}>%</Text>
           </View>
 
           <View style={s.divider} />
@@ -563,11 +563,9 @@ const s = StyleSheet.create({
   totalRow:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalKey:          { fontSize: 14, color: COLORS.gray600 },
   totalVal:          { fontSize: 14, fontWeight: '700', color: COLORS.dark },
-  taxRow:            { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  taxBtn:            { flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.gray200, alignItems: 'center' },
-  taxBtnActive:      { backgroundColor: COLORS.teal, borderColor: COLORS.teal },
-  taxText:           { fontSize: 12, fontWeight: '700', color: COLORS.gray600 },
-  taxTextActive:     { color: COLORS.white },
+  taxInputRow:       { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: COLORS.gray200, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 4, marginBottom: 8 },
+  taxInput:          { flex: 1, fontSize: 16, fontWeight: '700', color: COLORS.dark, paddingVertical: 8 },
+  taxSymbol:         { fontSize: 16, fontWeight: '700', color: COLORS.gray500, marginLeft: 4 },
   divider:           { height: 1, backgroundColor: COLORS.gray100, marginVertical: 12 },
   footer:            { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 16, backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.gray100 },
   btnPrimary:        { flexDirection: 'row', backgroundColor: COLORS.teal, paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

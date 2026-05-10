@@ -653,7 +653,7 @@ export default function HomeScreen() {
       label: 'Invoices', sublabel: '& Payments',
       color: COLORS.teal600, bg: '#F0FDFA', accent: '#CCFBF1',
       badge: stats ? `$${stats.pending_payments ?? 0}` : '—',
-      badgeLabel: 'Pending', badgeColor: COLORS.red600, badgeBg: COLORS.red50,
+      badgeLabel: '', badgeColor: COLORS.red600, badgeBg: COLORS.red50,
     },
     {
       screen: 'AIAssistant', icon: 'robot', iconLib: 'FA5',

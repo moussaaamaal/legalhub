@@ -126,9 +126,10 @@ const cp = StyleSheet.create({
 export default function ScheduleScreen({ navigation }) {
   const [form, setForm] = useState({
     title: '', event_type: '', case_id: null, location: '',
-    date: '', time: '', duration: '60', notes: '',
-    reminder: '30', recurrence: 'none',
-    limitType: 'count',        // 'count' | 'until'
+    is_video_call: false, video_call_url: '',
+    date: '', time: '', duration: '60',
+    reminders: ['30'], recurrence: 'none',
+    limitType: 'count',
     recurrence_count: '4',
   });
   const [untilDate,    setUntilDate]    = useState(new Date());
@@ -175,8 +176,9 @@ export default function ScheduleScreen({ navigation }) {
       event_type:       form.event_type,
       start_datetime:   start.toISOString(),
       end_datetime:     end.toISOString(),
-      reminder_minutes: [parseInt(form.reminder, 10)],
+      reminder_minutes: form.reminders.map(v => parseInt(v, 10)),
       recurrence:       form.recurrence || 'none',
+      is_video_call:    form.is_video_call,
     };
 
     if (form.recurrence !== 'none') {
@@ -193,9 +195,10 @@ export default function ScheduleScreen({ navigation }) {
       }
     }
 
-    if (form.location.trim()) payload.location = form.location.trim();
-    if (form.case_id)         payload.case_id  = form.case_id;
-    if (form.notes.trim())    payload.notes    = form.notes.trim();
+    if (form.location.trim())                        payload.location      = form.location.trim();
+    if (form.case_id)                                payload.case_id       = form.case_id;
+    if (form.is_video_call && form.video_call_url.trim())
+                                                     payload.video_call_url = form.video_call_url.trim();
 
     return payload;
   };
@@ -236,7 +239,7 @@ export default function ScheduleScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* Calendar Strip */}
         <View style={s.calStrip}>
@@ -289,6 +292,31 @@ export default function ScheduleScreen({ navigation }) {
           <Text style={s.sectionTitle}>Event Details</Text>
           <Field label="Event Title *" placeholder="e.g., Criminal Court Hearing" value={form.title} onChange={v => update('title', v)} icon="calendar-alt" />
           <Field label="Location / Room"   placeholder="e.g., Courtroom 204, City Hall" value={form.location} onChange={v => update('location', v)} icon="map-marker-alt" />
+
+          {/* Video call toggle */}
+          <View style={s.videoRow}>
+            <View style={s.videoLeft}>
+              <View style={[s.videoIconWrap, form.is_video_call && { backgroundColor: COLORS.pink + '22' }]}>
+                <FontAwesome5 name="video" size={14} color={form.is_video_call ? COLORS.pink : COLORS.gray500} />
+              </View>
+              <View style={{ marginLeft: 12 }}>
+                <Text style={s.videoTitle}>Video Call</Text>
+                <Text style={s.videoSub}>This event takes place online</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[s.toggle, form.is_video_call && s.toggleOn]}
+              onPress={() => update('is_video_call', !form.is_video_call)}
+            >
+              <View style={[s.knob, form.is_video_call && s.knobOn]} />
+            </TouchableOpacity>
+          </View>
+
+          {form.is_video_call && (
+            <View style={{ marginTop: 10 }}>
+              <Field label="Video Call URL" placeholder="https://meet.google.com/..." value={form.video_call_url} onChange={v => update('video_call_url', v)} icon="link" />
+            </View>
+          )}
 
           {cases.length > 0 && (
             <>
@@ -358,13 +386,25 @@ export default function ScheduleScreen({ navigation }) {
         {/* Notifications */}
         <View style={s.section}>
           <Text style={s.sectionTitle}>Notifications</Text>
-          <Text style={s.label}>Remind me before</Text>
+          <Text style={s.label}>Remind me before (multi-select)</Text>
           <View style={s.reminderRow}>
-            {[['15', '15 min'], ['30', '30 min'], ['60', '1 hour'], ['1440', '1 day']].map(([val, lab]) => (
-              <TouchableOpacity key={val} style={[s.remBtn, form.reminder === val && s.remBtnActive]} onPress={() => update('reminder', val)}>
-                <Text style={[s.remText, form.reminder === val && s.remTextActive]}>{lab}</Text>
-              </TouchableOpacity>
-            ))}
+            {[['15', '15 min'], ['30', '30 min'], ['60', '1 hour'], ['1440', '1 day']].map(([val, lab]) => {
+              const active = form.reminders.includes(val);
+              return (
+                <TouchableOpacity
+                  key={val}
+                  style={[s.remBtn, active && s.remBtnActive]}
+                  onPress={() => {
+                    const next = active
+                      ? form.reminders.filter(r => r !== val)
+                      : [...form.reminders, val];
+                    update('reminders', next);
+                  }}
+                >
+                  <Text style={[s.remText, active && s.remTextActive]}>{lab}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <Text style={[s.label, { marginTop: 14 }]}>Recurrence</Text>
@@ -471,19 +511,6 @@ export default function ScheduleScreen({ navigation }) {
           )}
         </View>
 
-        {/* Notes */}
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>Additional Notes</Text>
-          <TextInput
-            style={[s.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
-            placeholder="Preparation notes, items to bring, agenda..."
-            placeholderTextColor={COLORS.gray400}
-            value={form.notes}
-            onChangeText={v => update('notes', v)}
-            multiline
-          />
-        </View>
-
         <View style={{ height: 20 }} />
       </ScrollView>
 
@@ -563,6 +590,17 @@ const s = StyleSheet.create({
   timeChipActive:  { backgroundColor: COLORS.pink, borderColor: COLORS.pink },
   timeChipText:    { fontSize: 13, fontWeight: '600', color: COLORS.gray600 },
   timeChipTextActive: { color: COLORS.white },
+  // Video call toggle
+  videoRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  videoLeft:       { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  videoIconWrap:   { width: 36, height: 36, borderRadius: 10, backgroundColor: COLORS.gray100, alignItems: 'center', justifyContent: 'center' },
+  videoTitle:      { fontSize: 14, fontWeight: '600', color: COLORS.dark },
+  videoSub:        { fontSize: 11, color: COLORS.gray500 },
+  toggle:          { width: 48, height: 26, borderRadius: 13, backgroundColor: COLORS.gray200, paddingHorizontal: 2, justifyContent: 'center' },
+  toggleOn:        { backgroundColor: COLORS.pink },
+  knob:            { width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.white, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 },
+  knobOn:          { marginLeft: 22 },
+
   reminderRow:     { flexDirection: 'row', gap: 8 },
   remBtn:          { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.gray200, alignItems: 'center' },
   remBtnActive:    { backgroundColor: COLORS.pink, borderColor: COLORS.pink },

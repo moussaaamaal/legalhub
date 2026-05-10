@@ -112,21 +112,57 @@ async def list_events(
     from_date: Optional[str] = None,
     current_user=Depends(get_current_user)
 ):
+    firm_id  = current_user["firm_id"]
     is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
 
-    query = supabase.table("calendar_event").select("*").eq("firm_id", current_user["firm_id"])
-
     if not is_admin and current_user["role"] == "LAWYER":
-        query = query.eq("created_by", current_user["id"])
+        user_id = current_user["id"]
 
+        # Case IDs where the lawyer is a team member
+        team = supabase.table("case_team").select("case_id").eq("user_id", user_id).execute()
+        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
+
+        def _apply_filters(q):
+            if event_type:
+                q = q.eq("event_type", event_type)
+            if case_id:
+                q = q.eq("case_id", case_id)
+            if from_date:
+                q = q.gte("start_datetime", from_date)
+            return q
+
+        # Events created by the lawyer
+        q_created = _apply_filters(
+            supabase.table("calendar_event").select("*").eq("firm_id", firm_id).eq("created_by", user_id)
+        )
+        events_created = (q_created.execute()).data or []
+
+        # Events linked to lawyer's cases (created by others)
+        events_case = []
+        if lawyer_case_ids:
+            q_case = _apply_filters(
+                supabase.table("calendar_event").select("*").eq("firm_id", firm_id).in_("case_id", lawyer_case_ids).neq("created_by", user_id)
+            )
+            events_case = (q_case.execute()).data or []
+
+        # Merge, deduplicate, sort
+        seen = set()
+        merged = []
+        for ev in events_created + events_case:
+            if ev["id"] not in seen:
+                seen.add(ev["id"])
+                merged.append(ev)
+        merged.sort(key=lambda x: x.get("start_datetime") or "")
+        return merged
+
+    query = supabase.table("calendar_event").select("*").eq("firm_id", firm_id)
     if event_type:
         query = query.eq("event_type", event_type)
     if case_id:
         query = query.eq("case_id", case_id)
     if from_date:
         query = query.gte("start_datetime", from_date)
-    result = query.order("start_datetime").execute()
-    return result.data
+    return (query.order("start_datetime").execute()).data or []
 
 
 @router.post("/events", status_code=201)

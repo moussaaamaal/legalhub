@@ -51,15 +51,33 @@ async def get_dashboard_stats(current_user=Depends(get_lawyer)):
         hearings_q = hearings_q.eq("created_by", user_id)
     upcoming_hearings = len((hearings_q.execute()).data or [])
 
-    # Pending invoices (firm-wide)
-    invoices = (
+    # Pending invoices
+    inv_q = (
         supabase.table("invoice")
         .select("id, status, total_amount")
         .eq("firm_id", firm_id)
         .in_("status", ["PENDING", "OVERDUE"])
-        .execute()
     )
-    pending_payments = sum(i["total_amount"] for i in (invoices.data or []))
+    if not admin:
+        lawyer_case_ids = _get_lawyer_case_ids(user_id)
+        by_lawyer_ids = [
+            r["id"] for r in (
+                supabase.table("invoice").select("id").eq("firm_id", firm_id).eq("lawyer_id", user_id).execute()
+            ).data or []
+        ]
+        by_case_ids = [
+            r["id"] for r in (
+                supabase.table("invoice").select("id").eq("firm_id", firm_id).in_("case_id", lawyer_case_ids).execute()
+            ).data or []
+        ] if lawyer_case_ids else []
+        allowed_ids = list(set(by_lawyer_ids) | set(by_case_ids))
+        if not allowed_ids:
+            pending_payments = 0.0
+        else:
+            inv_q = inv_q.in_("id", allowed_ids)
+            pending_payments = sum(i["total_amount"] for i in (inv_q.execute()).data or [])
+    else:
+        pending_payments = sum(i["total_amount"] for i in (inv_q.execute()).data or [])
 
     # Active reminders
     base_task_q = lambda: (

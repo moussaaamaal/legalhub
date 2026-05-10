@@ -152,7 +152,7 @@ export default function ClientNotificationsScreen({ navigation }) {
           <Text style={s.emptySubtitle}>You're all caught up!</Text>
         </View>
       ) : (
-        <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {unreadCount > 0 && (
             <View style={s.unreadBanner}>
               <FontAwesome5 name="circle" size={8} color={C.primary} style={{ marginRight: 8 }} />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   Image, StyleSheet, SafeAreaView, StatusBar,
@@ -164,6 +164,8 @@ export default function ProfileScreen({ navigation }) {
   // Notification preferences
   const [notifPrefs, setNotifPrefs]       = useState(null);
   const [savingNotif, setSavingNotif]     = useState(false);
+  const scrollRef   = useRef(null);
+  const notifSectionY = useRef(0);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   useEffect(() => {
@@ -394,13 +396,13 @@ export default function ProfileScreen({ navigation }) {
             <Icon lib="FA5" name="arrow-left" size={18} color={C.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Profile Settings</Text>
-          <TouchableOpacity style={s.headerBtn}>
+          <TouchableOpacity style={s.headerBtn} onPress={() => scrollRef.current?.scrollTo({ y: notifSectionY.current, animated: true })}>
             <Icon lib="ION" name="notifications-outline" size={22} color={C.white} />
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={s.scroll} contentContainerStyle={{ paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
 
         {/* ── PROFILE HEADER ── */}
         <View style={[s.section, { backgroundColor: C.blue50 }]}>
@@ -579,7 +581,7 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         {/* ── NOTIFICATION PREFERENCES ── */}
-        <View style={s.section}>
+        <View style={s.section} onLayout={e => { notifSectionY.current = e.nativeEvent.layout.y; }}>
           <View style={[s.row, { justifyContent: 'space-between', marginBottom: 14 }]}>
             <Text style={s.sectionTitle}>Notification Preferences</Text>
             {savingNotif && <ActivityIndicator size="small" color={C.primary} />}

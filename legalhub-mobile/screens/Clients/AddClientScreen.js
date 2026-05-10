@@ -90,7 +90,7 @@ export default function AddClientScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={s.section}>
 
           {step === 1 && (

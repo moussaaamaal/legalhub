@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase
 from app.core.email import send_invoice_email, send_payment_reminder_email
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List
+
 from app.models.enums import InvoiceStatus
 import secrets
 
@@ -43,6 +44,13 @@ class CreateInvoiceRequest(BaseModel):
     currency: str = "USD"
     notes: Optional[str] = None
 
+    @field_validator("tax_rate")
+    @classmethod
+    def validate_tax_rate(cls, v):
+        if not (0 <= v <= 20):
+            raise ValueError("tax_rate must be between 0 and 20")
+        return v
+
 class UpdateInvoiceRequest(BaseModel):
     client_id: Optional[str] = None
     case_id: Optional[str] = None
@@ -52,20 +60,52 @@ class UpdateInvoiceRequest(BaseModel):
     currency: Optional[str] = None
     notes: Optional[str] = None
 
+    @field_validator("tax_rate")
+    @classmethod
+    def validate_tax_rate(cls, v):
+        if v is not None and not (0 <= v <= 20):
+            raise ValueError("tax_rate must be between 0 and 20")
+        return v
+
 # ─── GET /api/invoices/analytics/summary ────────────────
 # IMPORTANT: Must be declared BEFORE /{invoice_id} to avoid
 # FastAPI interpreting "analytics" as an invoice_id path param.
 
+def _get_lawyer_invoice_ids(firm_id: str, user_id: str) -> list:
+    """Return invoice IDs visible to a regular lawyer (created by them or linked to their cases)."""
+    team = supabase.table("case_team").select("case_id").eq("user_id", user_id).execute()
+    lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
+
+    by_lawyer = {
+        r["id"] for r in (
+            supabase.table("invoice").select("id").eq("firm_id", firm_id).eq("lawyer_id", user_id).execute()
+        ).data or []
+    }
+    by_case = set()
+    if lawyer_case_ids:
+        by_case = {
+            r["id"] for r in (
+                supabase.table("invoice").select("id").eq("firm_id", firm_id).in_("case_id", lawyer_case_ids).execute()
+            ).data or []
+        }
+    return list(by_lawyer | by_case)
+
+
 @router.get("/analytics/summary")
 async def billing_analytics(current_user=Depends(get_lawyer)):
-    _auto_mark_overdue(current_user["firm_id"])
-    invoices = (
-        supabase.table("invoice")
-        .select("*")
-        .eq("firm_id", current_user["firm_id"])
-        .execute()
-    )
-    data = invoices.data or []
+    firm_id  = current_user["firm_id"]
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
+    _auto_mark_overdue(firm_id)
+
+    inv_q = supabase.table("invoice").select("*").eq("firm_id", firm_id)
+    if not is_admin:
+        invoice_ids = _get_lawyer_invoice_ids(firm_id, current_user["id"])
+        if not invoice_ids:
+            return {"total_revenue": 0, "outstanding": 0, "overdue": 0, "total_invoices": 0, "collection_rate": 0}
+        inv_q = inv_q.in_("id", invoice_ids)
+
+    data = (inv_q.execute()).data or []
 
     total_revenue   = sum(i["total_amount"] for i in data if i["status"] == "PAID")
     outstanding     = sum(i["total_amount"] for i in data if i["status"] == "PENDING")
@@ -91,12 +131,17 @@ async def list_invoices(
     case_id: Optional[str] = None,
     current_user=Depends(get_current_user)
 ):
-    _auto_mark_overdue(current_user["firm_id"])
+    firm_id  = current_user["firm_id"]
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
+    _auto_mark_overdue(firm_id)
+
     query = (
         supabase.table("invoice")
-        .select("*, invoice_item(*), client(id, first_name, last_name, email)")
-        .eq("firm_id", current_user["firm_id"])
+        .select("*, invoice_item(*), client(id, first_name, last_name, email), case_file(id, title, case_number)")
+        .eq("firm_id", firm_id)
     )
+
     if current_user["role"] == "CLIENT":
         client_result = (
             supabase.table("client")
@@ -108,6 +153,12 @@ async def list_invoices(
         if not client_result.data:
             return []
         query = query.eq("client_id", client_result.data["id"])
+    elif not is_admin:
+        invoice_ids = _get_lawyer_invoice_ids(firm_id, current_user["id"])
+        if not invoice_ids:
+            return []
+        query = query.in_("id", invoice_ids)
+
     if status:
         query = query.eq("status", status)
     if client_id:
@@ -172,7 +223,7 @@ async def create_invoice(body: CreateInvoiceRequest, current_user=Depends(get_la
 async def get_invoice(invoice_id: str, current_user=Depends(get_current_user)):
     result = (
         supabase.table("invoice")
-        .select("*, invoice_item(*), client(id, first_name, last_name, email)")
+        .select("*, invoice_item(*), client(id, first_name, last_name, email), case_file(id, title, case_number)")
         .eq("id", invoice_id)
         .eq("firm_id", current_user["firm_id"])
         .single()
@@ -268,7 +319,7 @@ async def send_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
     # Fetch invoice with items and client email in one query
     inv_res = (
         supabase.table("invoice")
-        .select("*, invoice_item(*), client(id, first_name, last_name, email)")
+        .select("*, invoice_item(*), client(id, first_name, last_name, email), case_file(id, title, case_number)")
         .eq("id", invoice_id)
         .eq("firm_id", current_user["firm_id"])
         .single()

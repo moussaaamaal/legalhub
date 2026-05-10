@@ -60,6 +60,7 @@ export default function InvoiceDetailsScreen({ navigation, route }) {
   const status     = (inv?.status || 'DRAFT').toUpperCase();
   const meta       = STATUS_META[status] || STATUS_META.DRAFT;
   const client     = inv?.client;
+  const caseFile   = inv?.case_file || null;
   const clientName = client
     ? `${client.first_name || ''} ${client.last_name || ''}`.trim()
     : 'Unknown Client';
@@ -126,7 +127,7 @@ export default function InvoiceDetailsScreen({ navigation, route }) {
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* CLIENT CARD */}
         <View style={s.section}>
@@ -149,6 +150,19 @@ export default function InvoiceDetailsScreen({ navigation, route }) {
             )}
           </View>
         </View>
+
+        {/* RELATED CASE */}
+        {!!caseFile && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Related Case</Text>
+            <View style={s.caseCard}>
+              <View style={s.caseIconWrap}>
+                <FontAwesome5 name="briefcase" size={18} color={C.primary} />
+              </View>
+              <Text style={s.caseTitle} numberOfLines={2}>{caseFile.title}</Text>
+            </View>
+          </View>
+        )}
 
         {/* DATES */}
         <View style={s.section}>
@@ -282,6 +296,10 @@ const s = StyleSheet.create({
   totalRowFinal:{ borderTopWidth: 1, borderTopColor: C.g200, paddingTop: 10, marginTop: 4 },
   totalLabelFinal:{ fontSize: 15, fontWeight: '800', color: C.dark },
   totalValFinal:{ fontSize: 17, fontWeight: '800', color: C.primary },
+
+  caseCard:     { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.blue50, borderRadius: 12, padding: 14 },
+  caseIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' },
+  caseTitle:    { fontSize: 15, fontWeight: '700', color: C.primary, flex: 1 },
 
   notesBox:     { backgroundColor: C.g50, borderRadius: 12, padding: 14 },
   notesText:    { fontSize: 13, color: C.g600, lineHeight: 20 },

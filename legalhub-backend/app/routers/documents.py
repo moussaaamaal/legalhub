@@ -301,15 +301,40 @@ async def voice_note_ai(
             "partial_data": existing,
         }
 
-    # ── Step 2: Fetch cases ──────────────────────────────────────────────────
-    cases_res = (
-        supabase.table("case_file")
-        .select("id, case_number, title")
-        .eq("firm_id", current_user["firm_id"])
-        .limit(100)
-        .execute()
-    )
-    cases      = cases_res.data or []
+    # ── Step 2: Fetch cases accessible to this lawyer ───────────────────────
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
+    if is_admin:
+        cases_res = (
+            supabase.table("case_file")
+            .select("id, case_number, title")
+            .eq("firm_id", current_user["firm_id"])
+            .limit(200)
+            .execute()
+        )
+        cases = cases_res.data or []
+    else:
+        # Only cases where the lawyer is a team member (includes primary lawyer)
+        team_res = (
+            supabase.table("case_team")
+            .select("case_id")
+            .eq("user_id", current_user["id"])
+            .execute()
+        )
+        lawyer_case_ids = [r["case_id"] for r in (team_res.data or [])]
+        if lawyer_case_ids:
+            cases_res = (
+                supabase.table("case_file")
+                .select("id, case_number, title")
+                .in_("id", lawyer_case_ids)
+                .eq("firm_id", current_user["firm_id"])
+                .limit(200)
+                .execute()
+            )
+            cases = cases_res.data or []
+        else:
+            cases = []
+
     cases_list = "\n".join(f"- {c['case_number']}: {c['title']}" for c in cases) or "No cases found."
 
     # ── Step 3: Build LLM prompt ─────────────────────────────────────────────

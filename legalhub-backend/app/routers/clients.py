@@ -53,11 +53,36 @@ async def list_clients(
     search: Optional[str] = None,
     current_user=Depends(get_lawyer)
 ):
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
     query = (
         supabase.table("client")
         .select("*")
         .eq("firm_id", current_user["firm_id"])
     )
+
+    if not is_admin:
+        # Clients linked to cases where this lawyer is a team member
+        team = supabase.table("case_team").select("case_id").eq("user_id", current_user["id"]).execute()
+        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
+
+        if not lawyer_case_ids:
+            return []
+
+        cases_res = (
+            supabase.table("case_file")
+            .select("client_id")
+            .in_("id", lawyer_case_ids)
+            .not_.is_("client_id", "null")
+            .execute()
+        )
+        client_ids = list({r["client_id"] for r in (cases_res.data or []) if r.get("client_id")})
+
+        if not client_ids:
+            return []
+
+        query = query.in_("id", client_ids)
+
     if tag:
         query = query.eq("tag", tag)
     result = query.order("created_at", desc=True).execute()

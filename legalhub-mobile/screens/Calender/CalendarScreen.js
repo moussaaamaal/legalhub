@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar, Switch,
   Modal, TextInput, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -326,7 +327,10 @@ function AddEventModal({ visible, onClose, onCreated }) {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={m.overlay}>
+      <KeyboardAvoidingView
+        style={m.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={m.sheet}>
           <View style={m.sheetHeader}>
             <Text style={m.sheetTitle}>New Event</Text>
@@ -486,7 +490,7 @@ function AddEventModal({ visible, onClose, onCreated }) {
             </TouchableOpacity>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -636,7 +640,7 @@ export default function CalendarScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 90 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* VIEW TOGGLE */}
         <View style={s.viewToggleWrap}>
@@ -813,7 +817,7 @@ export default function CalendarScreen({ navigation }) {
 // ─── MODAL STYLES ─────────────────────────────────────────────────────────
 const m = StyleSheet.create({
   overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet:      { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  sheet:      { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '92%', flexShrink: 1 },
   sheetHeader:{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: C.dark },
   label:      { fontSize: 13, fontWeight: '600', color: C.gray700, marginBottom: 6, marginTop: 14 },

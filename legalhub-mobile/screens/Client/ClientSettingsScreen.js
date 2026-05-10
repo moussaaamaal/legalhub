@@ -138,7 +138,7 @@ export default function ClientSettingsScreen({ navigation }) {
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={C.primary} /></View>
       ) : (
-        <ScrollView style={s.scroll} contentContainerStyle={{ padding: 16, paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={s.scroll} contentContainerStyle={{ padding: 16, paddingBottom: 48 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
           {/* Notification Types */}
           <View style={s.card}>

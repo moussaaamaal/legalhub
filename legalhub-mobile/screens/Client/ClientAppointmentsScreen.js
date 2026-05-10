@@ -240,7 +240,7 @@ export default function ClientAppointmentsScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView style={s.scroll} contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={s.scroll} contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
           {upcoming.length > 0 && (
             <>

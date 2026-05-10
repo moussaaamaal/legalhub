@@ -70,6 +70,7 @@ function InvoiceCard({ inv, onRemind, onSend, onViewDetails }) {
   const status  = (inv.status || 'DRAFT').toUpperCase();
   const meta    = STATUS_META[status] || STATUS_META.DRAFT;
   const client  = inv.client;
+  const caseFile = inv.case_file || null;
   const clientName = client
     ? `${client.first_name || ''} ${client.last_name || ''}`.trim()
     : 'Unknown Client';
@@ -140,6 +141,18 @@ function InvoiceCard({ inv, onRemind, onSend, onViewDetails }) {
           )}
         </View>
       </View>
+
+      {/* Related case row */}
+      {!!caseFile && (
+        <View style={s.caseRow}>
+          <View style={s.caseIconWrap}>
+            <FontAwesome5 name="briefcase" size={11} color={C.primary} />
+          </View>
+          <Text style={s.caseName} numberOfLines={1}>
+            {caseFile.title}
+          </Text>
+        </View>
+      )}
 
       {/* Stats row */}
       <View style={s.statsRow}>
@@ -258,15 +271,19 @@ export default function InvoicesManagementScreen({ navigation }) {
       return;
     }
     const lines = [
-      'Invoice #,Client,Status,Amount,Currency,Issue Date,Due Date',
+      'Invoice #,Client,Case,Status,Amount,Currency,Issue Date,Due Date',
       ...invoices.map(inv => {
         const client = inv.client;
         const clientName = client
           ? `${client.first_name || ''} ${client.last_name || ''}`.trim()
           : 'Unknown';
+        const caseName = inv.case_file
+          ? `${inv.case_file.case_number || ''} - ${inv.case_file.title || ''}`.trim()
+          : '';
         return [
           inv.invoice_number || inv.id?.slice(0, 8),
           `"${clientName}"`,
+          `"${caseName}"`,
           inv.status,
           inv.total_amount != null ? parseFloat(inv.total_amount).toFixed(2) : '0.00',
           inv.currency || 'USD',
@@ -303,8 +320,10 @@ export default function InvoicesManagementScreen({ navigation }) {
     if (!q) return true;
     const client = inv.client;
     const clientName = client ? `${client.first_name || ''} ${client.last_name || ''}` : '';
+    const caseText = inv.case_file ? `${inv.case_file.case_number || ''} ${inv.case_file.title || ''}` : '';
     return (inv.invoice_number || '').toLowerCase().includes(q) ||
-           clientName.toLowerCase().includes(q);
+           clientName.toLowerCase().includes(q) ||
+           caseText.toLowerCase().includes(q);
   });
 
   const countFor = (key) => key === 'ALL'
@@ -591,9 +610,12 @@ const s = StyleSheet.create({
   pill:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   pillText:   { fontSize: 11, fontWeight: '600' },
   cardTitle:  { fontSize: 14, fontWeight: '700', color: C.dark, marginBottom: 2 },
-  clientRow:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.g100, marginVertical: 10 },
+  clientRow:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderColor: C.g100, marginTop: 10 },
   clientName: { fontSize: 12, fontWeight: '700', color: C.dark },
   clientRole: { fontSize: 11, color: C.g400 },
+  caseRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderColor: C.g100, marginBottom: 10 },
+  caseIconWrap: { width: 26, height: 26, borderRadius: 8, backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' },
+  caseName:   { fontSize: 12, fontWeight: '600', color: C.primary, flex: 1 },
   statsRow:   { flexDirection: 'row', marginBottom: 12 },
   statItem:   { flex: 1, alignItems: 'center' },
   statBordered:{ borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.g100 },
