@@ -101,6 +101,7 @@ export const casesAPI = {
   getById:       (id)            => request('GET',    `/api/cases/${id}`),
   update:        (id, body)      => request('PUT',    `/api/cases/${id}`,          body),
   updateStatus:  (id, status)    => request('PATCH',  `/api/cases/${id}/status`,   { status }),
+  restore:       (id)            => request('PATCH',  `/api/cases/${id}/restore`),
   archive:       (id)            => request('DELETE', `/api/cases/${id}`),
   getTimeline:   (id)            => request('GET',    `/api/cases/${id}/timeline`),
   getTeam:       (id)            => request('GET',    `/api/cases/${id}/team`),

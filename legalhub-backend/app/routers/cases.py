@@ -56,6 +56,26 @@ class UpdateCaseStatusRequest(BaseModel):
 class AddTeamMemberRequest(BaseModel):
     user_id: str
 
+STATUS_PROGRESS = {
+    CaseStatus.NEW:           0,
+    CaseStatus.INVESTIGATION: 20,
+    CaseStatus.PRE_TRIAL:     40,
+    CaseStatus.TRIAL:         60,
+    CaseStatus.APPEAL:        80,
+    CaseStatus.SETTLED:       100,
+    CaseStatus.CLOSED:        100,
+}
+
+VALID_TRANSITIONS: dict[CaseStatus, list[CaseStatus]] = {
+    CaseStatus.NEW:           [CaseStatus.INVESTIGATION, CaseStatus.CLOSED],
+    CaseStatus.INVESTIGATION: [CaseStatus.PRE_TRIAL, CaseStatus.CLOSED],
+    CaseStatus.PRE_TRIAL:     [CaseStatus.TRIAL, CaseStatus.CLOSED],
+    CaseStatus.TRIAL:         [CaseStatus.APPEAL, CaseStatus.SETTLED, CaseStatus.CLOSED],
+    CaseStatus.APPEAL:        [CaseStatus.SETTLED, CaseStatus.CLOSED],
+    CaseStatus.SETTLED:       [],
+    CaseStatus.CLOSED:        [],
+}
+
 # ─── GET /api/cases ─────────────────────────────────────
 
 @router.get("")
@@ -186,8 +206,30 @@ async def update_case(case_id: str, body: UpdateCaseRequest, current_user=Depend
 
 @router.patch("/{case_id}/status")
 async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, current_user=Depends(get_lawyer)):
+    current = (
+        supabase.table("case_file")
+        .select("status")
+        .eq("id", case_id)
+        .eq("firm_id", current_user["firm_id"])
+        .single()
+        .execute()
+    )
+    if not current.data:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    current_status = CaseStatus(current.data["status"])
+    allowed = VALID_TRANSITIONS.get(current_status, [])
+    if body.status not in allowed:
+        allowed_labels = [s.value for s in allowed] if allowed else ["none"]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot transition from {current_status.value} to {body.status.value}. "
+                   f"Allowed: {', '.join(allowed_labels)}.",
+        )
+
     result = supabase.table("case_file").update({
         "status": body.status,
+        "progress_percent": STATUS_PROGRESS.get(body.status, 0),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", case_id).eq("firm_id", current_user["firm_id"]).execute()
 
@@ -210,6 +252,29 @@ async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, curren
     }).execute()
 
     return case_data
+
+# ─── PATCH /api/cases/:id/restore ──────────────────────
+# Bypasses transition validation — for restoring archived/settled cases
+
+@router.patch("/{case_id}/restore")
+async def restore_case(case_id: str, current_user=Depends(get_lawyer)):
+    result = supabase.table("case_file").update({
+        "status": CaseStatus.INVESTIGATION,
+        "progress_percent": STATUS_PROGRESS.get(CaseStatus.INVESTIGATION, 20),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", case_id).eq("firm_id", current_user["firm_id"]).execute()
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    supabase.table("case_timeline").insert({
+        "case_id": case_id,
+        "firm_id": current_user["firm_id"],
+        "action": "Case restored to Investigation",
+        "performed_by": current_user["id"],
+    }).execute()
+
+    return result.data[0]
 
 # ─── DELETE /api/cases/:id (archive) ────────────────────
 

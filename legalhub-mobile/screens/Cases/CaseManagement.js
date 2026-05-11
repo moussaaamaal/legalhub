@@ -675,6 +675,17 @@ const formatEventType = (raw = '') =>
   EVENT_TYPE_LABELS[(raw || '').toUpperCase()] ||
   raw.replace(/^EventType\./i, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
 
+// ─── Status labels (sync with backend CaseStatus enum) ─────────────────────
+const STATUS_LABEL = {
+  NEW:           'New',
+  INVESTIGATION: 'Investigation',
+  PRE_TRIAL:     'Pre-trial',
+  TRIAL:         'Trial',
+  APPEAL:        'Appeal',
+  SETTLED:       'Settled',
+  CLOSED:        'Closed',
+};
+
 // ─── Filter config ─────────────────────────────────────────────────────────
 const FILTER_CONFIG = [
   { key: 'all',    label: 'All Cases',  icon: 'briefcase',    filter: () => true },
@@ -713,10 +724,10 @@ const toCardFormat = (c) => {
       borderColor:  C.gray400,
     } : {}),
     title:        c.title,
-    subtitle:     `${typeLabel} — ${c.status.replace('_', ' ')}`,
+    subtitle:     `${typeLabel} — ${STATUS_LABEL[c.status] || c.status.replace(/_/g, ' ')}`,
     tags: [
-      { label: typeLabel,                        color: C.gray600, bg: C.gray100 },
-      { label: c.status.replace(/_/g, ' '),      color: C.blue600, bg: C.blue50  },
+      { label: typeLabel,                                                     color: C.gray600, bg: C.gray100 },
+      { label: STATUS_LABEL[c.status] || c.status.replace(/_/g, ' '),        color: C.blue600, bg: C.blue50  },
     ],
     avatar:       null,
     client:       clientName,
@@ -726,7 +737,7 @@ const toCardFormat = (c) => {
       ...(c.client?.phone ? [{ lib: 'FA5', name: 'phone',    bg: C.blue50,   color: C.primary,   action: `tel:${c.client.phone}`   }] : [{ lib: 'FA5', name: 'phone', bg: C.blue50, color: C.primary, action: null }]),
     ],
     stats: [
-      { label: 'Status',   val: c.status.replace(/_/g, ' '), valColor: C.dark            },
+      { label: 'Statut',   val: STATUS_LABEL[c.status] || c.status.replace(/_/g, ' '), valColor: C.dark },
       { label: 'Priority', val: pm.urgency,                  valColor: pm.urgencyColor    },
       { label: 'Type',     val: typeLabel.split(' ')[0],     valColor: C.dark             },
       { label: 'Filed',    val: filingLabel,                  valColor: C.dark            },
@@ -738,7 +749,7 @@ const toCardFormat = (c) => {
     timeLeftBg:     hearingLabel ? C.blue50   : C.gray50,
     // ── CaseDetailsScreen fields ──
     type:           typeLabel,
-    phase:          c.status.replace(/_/g, ' '),
+    phase:          STATUS_LABEL[c.status] || c.status.replace(/_/g, ' '),
     priority:       (c.priority || 'NORMAL').toLowerCase(),
     status:         c.status,
     filingDate:     c.filing_date || '',
@@ -997,7 +1008,7 @@ export default function CaseManagement({ navigation }) {
           text: 'Restore',
           onPress: async () => {
             try {
-              await casesAPI.updateStatus(cardItem._raw.id, 'NEW');
+              await casesAPI.restore(cardItem._raw.id);
               loadCases();
             } catch (e) {
               Alert.alert('Error', e.message || 'Could not restore case.');

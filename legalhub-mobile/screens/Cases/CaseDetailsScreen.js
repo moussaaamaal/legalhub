@@ -354,11 +354,37 @@ const toNoteDisplay = (note, idx) => {
   };
 };
 
+// ─── STATUS DISPLAY + VALID TRANSITIONS ──────────────────────────────────────
+const CASE_STATUS_DISPLAY = {
+  NEW:           { label: 'New',           color: '#2563EB', bg: '#EFF6FF', icon: 'folder-open'   },
+  INVESTIGATION: { label: 'Investigation', color: '#D97706', bg: '#FFFBEB', icon: 'search'        },
+  PRE_TRIAL:     { label: 'Pre-trial',     color: '#EA580C', bg: '#FFF7ED', icon: 'clock'         },
+  TRIAL:         { label: 'Trial',         color: '#9333EA', bg: '#FAF5FF', icon: 'gavel'         },
+  APPEAL:        { label: 'Appeal',        color: '#E11D48', bg: '#FFF1F2', icon: 'balance-scale' },
+  SETTLED:       { label: 'Settled',       color: '#16A34A', bg: '#F0FDF4', icon: 'check-circle'  },
+  CLOSED:        { label: 'Closed',        color: '#6B7280', bg: '#F3F4F6', icon: 'folder'        },
+};
+
+const CASE_VALID_TRANSITIONS = {
+  NEW:           ['INVESTIGATION', 'CLOSED'],
+  INVESTIGATION: ['PRE_TRIAL', 'CLOSED'],
+  PRE_TRIAL:     ['TRIAL', 'CLOSED'],
+  TRIAL:         ['APPEAL', 'SETTLED', 'CLOSED'],
+  APPEAL:        ['SETTLED', 'CLOSED'],
+  SETTLED:       [],
+  CLOSED:        [],
+};
+
 // ─── TIMELINE ACTION CLEANER ──────────────────────────────────────────────────
 const STATUS_LABELS = {
-  NEW: 'Case Restored', ACTIVE: 'Case Activated', OPEN: 'Case Opened',
-  CLOSED: 'Case Closed', PENDING: 'Case set to Pending',
-  ARCHIVED: 'Case Archived', IN_PROGRESS: 'Case In Progress', ON_HOLD: 'Case On Hold',
+  NEW:           'Case Created',
+  INVESTIGATION: 'Investigation Phase',
+  PRE_TRIAL:     'Pre-trial Phase',
+  TRIAL:         'Trial Phase',
+  APPEAL:        'Appeal Phase',
+  SETTLED:       'Case Settled',
+  CLOSED:        'Case Closed',
+  ARCHIVED:      'Case Archived',
 };
 const EVENT_TYPE_LABELS = {
   HEARING: 'Hearing', MEETING: 'Meeting', DEADLINE: 'Deadline',
@@ -2502,7 +2528,10 @@ export default function CaseDetailsScreen({ navigation, route }) {
   const [lawyerId,   setLawyerId]   = useState(caseData.lawyer_id ?? null);
   const [stats,      setStats]      = useState(caseData.stats || { docs: 0, tasks: 0, events: 0, notes: 0 });
   const [tabLoading, setTabLoading] = useState(false);
-  const [saving,     setSaving]     = useState(false);
+  const [saving,       setSaving]       = useState(false);
+  const [statusModal,  setStatusModal]  = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [caseStatus,   setCaseStatus]   = useState((caseData.status || 'NEW').toUpperCase());
 
   const initialFormRef = React.useRef({
     title:       caseData.title       ?? '',
@@ -2551,6 +2580,21 @@ export default function CaseDetailsScreen({ navigation, route }) {
   const handleDiscard = () => {
     setForm(initialFormRef.current);
     setEditMode(false);
+  };
+
+  const handleStatusChange = async (newStatus) => {
+    setStatusSaving(true);
+    try {
+      await casesAPI.updateStatus(caseData._id, newStatus);
+      setCaseStatus(newStatus);
+      setStatusModal(false);
+      Alert.alert('Status Updated', `Case moved to "${CASE_STATUS_DISPLAY[newStatus]?.label || newStatus}".`);
+    } catch (err) {
+      const msg = err?.message || 'Could not update status.';
+      Alert.alert('Error', msg);
+    } finally {
+      setStatusSaving(false);
+    }
   };
 
   const loadTeam = useCallback(async () => {
@@ -2672,9 +2716,20 @@ export default function CaseDetailsScreen({ navigation, route }) {
               <View style={sc.typePill}>
                 <Text style={sc.typeTxt}>{caseData.type}</Text>
               </View>
-              <View style={sc.typePill}>
-                <Text style={sc.typeTxt}>{caseData.phase}</Text>
-              </View>
+              {/* Tappable status chip */}
+              <TouchableOpacity
+                style={[sc.statusPill, { backgroundColor: CASE_STATUS_DISPLAY[caseStatus]?.bg || C.g100 }]}
+                onPress={() => caseData._id && setStatusModal(true)}
+                activeOpacity={0.75}
+              >
+                <FontAwesome5 name={CASE_STATUS_DISPLAY[caseStatus]?.icon || 'circle'} size={9} color={CASE_STATUS_DISPLAY[caseStatus]?.color || C.g500} />
+                <Text style={[sc.statusPillTxt, { color: CASE_STATUS_DISPLAY[caseStatus]?.color || C.g500 }]}>
+                  {CASE_STATUS_DISPLAY[caseStatus]?.label || caseStatus}
+                </Text>
+                {(CASE_VALID_TRANSITIONS[caseStatus]?.length ?? 0) > 0 && (
+                  <FontAwesome5 name="chevron-right" size={7} color={CASE_STATUS_DISPLAY[caseStatus]?.color || C.g500} />
+                )}
+              </TouchableOpacity>
             </View>
 
             {/* Hero title */}
@@ -2815,6 +2870,73 @@ export default function CaseDetailsScreen({ navigation, route }) {
         </View>
         )}
       </View>
+
+      {/* ── STATUS CHANGE MODAL ──────────────────────────────────── */}
+      <Modal
+        visible={statusModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setStatusModal(false)}
+      >
+        <View style={sc.modalOverlay}>
+          <View style={sc.statusModalBox}>
+            <View style={sc.statusModalHeader}>
+              <Text style={sc.statusModalTitle}>Change Case Status</Text>
+              <TouchableOpacity onPress={() => setStatusModal(false)}>
+                <FontAwesome5 name="times" size={16} color={C.g400} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Current status indicator */}
+            <View style={[sc.currentStatusRow, { backgroundColor: CASE_STATUS_DISPLAY[caseStatus]?.bg || C.g100 }]}>
+              <FontAwesome5 name={CASE_STATUS_DISPLAY[caseStatus]?.icon || 'circle'} size={13} color={CASE_STATUS_DISPLAY[caseStatus]?.color || C.g500} />
+              <View style={{ flex: 1 }}>
+                <Text style={sc.currentStatusLabel}>Current Status</Text>
+                <Text style={[sc.currentStatusValue, { color: CASE_STATUS_DISPLAY[caseStatus]?.color || C.g500 }]}>
+                  {CASE_STATUS_DISPLAY[caseStatus]?.label || caseStatus}
+                </Text>
+              </View>
+            </View>
+
+            {(CASE_VALID_TRANSITIONS[caseStatus]?.length ?? 0) === 0 ? (
+              <View style={sc.terminalBox}>
+                <FontAwesome5 name="lock" size={18} color={C.g400} />
+                <Text style={sc.terminalTxt}>This case is in a terminal state and cannot be advanced further.</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={sc.nextStatusLabel}>Move to:</Text>
+                {CASE_VALID_TRANSITIONS[caseStatus].map(next => {
+                  const d = CASE_STATUS_DISPLAY[next] || {};
+                  return (
+                    <TouchableOpacity
+                      key={next}
+                      style={[sc.statusOption, { backgroundColor: d.bg || C.g50, borderColor: (d.color || C.g300) + '50' }]}
+                      onPress={() => handleStatusChange(next)}
+                      disabled={statusSaving}
+                      activeOpacity={0.78}
+                    >
+                      <View style={[sc.statusOptionIcon, { backgroundColor: (d.color || C.g400) + '18' }]}>
+                        <FontAwesome5 name={d.icon || 'circle'} size={14} color={d.color || C.g400} />
+                      </View>
+                      <Text style={[sc.statusOptionTxt, { color: d.color || C.dark }]}>{d.label || next}</Text>
+                      {statusSaving
+                        ? <ActivityIndicator size="small" color={d.color || C.g400} />
+                        : <FontAwesome5 name="arrow-right" size={11} color={d.color || C.g400} />
+                      }
+                    </TouchableOpacity>
+                  );
+                })}
+              </>
+            )}
+
+            <TouchableOpacity style={sc.statusModalCancelBtn} onPress={() => setStatusModal(false)}>
+              <Text style={sc.statusModalCancelTxt}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -2878,4 +3000,25 @@ const sc = StyleSheet.create({
   footerCancelTxt: { fontSize: 14, fontWeight: '700', color: C.g600 },
   footerSave:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.primary, paddingVertical: 14, borderRadius: 14, shadowColor: C.primary, shadowOpacity: 0.35, shadowRadius: 8, elevation: 4 },
   footerSaveTxt:   { fontSize: 15, fontWeight: '800', color: C.white },
+
+  // Status chip in header badge row
+  statusPill:    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statusPillTxt: { fontSize: 10, fontWeight: '700' },
+
+  // Status change modal
+  modalOverlay:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  statusModalBox:      { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36 },
+  statusModalHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
+  statusModalTitle:    { fontSize: 16, fontWeight: '800', color: C.dark },
+  currentStatusRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, marginBottom: 18 },
+  currentStatusLabel:  { fontSize: 10, fontWeight: '600', color: C.g500, textTransform: 'uppercase', letterSpacing: 0.5 },
+  currentStatusValue:  { fontSize: 15, fontWeight: '800', marginTop: 2 },
+  nextStatusLabel:     { fontSize: 12, fontWeight: '700', color: C.g500, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  statusOption:        { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, marginBottom: 10, borderWidth: 1.5 },
+  statusOptionIcon:    { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  statusOptionTxt:     { flex: 1, fontSize: 15, fontWeight: '700' },
+  terminalBox:         { alignItems: 'center', paddingVertical: 28, gap: 10 },
+  terminalTxt:         { fontSize: 13, color: C.g400, textAlign: 'center', lineHeight: 20 },
+  statusModalCancelBtn:{ marginTop: 6, paddingVertical: 14, borderRadius: 14, backgroundColor: C.g100, alignItems: 'center' },
+  statusModalCancelTxt:{ fontSize: 14, fontWeight: '700', color: C.g600 },
 });

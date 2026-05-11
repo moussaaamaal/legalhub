@@ -16,11 +16,13 @@ const C = {
 };
 
 const STATUS_CONFIG = {
-  OPEN:        { label: 'Open',        bg: C.blue50,   color: C.primary,  accent: C.primary   },
-  IN_PROGRESS: { label: 'In Progress', bg: C.amber50,  color: C.amber600, accent: C.amber600  },
-  PENDING:     { label: 'Pending',     bg: '#FFF7ED',  color: '#EA580C',  accent: '#EA580C'   },
-  CLOSED:      { label: 'Closed',      bg: C.g100,     color: C.g500,     accent: C.g400      },
-  SETTLED:     { label: 'Settled',     bg: C.green50,  color: C.green600, accent: C.green600  },
+  NEW:           { label: 'New',           bg: C.blue50,   color: C.primary,  accent: C.primary   },
+  INVESTIGATION: { label: 'Investigation', bg: C.amber50,  color: C.amber600, accent: C.amber600  },
+  PRE_TRIAL:     { label: 'Pre-trial',     bg: '#FFF7ED',  color: '#EA580C',  accent: '#EA580C'   },
+  TRIAL:         { label: 'Trial',         bg: '#FDF4FF',  color: '#9333EA',  accent: '#9333EA'   },
+  APPEAL:        { label: 'Appeal',        bg: '#FFF1F2',  color: '#E11D48',  accent: '#E11D48'   },
+  SETTLED:       { label: 'Settled',       bg: C.green50,  color: C.green600, accent: C.green600  },
+  CLOSED:        { label: 'Closed',        bg: C.g100,     color: C.g500,     accent: C.g400      },
 };
 
 const PRIORITY_CONFIG = {
@@ -101,7 +103,7 @@ export default function ClientCasesScreen({ navigation }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const FILTERS = ['ALL', 'OPEN', 'IN_PROGRESS', 'CLOSED', 'SETTLED'];
+  const FILTERS = ['ALL', 'NEW', 'INVESTIGATION', 'PRE_TRIAL', 'TRIAL', 'APPEAL', 'SETTLED', 'CLOSED'];
   const filtered = cases.filter((c) => {
     const matchFilter = filter === 'ALL' || c.status === filter;
     const matchSearch = !search ||

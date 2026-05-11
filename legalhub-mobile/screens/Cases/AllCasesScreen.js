@@ -26,15 +26,16 @@ const PRIORITY_STYLE = {
 };
 
 const STATUS_STYLE = {
-  ACTIVE:      { label: 'Active',      color: C.green600, bg: C.green50  },
-  IN_PROGRESS: { label: 'In Progress', color: C.blue600,  bg: C.blue50   },
-  PENDING:     { label: 'Pending',     color: C.amber600, bg: C.amber50  },
-  ON_HOLD:     { label: 'On Hold',     color: C.purple600,bg: C.purple50 },
-  SETTLED:     { label: 'Settled',     color: C.g500,     bg: C.g100     },
-  CLOSED:      { label: 'Closed',      color: C.g500,     bg: C.g100     },
+  NEW:           { label: 'New',           color: C.blue600,  bg: C.blue50   },
+  INVESTIGATION: { label: 'Investigation', color: C.amber600, bg: C.amber50  },
+  PRE_TRIAL:     { label: 'Pre-trial',     color: '#EA580C',  bg: '#FFF7ED'  },
+  TRIAL:         { label: 'Trial',         color: C.purple600,bg: C.purple50 },
+  APPEAL:        { label: 'Appeal',        color: '#E11D48',  bg: '#FFF1F2'  },
+  SETTLED:       { label: 'Settled',       color: C.green600, bg: C.green50  },
+  CLOSED:        { label: 'Closed',        color: C.g500,     bg: C.g100     },
 };
 
-const FILTER_TABS = ['All', 'Active', 'Urgent', 'Closed'];
+const FILTER_TABS = ['All', 'Active', 'In Progress', 'Urgent', 'Closed'];
 
 const formatDate = (str) => {
   if (!str) return '—';
@@ -125,8 +126,9 @@ export default function AllCasesScreen({ navigation }) {
   const filtered = (() => {
     let list = cases;
     if (activeFilter === 1) list = list.filter(c => !['SETTLED', 'CLOSED'].includes((c.status || '').toUpperCase()));
-    else if (activeFilter === 2) list = list.filter(c => ['URGENT', 'HIGH'].includes((c.priority || '').toUpperCase()));
-    else if (activeFilter === 3) list = list.filter(c => ['SETTLED', 'CLOSED'].includes((c.status || '').toUpperCase()));
+    else if (activeFilter === 2) list = list.filter(c => ['INVESTIGATION', 'PRE_TRIAL', 'TRIAL', 'APPEAL'].includes((c.status || '').toUpperCase()));
+    else if (activeFilter === 3) list = list.filter(c => ['URGENT', 'HIGH'].includes((c.priority || '').toUpperCase()));
+    else if (activeFilter === 4) list = list.filter(c => ['SETTLED', 'CLOSED'].includes((c.status || '').toUpperCase()));
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(c =>

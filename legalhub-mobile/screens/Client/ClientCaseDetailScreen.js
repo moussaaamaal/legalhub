@@ -72,11 +72,13 @@ function groupByDay(events) {
 }
 
 const STATUS_CONFIG = {
-  OPEN:        { label: 'Open',        color: C.primary,  bg: C.blue50,   icon: 'folder-open'    },
-  IN_PROGRESS: { label: 'In Progress', color: C.amber600, bg: C.amber50,  icon: 'spinner'        },
-  PENDING:     { label: 'Pending',     color: '#EA580C',  bg: '#FFF7ED',  icon: 'clock'          },
-  CLOSED:      { label: 'Closed',      color: C.g500,     bg: C.g100,     icon: 'folder'         },
-  SETTLED:     { label: 'Settled',     color: C.green600, bg: C.green50,  icon: 'check-circle'   },
+  NEW:           { label: 'New',           color: C.primary,  bg: C.blue50,   icon: 'folder-open'    },
+  INVESTIGATION: { label: 'Investigation', color: C.amber600, bg: C.amber50,  icon: 'search'         },
+  PRE_TRIAL:     { label: 'Pre-trial',     color: '#EA580C',  bg: '#FFF7ED',  icon: 'clock'          },
+  TRIAL:         { label: 'Trial',         color: '#9333EA',  bg: '#FDF4FF',  icon: 'gavel'          },
+  APPEAL:        { label: 'Appeal',        color: '#E11D48',  bg: '#FFF1F2',  icon: 'balance-scale'  },
+  SETTLED:       { label: 'Settled',       color: C.green600, bg: C.green50,  icon: 'check-circle'   },
+  CLOSED:        { label: 'Closed',        color: C.g500,     bg: C.g100,     icon: 'folder'         },
 };
 
 function InfoRow({ icon, label, value }) {
