@@ -38,6 +38,20 @@ class Settings(BaseSettings):
     AWS_BUCKET_NAME: Optional[str] = None
     AWS_REGION: str = "eu-west-1"
 
+    # ─── WhatsApp Business API (Meta) ────────────────
+    WHATSAPP_API_TOKEN: Optional[str] = None
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
+
+    # ─── Sadad Payment Gateway ────────────────────────
+    SADAD_API_URL: str = "https://api.sadad.com.sa/v1"
+    SADAD_MERCHANT_ID: Optional[str] = None
+    SADAD_API_KEY: Optional[str] = None
+
+    # ─── Google OAuth2 (Calendar Sync) ───────────────
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/calendar/sync/google/callback"
+
     # ─── App ──────────────────────────────────────────
     APP_NAME: str = "LegalHub"
     DEBUG: bool = True

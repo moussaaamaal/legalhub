@@ -15,7 +15,8 @@ export const supabase = createClient(
       storage: ExpoSecureStoreAdapter,
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: false, // important pour React Native
+      detectSessionInUrl: false,
+      flowType: 'implicit',
     },
   }
 );

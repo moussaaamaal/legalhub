@@ -12,6 +12,7 @@ import ClientInvoiceDetailScreen    from '../screens/Client/ClientInvoiceDetailS
 import ClientDocumentsScreen        from '../screens/Client/ClientDocumentsScreen';
 import ClientAppointmentsScreen     from '../screens/Client/ClientAppointmentsScreen';
 import ClientProfileScreen          from '../screens/Client/ClientProfileScreen';
+import ClientEditProfileScreen      from '../screens/Client/ClientEditProfileScreen';
 import ClientSettingsScreen         from '../screens/Client/ClientSettingsScreen';
 import ClientNotificationsScreen    from '../screens/Client/ClientNotificationsScreen';
 import ClientActivityScreen         from '../screens/Client/ClientActivityScreen';
@@ -66,8 +67,9 @@ function AppointmentsStack() {
 function ProfileStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="ClientProfileMain" component={ClientProfileScreen} />
-      <Stack.Screen name="ClientSettings"    component={ClientSettingsScreen} />
+      <Stack.Screen name="ClientProfileMain"  component={ClientProfileScreen} />
+      <Stack.Screen name="ClientEditProfile"  component={ClientEditProfileScreen} />
+      <Stack.Screen name="ClientSettings"     component={ClientSettingsScreen} />
     </Stack.Navigator>
   );
 }

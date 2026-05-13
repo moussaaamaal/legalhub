@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, RefreshControl,
+  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, RefreshControl, Image,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { clientPortalAPI } from '../../services/api';
+import { clientPortalAPI, notificationsAPI } from '../../services/api';
 
 const C = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B',
@@ -118,14 +118,25 @@ export default function ClientDashboard({ navigation }) {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]           = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => {
+      notificationsAPI.unreadCount()
+        .then(res => { if (res?.count != null) setUnreadCount(res.count); })
+        .catch(() => {});
+    });
+    return unsub;
+  }, [navigation]);
 
   const load = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
     setError(null);
     try {
-      const [d, act] = await Promise.allSettled([
+      const [d, act, unread] = await Promise.allSettled([
         clientPortalAPI.dashboard(),
         clientPortalAPI.activity(),
+        notificationsAPI.unreadCount(),
       ]);
       if (d.status === 'fulfilled') setData(d.value);
       else throw d.reason;
@@ -133,6 +144,7 @@ export default function ClientDashboard({ navigation }) {
         const raw = act.value;
         setActivity(Array.isArray(raw) ? raw.slice(0, 4) : []);
       }
+      if (unread.status === 'fulfilled') setUnreadCount(unread.value?.count ?? 0);
     } catch (e) {
       console.error(e);
       setError(e.message || 'Failed to load dashboard');
@@ -162,7 +174,19 @@ export default function ClientDashboard({ navigation }) {
 
       {/* Header */}
       <View style={s.header}>
-        <View style={{ flex: 1 }}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('ClientProfile')}
+          activeOpacity={0.8}
+        >
+          {(client?.avatar_url || user?.avatar_url) ? (
+            <Image source={{ uri: client?.avatar_url || user?.avatar_url }} style={s.avatarImg} />
+          ) : (
+            <View style={[s.avatarBtn, { backgroundColor: avatarBg(clientName) }]}>
+              <Text style={s.avatarInitials}>{getInitials(clientName)}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={s.greeting}>{greeting()},</Text>
           <Text style={s.clientName} numberOfLines={1}>{clientName}</Text>
         </View>
@@ -172,13 +196,13 @@ export default function ClientDashboard({ navigation }) {
           activeOpacity={0.8}
         >
           <Ionicons name="notifications-outline" size={22} color={C.white} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[s.avatarBtn, { backgroundColor: avatarBg(clientName) }]}
-          onPress={() => navigation.navigate('ClientProfile')}
-          activeOpacity={0.8}
-        >
-          <Text style={s.avatarInitials}>{getInitials(clientName)}</Text>
+          {unreadCount > 0 && (
+            <View style={s.notifBadge}>
+              <Text style={s.notifBadgeTxt}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -331,10 +355,13 @@ const s = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.g50, padding: 24 },
 
   header:         { backgroundColor: C.primary, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  bellBtn:        { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  bellBtn:        { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
+  notifBadge:     { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: C.red600, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 2, borderColor: C.primary },
+  notifBadgeTxt:  { fontSize: 9, fontWeight: '900', color: C.white, lineHeight: 13 },
   greeting:       { fontSize: 13, color: 'rgba(255,255,255,0.72)' },
   clientName:     { fontSize: 21, fontWeight: '800', color: C.white, marginTop: 2 },
   avatarBtn:      { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  avatarImg:      { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' },
   avatarInitials: { color: C.white, fontWeight: '800', fontSize: 18 },
 
   errorIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },

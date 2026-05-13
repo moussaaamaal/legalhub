@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
+  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Linking,
+  Modal, Alert,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { clientPortalAPI } from '../../services/api';
 
 const C = {
@@ -11,10 +13,36 @@ const C = {
   white: '#FFFFFF', g50: '#F9FAFB', g100: '#F3F4F6', g200: '#E5E7EB',
   g400: '#9CA3AF', g500: '#6B7280', g600: '#4B5563',
   blue50: '#EFF6FF', blue100: '#DBEAFE',
-  green50: '#F0FDF4', green600: '#16A34A',
+  green50: '#F0FDF4', green100: '#DCFCE7', green600: '#16A34A',
   amber50: '#FFFBEB', amber600: '#D97706',
-  red50: '#FEF2F2', red600: '#DC2626',
+  red50: '#FEF2F2', red100: '#FEE2E2', red600: '#DC2626',
+  purple50: '#FAF5FF', purple600: '#9333EA',
+  teal50: '#F0FDFA', teal100: '#CCFBF1', teal600: '#0D9488',
 };
+
+const EVENT_CFG = {
+  HEARING:      { label: 'Hearing',      icon: 'gavel',          color: '#1D4ED8', bg: '#DBEAFE' },
+  COURT_DATE:   { label: 'Court Date',   icon: 'university',     color: '#7C3AED', bg: '#EDE9FE' },
+  MEETING:      { label: 'Meeting',      icon: 'user-friends',   color: C.teal600, bg: C.teal100 },
+  CONSULTATION: { label: 'Consultation', icon: 'comments',       color: '#0891B2', bg: '#CFFAFE' },
+  DEADLINE:     { label: 'Deadline',     icon: 'clock',          color: C.red600,  bg: C.red100  },
+  FILING:       { label: 'Filing',       icon: 'file-signature', color: C.amber600,bg: C.amber50 },
+  DEPOSITION:   { label: 'Deposition',   icon: 'microphone',     color: C.purple600,bg:C.purple50},
+  MEDIATION:    { label: 'Mediation',    icon: 'balance-scale',  color: C.green600,bg: C.green100},
+  ARBITRATION:  { label: 'Arbitration',  icon: 'gavel',          color: '#EA580C', bg: '#FFF7ED' },
+  DEFAULT:      { label: 'Event',        icon: 'calendar-alt',   color: C.primary, bg: C.blue50  },
+};
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const h = d.getHours(), m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
 
 // Same icon/color mapping as TL_META in CaseDetailsScreen
 function TL_META(actionText = '') {
@@ -98,15 +126,64 @@ function InfoRow({ icon, label, value }) {
 
 export default function ClientCaseDetailScreen({ route, navigation }) {
   const { caseId, caseTitle } = route.params;
-  const [caseData, setCaseData] = useState(null);
-  const [loading, setLoading]   = useState(true);
+  const [caseData, setCaseData]       = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [docs, setDocs]               = useState([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [events, setEvents]           = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+
+  // Upload state
+  const [uploadModal, setUploadModal] = useState(false);
+  const [uploading, setUploading]     = useState(false);
+  const [pickedFile, setPickedFile]   = useState(null);
+
+  const loadDocs = useCallback(() => {
+    setDocsLoading(true);
+    clientPortalAPI.documents(caseId)
+      .then(d => setDocs(Array.isArray(d) ? d : []))
+      .catch(() => setDocs([]))
+      .finally(() => setDocsLoading(false));
+  }, [caseId]);
 
   useEffect(() => {
     clientPortalAPI.caseDetail(caseId)
       .then(d => setCaseData(d))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [caseId]);
+
+    loadDocs();
+
+    clientPortalAPI.appointments(caseId)
+      .then(d => setEvents(Array.isArray(d) ? d : []))
+      .catch(() => setEvents([]))
+      .finally(() => setEventsLoading(false));
+  }, [caseId, loadDocs]);
+
+  const handlePickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+      if (!result.canceled) setPickedFile(result.assets[0]);
+    } catch {
+      Alert.alert('Error', 'Could not open file picker.');
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!pickedFile) { Alert.alert('No file', 'Please pick a file first.'); return; }
+    setUploading(true);
+    try {
+      await clientPortalAPI.uploadDocument(caseId, pickedFile);
+      setUploadModal(false);
+      setPickedFile(null);
+      Alert.alert('Uploaded', 'Your document has been submitted for review.');
+      loadDocs();
+    } catch (err) {
+      Alert.alert('Upload Failed', err.message || 'Could not upload the file.');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const st = STATUS_CONFIG[caseData?.status] || { label: caseData?.status || '', color: C.g500, bg: C.g100, icon: 'folder' };
 
@@ -207,6 +284,103 @@ export default function ClientCaseDetailScreen({ route, navigation }) {
             </View>
           )}
 
+          {/* Calendar Events */}
+          <View style={s.card}>
+            <View style={s.cardHeader}>
+              <View style={s.cardIconWrap}>
+                <FontAwesome5 name="calendar-alt" size={14} color={C.primary} />
+              </View>
+              <Text style={s.cardTitle}>Case Events</Text>
+              {!eventsLoading && (
+                <View style={s.docsBadge}>
+                  <Text style={s.docsBadgeTxt}>{events.length}</Text>
+                </View>
+              )}
+            </View>
+
+            {eventsLoading ? (
+              <ActivityIndicator size="small" color={C.primary} style={{ marginVertical: 12 }} />
+            ) : events.length === 0 ? (
+              <View style={s.docsEmpty}>
+                <FontAwesome5 name="calendar-times" size={22} color={C.g400} />
+                <Text style={s.docsEmptyTxt}>No events scheduled</Text>
+              </View>
+            ) : (() => {
+              const now = new Date();
+              const upcoming = events.filter(e => !e.start_time || new Date(e.start_time) >= now);
+              const past     = events.filter(e =>  e.start_time  && new Date(e.start_time) <  now);
+              const renderEvent = (ev, idx, arr) => {
+                const cfg   = EVENT_CFG[ev.meeting_type] || EVENT_CFG.DEFAULT;
+                const start = ev.start_time ? new Date(ev.start_time) : null;
+                const isPast = start && start < now;
+                return (
+                  <View key={ev.id} style={[s.evRow, idx < arr.length - 1 && s.evRowBorder, isPast && { opacity: 0.6 }]}>
+                    {start ? (
+                      <View style={[s.evDateBox, { backgroundColor: isPast ? C.g100 : C.blue50 }]}>
+                        <Text style={[s.evDay,   { color: isPast ? C.g400 : C.primary }]}>{start.getDate()}</Text>
+                        <Text style={[s.evMonth, { color: isPast ? C.g400 : C.secondary }]}>{MONTHS[start.getMonth()]}</Text>
+                        <Text style={[s.evWeekday,{ color: isPast ? C.g400 : C.g500 }]}>{DAYS[start.getDay()]}</Text>
+                      </View>
+                    ) : (
+                      <View style={[s.evDateBox, { backgroundColor: C.g100, justifyContent: 'center' }]}>
+                        <FontAwesome5 name="calendar" size={18} color={C.g400} />
+                      </View>
+                    )}
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={s.evTitle} numberOfLines={1}>{ev.title || 'Event'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                        <View style={[s.evTypePill, { backgroundColor: cfg.bg }]}>
+                          <FontAwesome5 name={cfg.icon} size={9} color={cfg.color} />
+                          <Text style={[s.evTypeTxt, { color: cfg.color }]}>{cfg.label}</Text>
+                        </View>
+                        {start && (
+                          <Text style={s.evTime}>{fmtTime(ev.start_time)}</Text>
+                        )}
+                        {ev.is_video_call && (
+                          <View style={s.evVideoPill}>
+                            <FontAwesome5 name="video" size={9} color={C.green600} />
+                            <Text style={[s.evTypeTxt, { color: C.green600 }]}>Video</Text>
+                          </View>
+                        )}
+                      </View>
+                      {!!ev.location && (
+                        <Text style={s.evLocation} numberOfLines={1}>
+                          <FontAwesome5 name="map-marker-alt" size={9} color={C.g400} />  {ev.location}
+                        </Text>
+                      )}
+                    </View>
+                    {ev.is_video_call && ev.meeting_link && !isPast && (
+                      <TouchableOpacity
+                        style={s.joinBtn}
+                        onPress={() => Linking.openURL(ev.meeting_link).catch(() => {})}
+                        activeOpacity={0.8}
+                      >
+                        <FontAwesome5 name="video" size={10} color={C.white} />
+                        <Text style={s.joinBtnTxt}>Join</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              };
+              return (
+                <>
+                  {upcoming.length > 0 && (
+                    <>
+                      <Text style={s.evGroupLabel}>Upcoming</Text>
+                      {upcoming.map((ev, i) => renderEvent(ev, i, upcoming))}
+                    </>
+                  )}
+                  {past.length > 0 && (
+                    <>
+                      <Text style={[s.evGroupLabel, { color: C.g400, marginTop: upcoming.length > 0 ? 12 : 0 }]}>Past</Text>
+                      {past.map((ev, i) => renderEvent(ev, i, past))}
+                    </>
+                  )}
+                </>
+              );
+            })()}
+          </View>
+
           {/* Timeline — same design as CaseDetailsScreen Timeline tab */}
           {caseData.timeline?.length > 0 && (
             <View>
@@ -263,8 +437,114 @@ export default function ClientCaseDetailScreen({ route, navigation }) {
               <View style={{ height: 4 }} />
             </View>
           )}
+
+          {/* Shared Documents */}
+          <View style={s.card}>
+            <View style={s.cardHeader}>
+              <View style={s.cardIconWrap}>
+                <FontAwesome5 name="folder-open" size={14} color={C.primary} />
+              </View>
+              <Text style={s.cardTitle}>Documents</Text>
+              {!docsLoading && (
+                <View style={s.docsBadge}>
+                  <Text style={s.docsBadgeTxt}>{docs.length}</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={s.uploadIconBtn}
+                onPress={() => { setPickedFile(null); setUploadModal(true); }}
+                activeOpacity={0.8}
+              >
+                <FontAwesome5 name="cloud-upload-alt" size={13} color={C.primary} />
+                <Text style={s.uploadIconTxt}>Upload</Text>
+              </TouchableOpacity>
+            </View>
+
+            {docsLoading ? (
+              <ActivityIndicator size="small" color={C.primary} style={{ marginVertical: 12 }} />
+            ) : docs.length === 0 ? (
+              <View style={s.docsEmpty}>
+                <FontAwesome5 name="folder-open" size={22} color={C.g400} />
+                <Text style={s.docsEmptyTxt}>No documents shared yet</Text>
+              </View>
+            ) : (
+              docs.map((doc, idx) => {
+                const ext = (doc.file_name || '').split('.').pop().toLowerCase();
+                const isPdf = ext === 'pdf';
+                const isImg = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+                const docIcon = isPdf ? 'file-pdf' : isImg ? 'file-image' : ext === 'docx' || ext === 'doc' ? 'file-word' : 'file-alt';
+                const docColor = isPdf ? '#DC2626' : isImg ? '#D97706' : ext === 'docx' || ext === 'doc' ? '#1D4ED8' : C.primary;
+                const docBg = isPdf ? '#FEE2E2' : isImg ? '#FEF3C7' : ext === 'docx' || ext === 'doc' ? '#DBEAFE' : C.blue50;
+                const fmtSize = doc.file_size_mb ? `${parseFloat(doc.file_size_mb).toFixed(1)} MB` : '';
+                const fmtDate = doc.created_at ? new Date(doc.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+
+                return (
+                  <View
+                    key={doc.id}
+                    style={[s.docRow, idx < docs.length - 1 && s.docRowBorder]}
+                  >
+                    <View style={[s.docIcon, { backgroundColor: docBg }]}>
+                      <FontAwesome5 name={docIcon} size={16} color={docColor} />
+                    </View>
+                    <View style={s.docMeta}>
+                      <Text style={s.docName} numberOfLines={1}>{doc.file_name || 'Document'}</Text>
+                      <Text style={s.docSub}>{[doc.category, fmtSize, fmtDate].filter(Boolean).join(' · ')}</Text>
+                    </View>
+                    {doc.storage_url ? (
+                      <TouchableOpacity
+                        style={s.docViewBtn}
+                        onPress={() => Linking.openURL(doc.storage_url)}
+                      >
+                        <FontAwesome5 name="external-link-alt" size={11} color={C.white} />
+                        <Text style={s.docViewTxt}>View</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </View>
         </ScrollView>
       )}
+      {/* Upload Document Modal */}
+      <Modal visible={uploadModal} animationType="slide" transparent onRequestClose={() => setUploadModal(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalSheet}>
+            <View style={s.modalHandle} />
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Upload Document</Text>
+              <TouchableOpacity onPress={() => setUploadModal(false)} style={s.modalClose}>
+                <Ionicons name="close" size={20} color={C.g500} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={s.modalHint}>
+              Submit a document for this case. Your attorney will review it.
+            </Text>
+
+            <TouchableOpacity style={s.pickBtn} onPress={handlePickFile} activeOpacity={0.8}>
+              <FontAwesome5 name="paperclip" size={15} color={pickedFile ? C.green600 : C.primary} />
+              <Text style={[s.pickBtnTxt, pickedFile && { color: C.green600 }]} numberOfLines={1}>
+                {pickedFile ? pickedFile.name : 'Choose a file…'}
+              </Text>
+              {pickedFile && <FontAwesome5 name="check-circle" size={14} color={C.green600} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.submitBtn, (!pickedFile || uploading) && { opacity: 0.5 }]}
+              onPress={handleUpload}
+              disabled={!pickedFile || uploading}
+              activeOpacity={0.85}
+            >
+              {uploading
+                ? <ActivityIndicator size="small" color={C.white} />
+                : <FontAwesome5 name="cloud-upload-alt" size={15} color={C.white} />
+              }
+              <Text style={s.submitBtnTxt}>{uploading ? 'Uploading…' : 'Submit Document'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -331,4 +611,51 @@ const s = StyleSheet.create({
   tlAction: { fontSize: 13, fontWeight: '700', color: C.dark, lineHeight: 18 },
   tlActor:  { fontSize: 11, color: C.g500, marginTop: 2 },
   tlTime:   { fontSize: 11, color: C.g400, flexShrink: 0 },
+
+  // Documents section
+  docsBadge:    { marginLeft: 'auto', minWidth: 22, height: 22, borderRadius: 11, backgroundColor: C.blue50, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  docsBadgeTxt: { fontSize: 11, fontWeight: '800', color: C.primary },
+  docsEmpty:    { alignItems: 'center', paddingVertical: 20, gap: 8 },
+  docsEmptyTxt: { fontSize: 13, color: C.g400, fontWeight: '600' },
+  docRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 11 },
+  docRowBorder: { borderBottomWidth: 1, borderBottomColor: C.g100 },
+  docIcon:      { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  docMeta:      { flex: 1, marginLeft: 12, marginRight: 8 },
+  docName:      { fontSize: 13, fontWeight: '700', color: C.dark },
+  docSub:       { fontSize: 11, color: C.g400, marginTop: 2 },
+  docViewBtn:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, flexShrink: 0 },
+  docViewTxt:   { fontSize: 11, fontWeight: '700', color: C.white },
+
+  uploadIconBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginLeft: 'auto', backgroundColor: C.blue50, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  uploadIconTxt: { fontSize: 12, fontWeight: '700', color: C.primary },
+
+  // Events
+  evGroupLabel: { fontSize: 11, fontWeight: '700', color: C.primary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  evRow:        { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  evRowBorder:  { borderBottomWidth: 1, borderBottomColor: C.g100 },
+  evDateBox:    { width: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
+  evDay:        { fontSize: 22, fontWeight: '900', lineHeight: 24 },
+  evMonth:      { fontSize: 11, fontWeight: '700', marginTop: 1 },
+  evWeekday:    { fontSize: 10, fontWeight: '600', marginTop: 1 },
+  evTitle:      { fontSize: 13, fontWeight: '700', color: C.dark },
+  evTypePill:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
+  evTypeTxt:    { fontSize: 10, fontWeight: '700' },
+  evVideoPill:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20, backgroundColor: C.green100 },
+  evTime:       { fontSize: 11, color: C.g500, fontWeight: '600' },
+  evLocation:   { fontSize: 11, color: C.g400, marginTop: 4 },
+  joinBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.green600, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, flexShrink: 0 },
+  joinBtnTxt:   { fontSize: 11, fontWeight: '700', color: C.white },
+
+  // Upload modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalSheet:   { backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24 },
+  modalHandle:  { width: 40, height: 4, borderRadius: 2, backgroundColor: C.g200, alignSelf: 'center', marginBottom: 20 },
+  modalHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  modalTitle:   { fontSize: 17, fontWeight: '800', color: C.dark },
+  modalClose:   { width: 34, height: 34, borderRadius: 17, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center' },
+  modalHint:    { fontSize: 13, color: C.g500, marginBottom: 20, lineHeight: 18 },
+  pickBtn:      { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.g50, borderWidth: 1.5, borderColor: C.g200, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 16 },
+  pickBtnTxt:   { flex: 1, fontSize: 14, color: C.dark, fontWeight: '500' },
+  submitBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, marginBottom: 8 },
+  submitBtnTxt: { fontSize: 15, fontWeight: '800', color: C.white },
 });

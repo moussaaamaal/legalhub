@@ -884,7 +884,7 @@ export default function HomeScreen() {
               <Text style={styles.firmText}>{firmName}</Text>
             </View>
           </View>
-          <TouchableOpacity style={{ position: 'relative' }} onPress={() => navigateTo('Notifications')}>
+          <TouchableOpacity style={{ position: 'relative' }} onPress={() => { navigateTo('Notifications'); setNotifCount(0); }}>
             <Icon lib="ION" name="notifications-outline" size={26} color={COLORS.white} />
             {notifCount > 0 && (
               <View style={styles.notifBadge}>

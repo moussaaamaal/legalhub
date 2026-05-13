@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Modal,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
-  RefreshControl, Alert,
+  RefreshControl, Alert, Linking,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -18,16 +18,57 @@ const C = {
   purple50: '#FAF5FF', purple600: '#9333EA',
 };
 
-const FILE_ICONS = {
-  'application/pdf':    { icon: 'file-pdf',   color: C.red600   },
-  'image/jpeg':         { icon: 'file-image', color: C.amber600 },
-  'image/png':          { icon: 'file-image', color: C.amber600 },
-  'application/msword': { icon: 'file-word',  color: C.primary  },
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { icon: 'file-word', color: C.primary },
-};
+// Backend stores file_type as 'PDF', 'WORD', 'IMAGE', 'OTHER'
+function getFileIcon(fileType) {
+  switch ((fileType || '').toUpperCase()) {
+    case 'PDF':   return { icon: 'file-pdf',   color: C.red600   };
+    case 'WORD':  return { icon: 'file-word',  color: C.primary  };
+    case 'IMAGE': return { icon: 'file-image', color: C.amber600 };
+    default:      return { icon: 'file-alt',   color: C.g500     };
+  }
+}
 
-function getFileIcon(mimeType) {
-  return FILE_ICONS[mimeType] || { icon: 'file-alt', color: C.g500 };
+function RequestCard({ req, onUpload, uploading }) {
+  const date = req.created_at
+    ? new Date(req.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+    : '';
+  const isFulfilled = req.status === 'FULFILLED';
+  return (
+    <View style={[s.reqCard, isFulfilled && s.reqCardDone]}>
+      <View style={[s.reqIconWrap, { backgroundColor: isFulfilled ? C.green50 : C.amber50 }]}>
+        <FontAwesome5
+          name={isFulfilled ? 'check-circle' : 'inbox'}
+          size={18}
+          color={isFulfilled ? C.green600 : C.amber600}
+        />
+      </View>
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={s.reqDesc} numberOfLines={2}>{req.description}</Text>
+        <Text style={s.reqCase} numberOfLines={1}>
+          {req.case_file?.title || req.case_file?.case_number || ''}
+        </Text>
+        {!!date && <Text style={s.reqDate}>{date}</Text>}
+      </View>
+      {isFulfilled ? (
+        <View style={s.reqDoneBadge}><Text style={s.reqDoneTxt}>Done</Text></View>
+      ) : (
+        <TouchableOpacity
+          style={[s.reqUploadBtn, uploading && { opacity: 0.5 }]}
+          onPress={onUpload}
+          disabled={uploading}
+          activeOpacity={0.8}
+        >
+          {uploading
+            ? <ActivityIndicator size="small" color={C.white} />
+            : <>
+                <FontAwesome5 name="cloud-upload-alt" size={12} color={C.white} />
+                <Text style={s.reqUploadTxt}>Upload</Text>
+              </>
+          }
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 }
 
 function DocCard({ doc }) {
@@ -38,8 +79,22 @@ function DocCard({ doc }) {
     : '';
   const isNew = doc.status === 'PENDING_REVIEW';
 
+  const openDoc = () => {
+    if (!doc.storage_url) {
+      Alert.alert('Unavailable', 'This document has no URL yet.');
+      return;
+    }
+    Linking.openURL(doc.storage_url).catch(() =>
+      Alert.alert('Error', 'Could not open the document.')
+    );
+  };
+
   return (
-    <View style={[s.docCard, isNew && s.docCardNew]}>
+    <TouchableOpacity
+      style={[s.docCard, isNew && s.docCardNew]}
+      onPress={openDoc}
+      activeOpacity={0.75}
+    >
       <View style={[s.docIconWrap, { backgroundColor: color + '18' }]}>
         <FontAwesome5 name={icon} size={26} color={color} />
       </View>
@@ -60,8 +115,14 @@ function DocCard({ doc }) {
           <FontAwesome5 name="calendar" size={10} color={C.g400} />
           <Text style={s.docDate}>{date}</Text>
         </View>
+        {doc.storage_url ? (
+          <TouchableOpacity style={s.viewBtn} onPress={openDoc}>
+            <FontAwesome5 name="external-link-alt" size={10} color={C.white} />
+            <Text style={s.viewBtnTxt}>Open</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -217,13 +278,15 @@ function UploadModal({ visible, cases, preselectedCaseId, onClose, onUploaded })
   );
 }
 
-export default function ClientDocumentsScreen({ navigation }) {
+export default function ClientDocumentsScreen({ navigation, route }) {
   const [cases, setCases]               = useState([]);
   const [docs, setDocs]                 = useState([]);
+  const [requests, setRequests]         = useState([]);
   const [loading, setLoading]           = useState(true);
   const [refreshing, setRefreshing]     = useState(false);
-  const [selectedCaseId, setSelectedCaseId] = useState(null);
+  const [selectedCaseId, setSelectedCaseId] = useState(route.params?.caseId || null);
   const [showUpload, setShowUpload]     = useState(false);
+  const [fulfillingId, setFulfillingId] = useState(null);
 
   useEffect(() => {
     clientPortalAPI.cases()
@@ -234,8 +297,12 @@ export default function ClientDocumentsScreen({ navigation }) {
   const load = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
     try {
-      const data = await clientPortalAPI.documents(selectedCaseId);
-      setDocs(data || []);
+      const [docsRes, reqRes] = await Promise.allSettled([
+        clientPortalAPI.documents(selectedCaseId),
+        clientPortalAPI.documentRequests(),
+      ]);
+      if (docsRes.status === 'fulfilled') setDocs(docsRes.value || []);
+      if (reqRes.status === 'fulfilled')  setRequests(reqRes.value || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -243,6 +310,23 @@ export default function ClientDocumentsScreen({ navigation }) {
       setRefreshing(false);
     }
   }, [selectedCaseId]);
+
+  const handleFulfillRequest = async (requestId) => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      setFulfillingId(requestId);
+      await clientPortalAPI.fulfillRequest(requestId, asset);
+      setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: 'FULFILLED' } : r));
+      Alert.alert('Uploaded', 'Your document has been submitted successfully.');
+      load();
+    } catch (e) {
+      Alert.alert('Upload Failed', e.message || 'Could not upload document.');
+    } finally {
+      setFulfillingId(null);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -330,6 +414,26 @@ export default function ClientDocumentsScreen({ navigation }) {
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} />
           }
         >
+          {/* Pending Requests */}
+          {requests.filter(r => r.status === 'PENDING').length > 0 && (
+            <View style={s.reqSection}>
+              <View style={s.reqSectionHeader}>
+                <FontAwesome5 name="exclamation-circle" size={13} color={C.amber600} />
+                <Text style={s.reqSectionTitle}>
+                  Documents Requested by Your Attorney
+                </Text>
+              </View>
+              {requests.filter(r => r.status === 'PENDING').map(req => (
+                <RequestCard
+                  key={req.id}
+                  req={req}
+                  onUpload={() => handleFulfillRequest(req.id)}
+                  uploading={fulfillingId === req.id}
+                />
+              ))}
+            </View>
+          )}
+
           {docs.length === 0 ? (
             <View style={s.emptyBox}>
               <View style={s.emptyIconWrap}>
@@ -405,6 +509,22 @@ const s = StyleSheet.create({
   docDate:     { fontSize: 11, color: C.g400 },
   newBadge:    { backgroundColor: C.amber100, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, flexShrink: 0 },
   newBadgeTxt: { fontSize: 10, fontWeight: '800', color: C.amber600 },
+  viewBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', backgroundColor: C.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginTop: 8 },
+  viewBtnTxt:  { fontSize: 11, fontWeight: '700', color: C.white },
+
+  reqSection:       { backgroundColor: C.amber50, borderRadius: 18, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: C.amber100 },
+  reqSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  reqSectionTitle:  { fontSize: 13, fontWeight: '800', color: C.amber600, flex: 1 },
+  reqCard:          { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: C.amber100 },
+  reqCardDone:      { borderColor: C.g200, opacity: 0.7 },
+  reqIconWrap:      { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  reqDesc:          { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 2 },
+  reqCase:          { fontSize: 11, color: C.g500 },
+  reqDate:          { fontSize: 10, color: C.g400, marginTop: 2 },
+  reqUploadBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginLeft: 10 },
+  reqUploadTxt:     { fontSize: 12, fontWeight: '700', color: C.white },
+  reqDoneBadge:     { backgroundColor: C.green50, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, marginLeft: 10 },
+  reqDoneTxt:       { fontSize: 11, fontWeight: '700', color: C.green600 },
 
   emptyBox:         { alignItems: 'center', paddingVertical: 64 },
   emptyIconWrap:    { width: 88, height: 88, borderRadius: 44, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },

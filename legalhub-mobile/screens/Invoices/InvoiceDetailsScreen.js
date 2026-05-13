@@ -4,7 +4,7 @@ import {
   StyleSheet, SafeAreaView, StatusBar,
   Alert, ActivityIndicator, Linking,
 } from 'react-native';
-import { FontAwesome5 } from '@expo/vector-icons';
+import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
 import { billingAPI } from '../../services/api';
 
 const C = {
@@ -54,8 +54,9 @@ function AvatarInitials({ name, size = 48 }) {
 export default function InvoiceDetailsScreen({ navigation, route }) {
   const inv = route?.params?.invoice;
 
-  const [sending, setSending]     = useState(false);
-  const [reminded, setReminded]   = useState(false);
+  const [sending, setSending]         = useState(false);
+  const [reminded, setReminded]       = useState(false);
+  const [waSending, setWaSending]     = useState(false);
 
   const status     = (inv?.status || 'DRAFT').toUpperCase();
   const meta       = STATUS_META[status] || STATUS_META.DRAFT;
@@ -95,6 +96,30 @@ export default function InvoiceDetailsScreen({ navigation, route }) {
   const handleEmail = useCallback(() => {
     if (client?.email) Linking.openURL(`mailto:${client.email}`);
   }, [client]);
+
+  const handleWhatsApp = useCallback(() => {
+    Alert.alert(
+      'Send via WhatsApp',
+      `Send invoice ${inv?.invoice_number} notification to ${clientName} via WhatsApp?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            setWaSending(true);
+            try {
+              await billingAPI.sendWhatsapp(inv.id);
+              Alert.alert('WhatsApp Sent ✅', `Invoice notification sent to ${clientName} via WhatsApp.`);
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Failed to send WhatsApp message. Make sure the client has a phone number.');
+            } finally {
+              setWaSending(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [inv, clientName]);
 
   if (!inv) {
     return (
@@ -247,6 +272,20 @@ export default function InvoiceDetailsScreen({ navigation, route }) {
                 : <>
                     <FontAwesome5 name="bell" size={14} color={C.white} />
                     <Text style={s.actionBtnText}>{reminded ? 'Send Another Reminder' : 'Send Payment Reminder'}</Text>
+                  </>
+              }
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.actionBtn, { backgroundColor: '#25D366', marginTop: 10 }]}
+              onPress={handleWhatsApp}
+              disabled={waSending}
+            >
+              {waSending
+                ? <ActivityIndicator size="small" color={C.white} />
+                : <>
+                    <FontAwesome name="whatsapp" size={16} color={C.white} />
+                    <Text style={s.actionBtnText}>Send via WhatsApp</Text>
                   </>
               }
             </TouchableOpacity>

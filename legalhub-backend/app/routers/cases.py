@@ -1,10 +1,32 @@
-from datetime import datetime, timezone
+import io
+import logging
+from datetime import datetime, timezone, date as _date
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from app.core.dependencies import get_lawyer, get_current_user
-from app.core.database import supabase
+from app.core.database import supabase, supabase_admin
 from pydantic import BaseModel
 from typing import Optional
 from app.models.enums import CaseStatus, CasePriority, CaseType, BillingType
+
+_log = logging.getLogger(__name__)
+
+def _notify_case_client(case_data: dict, title: str, message: str):
+    try:
+        client_id = case_data.get("client_id")
+        if not client_id:
+            return
+        client = supabase.table("client").select("user_id").eq("id", client_id).maybe_single().execute()
+        if not client.data or not client.data.get("user_id"):
+            return
+        supabase_admin.table("notification").insert({
+            "user_id": client.data["user_id"],
+            "type":    "CASE_UPDATE",
+            "title":   title,
+            "message": message,
+        }).execute()
+    except Exception as e:
+        _log.warning(f"[case notification] skipped: {e}")
 
 router = APIRouter(prefix="/api/cases", tags=["Cases"])
 
@@ -176,6 +198,133 @@ async def get_case(case_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Case not found")
     return result.data
 
+# ─── GET /api/cases/:id/export ──────────────────────────
+
+@router.get("/{case_id}/export")
+async def export_case_pdf(case_id: str, current_user=Depends(get_lawyer)):
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import cm
+    except ImportError:
+        raise HTTPException(status_code=503, detail="reportlab not installed. Run: pip install reportlab")
+
+    case_res = (
+        supabase.table("case_file")
+        .select("*, client(first_name, last_name, email, phone)")
+        .eq("id", case_id)
+        .eq("firm_id", current_user["firm_id"])
+        .single()
+        .execute()
+    )
+    if not case_res.data:
+        raise HTTPException(status_code=404, detail="Case not found")
+    case = case_res.data
+
+    timeline_res = (
+        supabase.table("case_timeline")
+        .select("action, created_at")
+        .eq("case_id", case_id)
+        .order("created_at", desc=False)
+        .limit(20)
+        .execute()
+    )
+    timeline = timeline_res.data or []
+
+    docs_res = (
+        supabase.table("document")
+        .select("file_name, file_type, created_at")
+        .eq("case_id", case_id)
+        .execute()
+    )
+    documents = docs_res.data or []
+
+    client = case.get("client") or {}
+    client_name = f"{client.get('first_name','')} {client.get('last_name','')}".strip() or "—"
+
+    firm_res  = supabase.table("firm").select("name").eq("id", current_user["firm_id"]).single().execute()
+    firm_name = (firm_res.data or {}).get("name", "LegalHub")
+
+    buf  = io.BytesIO()
+    doc  = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    ss   = getSampleStyleSheet()
+    elms = []
+
+    elms.append(Paragraph(f"{firm_name}", ss["Title"]))
+    elms.append(Paragraph("Case Summary Report", ss["Heading2"]))
+    elms.append(HRFlowable(width="100%", color=colors.HexColor("#1E40AF")))
+    elms.append(Spacer(1, 12))
+
+    info_data = [
+        ["Case Title",     case.get("title", "—")],
+        ["Case Number",    case.get("case_number", "—")],
+        ["Case Type",      case.get("case_type", "—")],
+        ["Status",         case.get("status", "—")],
+        ["Priority",       case.get("priority", "—")],
+        ["Client",         client_name],
+        ["Court",          case.get("court_name", "—")],
+        ["Judge",          case.get("judge_name", "—")],
+        ["Filing Date",    str(case.get("filing_date") or "—")],
+        ["Estimated Value",f"${float(case.get('estimated_value') or 0):,.2f}"],
+    ]
+    tbl = Table(info_data, colWidths=[5*cm, 12*cm])
+    tbl.setStyle(TableStyle([
+        ("FONTNAME",  (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE",  (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#EFF6FF"), colors.white]),
+        ("GRID",      (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+        ("VALIGN",    (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",(0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
+    ]))
+    elms.append(tbl)
+    elms.append(Spacer(1, 12))
+
+    if case.get("description"):
+        elms.append(Paragraph("Description", ss["Heading3"]))
+        elms.append(Paragraph(case["description"], ss["Normal"]))
+        elms.append(Spacer(1, 8))
+
+    if timeline:
+        elms.append(Paragraph("Case Timeline", ss["Heading3"]))
+        for entry in timeline:
+            ts  = entry.get("created_at", "")[:10]
+            act = entry.get("action", "")
+            elms.append(Paragraph(f"• [{ts}] {act}", ss["Normal"]))
+        elms.append(Spacer(1, 8))
+
+    if documents:
+        elms.append(Paragraph("Documents", ss["Heading3"]))
+        doc_data = [["File Name", "Type", "Date"]] + [
+            [d.get("file_name",""), d.get("file_type",""), str(d.get("created_at",""))[:10]]
+            for d in documents
+        ]
+        dtbl = Table(doc_data, colWidths=[9*cm, 3*cm, 4*cm])
+        dtbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E40AF")),
+            ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",   (0, 0), (-1, -1), 8),
+            ("GRID",       (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F4F6")]),
+        ]))
+        elms.append(dtbl)
+
+    elms.append(Spacer(1, 20))
+    elms.append(Paragraph(f"Generated: {_date.today()} by {current_user.get('full_name', current_user.get('email',''))}", ss["Normal"]))
+
+    doc.build(elms)
+    buf.seek(0)
+    safe_title = case.get("case_number", case_id).replace("/", "-")
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="case_{safe_title}.pdf"'},
+    )
+
+
 # ─── PUT /api/cases/:id ─────────────────────────────────
 
 @router.put("/{case_id}")
@@ -200,6 +349,11 @@ async def update_case(case_id: str, body: UpdateCaseRequest, current_user=Depend
         "performed_by": current_user["id"],
     }).execute()
 
+    _notify_case_client(
+        result.data[0],
+        "Case Updated",
+        f"Your case '{result.data[0].get('title', 'Unnamed')}' has been updated by your attorney.",
+    )
     return result.data[0]
 
 # ─── PATCH /api/cases/:id/status ────────────────────────
@@ -251,6 +405,11 @@ async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, curren
         "message": f"'{case_data.get('title', 'A case')}' status changed to {body.status}.",
     }).execute()
 
+    _notify_case_client(
+        case_data,
+        "Case Status Changed",
+        f"Your case '{case_data.get('title', 'Unnamed')}' status is now: {body.status.value}.",
+    )
     return case_data
 
 # ─── PATCH /api/cases/:id/restore ──────────────────────

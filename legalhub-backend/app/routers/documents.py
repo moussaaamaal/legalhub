@@ -6,6 +6,7 @@ import logging
 from urllib.parse import unquote
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from pydantic import BaseModel
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
 from app.core.config import settings
@@ -564,6 +565,98 @@ async def voice_note_ai_confirm(
     }
 
 
+# ─── Document Request models & endpoints ────────────────
+
+class DocumentRequestCreate(BaseModel):
+    case_id: str
+    description: str
+    category: Optional[str] = None
+    deadline: Optional[str] = None
+
+
+@router.post("/request", status_code=201)
+async def create_document_request(body: DocumentRequestCreate, current_user=Depends(get_lawyer)):
+    case = (
+        supabase.table("case_file")
+        .select("id, title, case_number, client_id, firm_id")
+        .eq("id", body.case_id)
+        .eq("firm_id", current_user["firm_id"])
+        .maybe_single()
+        .execute()
+    )
+    if not case.data:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    client_id  = case.data["client_id"]
+    case_label = case.data.get("title") or case.data.get("case_number") or "your case"
+
+    result = supabase.table("document_request").insert({
+        "firm_id":       current_user["firm_id"],
+        "case_id":       body.case_id,
+        "requested_by":  current_user["id"],
+        "client_id":     client_id,
+        "description":   body.description,
+        "category":      body.category,
+        "deadline":      body.deadline,
+        "status":        "PENDING",
+    }).execute()
+
+    client_row = (
+        supabase.table("client")
+        .select("user_id")
+        .eq("id", client_id)
+        .maybe_single()
+        .execute()
+    )
+    if client_row.data:
+        supabase.table("notification").insert({
+            "user_id":      client_row.data["user_id"],
+            "type":         "DOCUMENT_REQUEST",
+            "title":        f"Document Requested — {case_label}",
+            "message":      f"Your attorney has requested: {body.description}",
+            "reference_id": body.case_id,
+        }).execute()
+
+    supabase.table("case_timeline").insert({
+        "case_id":      body.case_id,
+        "firm_id":      current_user["firm_id"],
+        "action":       f"Document requested from client: {body.description}",
+        "performed_by": current_user["id"],
+    }).execute()
+
+    return result.data[0]
+
+
+@router.get("/requests")
+async def list_document_requests(
+    case_id: Optional[str] = None,
+    current_user=Depends(get_lawyer)
+):
+    query = (
+        supabase.table("document_request")
+        .select("*, case_file(id, title, case_number)")
+        .eq("firm_id", current_user["firm_id"])
+    )
+    if case_id:
+        query = query.eq("case_id", case_id)
+    result = query.order("created_at", desc=True).execute()
+    return result.data or []
+
+
+@router.delete("/requests/{request_id}")
+async def cancel_document_request(request_id: str, current_user=Depends(get_lawyer)):
+    result = (
+        supabase.table("document_request")
+        .update({"status": "CANCELLED"})
+        .eq("id", request_id)
+        .eq("firm_id", current_user["firm_id"])
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return {"message": "Request cancelled"}
+
+
 # ─── GET /api/documents/:id ─────────────────────────────
 
 @router.get("/{doc_id}")
@@ -598,6 +691,24 @@ async def update_document_status(doc_id: str, status: DocumentStatus, current_us
     }).eq("id", doc_id).eq("firm_id", current_user["firm_id"]).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    if status in (DocumentStatus.APPROVED, DocumentStatus.REJECTED):
+        try:
+            doc_data = result.data[0]
+            case_res = supabase.table("case_file").select("client_id").eq("id", doc_data["case_id"]).maybe_single().execute()
+            if case_res.data and case_res.data.get("client_id"):
+                cl_res = supabase.table("client").select("user_id").eq("id", case_res.data["client_id"]).maybe_single().execute()
+                if cl_res.data and cl_res.data.get("user_id"):
+                    approved = status == DocumentStatus.APPROVED
+                    supabase_admin.table("notification").insert({
+                        "user_id": cl_res.data["user_id"],
+                        "type":    "DOCUMENT_SHARED",
+                        "title":   "Document Approved" if approved else "Document Rejected",
+                        "message": f"'{doc_data.get('file_name', 'A document')}' has been {'approved' if approved else 'rejected'} by your attorney.",
+                    }).execute()
+        except Exception as e:
+            logger.warning(f"[document review] client notification skipped: {e}")
+
     return result.data[0]
 
 # ─── POST /api/documents/:id/share ──────────────────────
@@ -611,12 +722,19 @@ async def share_document(doc_id: str, current_user=Depends(get_lawyer)):
         raise HTTPException(status_code=404, detail="Document not found")
 
     doc_data = result.data[0]
-    supabase.table("notification").insert({
-        "user_id": current_user["id"],
-        "type":    "DOCUMENT_SHARED",
-        "title":   "Document Shared with Client",
-        "message": f"{doc_data.get('file_name', 'A document')} has been shared with the client.",
-    }).execute()
+    try:
+        case_res = supabase.table("case_file").select("client_id").eq("id", doc_data.get("case_id")).maybe_single().execute()
+        if case_res.data and case_res.data.get("client_id"):
+            cl_res = supabase.table("client").select("user_id").eq("id", case_res.data["client_id"]).maybe_single().execute()
+            if cl_res.data and cl_res.data.get("user_id"):
+                supabase_admin.table("notification").insert({
+                    "user_id": cl_res.data["user_id"],
+                    "type":    "DOCUMENT_SHARED",
+                    "title":   "Document Shared with You",
+                    "message": f"'{doc_data.get('file_name', 'A document')}' has been shared by your attorney.",
+                }).execute()
+    except Exception as e:
+        logger.warning(f"[share_document] client notification skipped: {e}")
 
     return {"message": "Document shared with client"}
 

@@ -1,6 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+import json
+import base64
+import logging
+import requests as _req
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from app.core.dependencies import get_lawyer, get_current_user
-from app.core.database import supabase
+from app.core.database import supabase, supabase_admin
 from app.core.email import send_event_reminder_email
 from app.core.config import settings
 from pydantic import BaseModel, model_validator
@@ -8,6 +13,8 @@ from typing import Optional, List, Literal
 from app.models.enums import EventType
 from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/calendar", tags=["Calendar"])
 
@@ -203,17 +210,79 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
             "DEPOSITION": "Deposition", "MEDIATION": "Mediation",
             "ARBITRATION": "Arbitration",
         }
-        ev_type = _EVENT_LABELS.get(
-            str(body.event_type).upper(),
-            str(body.event_type).replace("_", " ").title(),
+        _raw_type = body.event_type.value if hasattr(body.event_type, "value") else str(body.event_type).split(".")[-1]
+        ev_label = _EVENT_LABELS.get(
+            _raw_type.upper(),
+            _raw_type.replace("_", " ").title(),
         )
         recurrence_note = f" (repeats {body.recurrence})" if body.recurrence != "none" else ""
         supabase.table("case_timeline").insert({
             "case_id":      body.case_id,
             "firm_id":      current_user["firm_id"],
-            "action":       f"{ev_type} scheduled: {body.title}{recurrence_note}",
+            "action":       f"{ev_label} scheduled: {body.title}{recurrence_note}",
             "performed_by": current_user["id"],
         }).execute()
+
+        # Notify the client linked to this case
+        try:
+            case_res = (
+                supabase.table("case_file")
+                .select("client_id, title")
+                .eq("id", body.case_id)
+                .maybe_single()
+                .execute()
+            )
+            if not case_res or not case_res.data:
+                raise ValueError("case not found")
+
+            client_id  = case_res.data.get("client_id")
+            case_title = case_res.data.get("title", "")
+
+            if not client_id:
+                raise ValueError("case has no client")
+
+            client_res = (
+                supabase.table("client")
+                .select("user_id")
+                .eq("id", client_id)
+                .maybe_single()
+                .execute()
+            )
+            if not client_res or not client_res.data:
+                raise ValueError("client record not found")
+
+            client_user_id = client_res.data.get("user_id")
+            if not client_user_id:
+                raise ValueError("client has no account yet")
+
+            event_id = created[0]["id"] if created else None
+            msg_data = {
+                "event_id":      event_id,
+                "event_title":   body.title,
+                "event_type":    ev_label,
+                "start_datetime": body.start_datetime,
+            }
+            if case_title:
+                msg_data["case_title"] = case_title
+            if body.is_video_call:
+                msg_data["is_video_call"] = True
+                if body.video_call_url:
+                    msg_data["video_call_url"] = body.video_call_url
+            elif body.location:
+                msg_data["location"] = body.location
+            if body.recurrence != "none":
+                msg_data["recurrence"] = body.recurrence
+
+            supabase_admin.table("notification").insert({
+                "user_id": client_user_id,
+                "type":    "GENERAL",
+                "title":   f"New {ev_label} Scheduled",
+                "message": json.dumps(msg_data),
+            }).execute()
+
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[create_event] client notification skipped: {e}")
 
     return created[0]
 
@@ -239,6 +308,161 @@ async def update_event(event_id: str, body: CreateEventRequest, current_user=Dep
 async def delete_event(event_id: str, current_user=Depends(get_lawyer)):
     supabase.table("calendar_event").delete().eq("id", event_id).eq("firm_id", current_user["firm_id"]).execute()
     return {"message": "Event deleted"}
+
+
+# ─── POST /api/calendar/sync/google/save-token (mobile OAuth) ───────────────
+
+class SaveTokenRequest(BaseModel):
+    access_token:  str
+    refresh_token: Optional[str] = None
+    expires_in:    Optional[int] = None
+
+class ExchangeCodeRequest(BaseModel):
+    code:         str
+    redirect_uri: str
+
+@router.post("/sync/google/exchange-code")
+async def exchange_google_code(body: ExchangeCodeRequest, current_user=Depends(get_lawyer)):
+    """Mobile OAuth: receive auth code, exchange for tokens server-side (has client_secret)."""
+    import time
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Google OAuth2 not configured")
+    token_resp = _req.post("https://oauth2.googleapis.com/token", data={
+        "code":          body.code,
+        "client_id":     settings.GOOGLE_CLIENT_ID,
+        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+        "redirect_uri":  body.redirect_uri,
+        "grant_type":    "authorization_code",
+    }, timeout=15)
+    if not token_resp.ok:
+        raise HTTPException(status_code=400, detail=f"Google token exchange failed: {token_resp.text}")
+    tokens = token_resp.json()
+    supabase_admin.table("user_oauth_token").upsert({
+        "user_id":       current_user["id"],
+        "provider":      "google",
+        "access_token":  tokens["access_token"],
+        "refresh_token": tokens.get("refresh_token"),
+        "expires_at":    int(time.time()) + tokens.get("expires_in", 3600),
+    }, on_conflict="user_id,provider").execute()
+    return {"message": "Google Calendar connected successfully"}
+
+
+@router.post("/sync/google/save-token")
+async def save_google_token(body: SaveTokenRequest, current_user=Depends(get_lawyer)):
+    import time
+    supabase_admin.table("user_oauth_token").upsert({
+        "user_id":       current_user["id"],
+        "provider":      "google",
+        "access_token":  body.access_token,
+        "refresh_token": body.refresh_token,
+        "expires_at":    int(time.time()) + body.expires_in if body.expires_in else None,
+    }, on_conflict="user_id,provider").execute()
+    return {"message": "Google Calendar connected successfully"}
+
+
+# ─── GET /api/calendar/sync/google/auth-url ─────────────────────────────────
+
+@router.get("/sync/google/auth-url")
+async def google_auth_url(mobile_callback: Optional[str] = None, current_user=Depends(get_lawyer)):
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google OAuth2 not configured (set GOOGLE_CLIENT_ID in .env)")
+    # Encode user_id + optional mobile deep-link callback in state
+    state_data = {"user_id": current_user["id"]}
+    if mobile_callback:
+        state_data["mobile_callback"] = mobile_callback
+    state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode().rstrip("=")
+    url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth"
+        f"?client_id={settings.GOOGLE_CLIENT_ID}"
+        f"&redirect_uri={settings.GOOGLE_REDIRECT_URI}"
+        f"&response_type=code"
+        f"&scope=https://www.googleapis.com/auth/calendar"
+        f"&access_type=offline"
+        f"&prompt=consent"
+        f"&state={state}"
+    )
+    return {"auth_url": url}
+
+
+# ─── GET /api/calendar/sync/google/callback ──────────────────────────────────
+
+@router.get("/sync/google/callback")
+async def google_callback(code: str, state: str):
+    import time
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Google OAuth2 not configured")
+
+    # Decode state
+    try:
+        padding = 4 - len(state) % 4
+        state_data = json.loads(base64.urlsafe_b64decode(state + "=" * padding).decode())
+        user_id         = state_data["user_id"]
+        mobile_callback = state_data.get("mobile_callback")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid state parameter")
+
+    token_resp = _req.post("https://oauth2.googleapis.com/token", data={
+        "code":          code,
+        "client_id":     settings.GOOGLE_CLIENT_ID,
+        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+        "redirect_uri":  settings.GOOGLE_REDIRECT_URI,
+        "grant_type":    "authorization_code",
+    }, timeout=15)
+    if not token_resp.ok:
+        raise HTTPException(status_code=400, detail=f"Google token exchange failed: {token_resp.text}")
+    tokens = token_resp.json()
+    supabase_admin.table("user_oauth_token").upsert({
+        "user_id":       user_id,
+        "provider":      "google",
+        "access_token":  tokens["access_token"],
+        "refresh_token": tokens.get("refresh_token"),
+        "expires_at":    int(time.time()) + tokens.get("expires_in", 3600),
+    }, on_conflict="user_id,provider").execute()
+
+    # Redirect back to the mobile app via deep link (works in Expo Go + standalone)
+    if mobile_callback:
+        return RedirectResponse(url=mobile_callback)
+    return {"message": "Google Calendar connected successfully", "user_id": user_id}
+
+
+# ─── POST /api/calendar/sync/google ──────────────────────────────────────────
+
+@router.post("/sync/google")
+async def sync_to_google(current_user=Depends(get_lawyer)):
+    token_res = supabase.table("user_oauth_token").select("*").eq("user_id", current_user["id"]).eq("provider", "google").maybe_single().execute()
+    if not token_res or not token_res.data:
+        raise HTTPException(status_code=400, detail="Google Calendar not connected. Call /api/calendar/sync/google/auth-url first.")
+
+    access_token = token_res.data["access_token"]
+    events_res   = supabase.table("calendar_event").select("*").eq("firm_id", current_user["firm_id"]).eq("created_by", current_user["id"]).execute()
+    events       = events_res.data or []
+
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    synced, failed = 0, 0
+    for ev in events:
+        start = ev.get("start_datetime")
+        end   = ev.get("end_datetime") or start
+        if not start:
+            continue
+        g_event = {
+            "summary":     ev.get("title", "LegalHub Event"),
+            "description": ev.get("event_type", ""),
+            "start":       {"dateTime": start, "timeZone": "UTC"},
+            "end":         {"dateTime": end,   "timeZone": "UTC"},
+        }
+        if ev.get("location"):
+            g_event["location"] = ev["location"]
+        resp = _req.post(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            json=g_event, headers=headers, timeout=10,
+        )
+        if resp.ok:
+            synced += 1
+        else:
+            failed += 1
+            _log.warning(f"[google-sync] event {ev.get('id')} failed: {resp.text}")
+
+    return {"synced": synced, "failed": failed, "total": len(events)}
 
 
 # ─── POST /api/calendar/test-reminder ──────────────────────────────────────

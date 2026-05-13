@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Image, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
+  Image, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Modal,
 } from 'react-native';
 import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
 import { notificationsAPI, billingAPI, documentsAPI } from '../../services/api';
@@ -20,7 +20,7 @@ const C = {
 };
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
-const FILTER_TABS = ['All Updates', 'Cases', 'Documents', 'Payments', 'Deadlines'];
+const FILTER_TABS = ['All Updates', 'Cases', 'Documents', 'Payments', 'Deadlines', 'Meetings'];
 
 const FILTER_TYPE_MAP = [
   null,
@@ -28,6 +28,7 @@ const FILTER_TYPE_MAP = [
   ['DOCUMENT_SHARED'],
   ['INVOICE_DUE'],
   ['HEARING_REMINDER', 'TASK_ASSIGNED'],
+  ['MEETING_REQUEST'],
 ];
 
 const TYPE_CONFIG = {
@@ -37,6 +38,7 @@ const TYPE_CONFIG = {
   DOCUMENT_SHARED:  { iconName: 'file-alt',    iconColor: '#16A34A', iconBg: '#DCFCE7', borderColor: '#22C55E', badge: 'DOCUMENT SHARED',   badgeColor: '#16A34A', badgeBg: '#F0FDF4' },
   TASK_ASSIGNED:    { iconName: 'tasks',        iconColor: '#9333EA', iconBg: '#F3E8FF', borderColor: '#A855F7', badge: 'TASK ASSIGNED',     badgeColor: '#9333EA', badgeBg: '#FAF5FF' },
   GENERAL:          { iconName: 'bell',         iconColor: '#4B5563', iconBg: '#F3F4F6', borderColor: '#9CA3AF', badge: 'GENERAL',           badgeColor: '#4B5563', badgeBg: '#F9FAFB' },
+  MEETING_REQUEST:  { iconName: 'calendar-plus', iconColor: '#0D9488', iconBg: '#CCFBF1', borderColor: '#14B8A6', badge: 'MEETING REQUEST',    badgeColor: '#0D9488', badgeBg: '#F0FDFA' },
 };
 
 const INVOICE_STATUS_CFG = {
@@ -166,16 +168,35 @@ function fmtMoney(n) {
   return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+const MEETING_TYPE_LABELS = {
+  IN_PERSON: { label: 'In Person',  icon: 'building', color: '#1E40AF' },
+  VIDEO:     { label: 'Video Call', icon: 'video',    color: '#16A34A' },
+  PHONE:     { label: 'Phone Call', icon: 'phone',    color: '#D97706' },
+};
+
 function apiNotifToCard(n) {
   const cfg = TYPE_CONFIG[n.type] || TYPE_CONFIG.GENERAL;
   const date = n.created_at ? new Date(n.created_at) : new Date();
+
+  let desc = n.message || '';
+  let parsedDetails = null;
+
+  if (n.type === 'MEETING_REQUEST' && n.message) {
+    try {
+      parsedDetails = JSON.parse(n.message);
+      const mtLabel = (MEETING_TYPE_LABELS[parsedDetails.meeting_type] || {}).label || parsedDetails.meeting_type;
+      desc = `${parsedDetails.client_name} · ${mtLabel}`;
+      if (parsedDetails.case_title) desc += ` · ${parsedDetails.case_title}`;
+    } catch (_) {}
+  }
+
   return {
     ...cfg,
     id:          n.id,
     type:        n.type || 'GENERAL',
     time:        formatRelativeTime(date),
     title:       n.title,
-    desc:        n.message || '',
+    desc,
     caseId:      null,
     avatar:      null,
     avatarName:  null,
@@ -184,6 +205,7 @@ function apiNotifToCard(n) {
     actionStyle: 'link',
     is_read:     n.is_read,
     _date:       date,
+    _details:    parsedDetails,
   };
 }
 
@@ -221,8 +243,158 @@ function docToActivity(doc) {
   };
 }
 
+// ─── MODAL DÉTAIL NOTIFICATION (unifié) ──────────────────────────────────────
+function formatPreferredDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) +
+      '  ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (_) { return dateStr; }
+}
+
+function formatFullDate(d) {
+  if (!d) return '—';
+  return d.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) +
+    '  ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+const NotifDetailModal = ({ visible, notif, onClose }) => {
+  if (!notif) return null;
+  const isMeeting = notif.type === 'MEETING_REQUEST' && notif._details;
+  const d = notif._details || {};
+  const mt = isMeeting ? (MEETING_TYPE_LABELS[d.meeting_type] || { label: d.meeting_type, icon: 'calendar', color: C.g500 }) : null;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={sd.overlay}>
+        <View style={sd.sheet}>
+          <View style={sd.handle} />
+
+          {/* Header */}
+          <View style={sd.header}>
+            <View style={[sd.iconWrap, { backgroundColor: notif.iconBg }]}>
+              <FontAwesome5 name={notif.iconName} size={20} color={notif.iconColor} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <View style={[sd.typePill, { backgroundColor: notif.badgeBg }]}>
+                <Text style={[sd.typePillTxt, { color: notif.badgeColor }]}>{notif.badge}</Text>
+              </View>
+              <Text style={sd.headerTitle} numberOfLines={2}>{notif.title}</Text>
+            </View>
+            <TouchableOpacity style={sd.closeBtn} onPress={onClose}>
+              <FontAwesome5 name="times" size={16} color={C.g500} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+
+            {/* Received */}
+            <View style={sd.row}>
+              <View style={[sd.rowIcon, { backgroundColor: C.g100 }]}>
+                <FontAwesome5 name="clock" size={14} color={C.g500} />
+              </View>
+              <View style={sd.rowBody}>
+                <Text style={sd.rowLabel}>Received</Text>
+                <Text style={sd.rowValue}>{formatFullDate(notif._date)}</Text>
+              </View>
+            </View>
+
+            {isMeeting ? (
+              <>
+                {/* Client */}
+                <View style={sd.row}>
+                  <View style={[sd.rowIcon, { backgroundColor: C.blue100 }]}>
+                    <FontAwesome5 name="user-tie" size={14} color={C.primary} />
+                  </View>
+                  <View style={sd.rowBody}>
+                    <Text style={sd.rowLabel}>Client</Text>
+                    <Text style={sd.rowValue}>{d.client_name || '—'}</Text>
+                  </View>
+                </View>
+
+                {/* Meeting Title */}
+                <View style={sd.row}>
+                  <View style={[sd.rowIcon, { backgroundColor: C.teal100 }]}>
+                    <FontAwesome5 name="tag" size={14} color={C.teal600} />
+                  </View>
+                  <View style={sd.rowBody}>
+                    <Text style={sd.rowLabel}>Meeting Title</Text>
+                    <Text style={sd.rowValue}>{d.request_title || '—'}</Text>
+                  </View>
+                </View>
+
+                {/* Meeting Type */}
+                <View style={sd.row}>
+                  <View style={[sd.rowIcon, { backgroundColor: '#E0F2FE' }]}>
+                    <FontAwesome5 name={mt.icon} size={14} color={mt.color} />
+                  </View>
+                  <View style={sd.rowBody}>
+                    <Text style={sd.rowLabel}>Meeting Type</Text>
+                    <Text style={[sd.rowValue, { color: mt.color }]}>{mt.label}</Text>
+                  </View>
+                </View>
+
+                {/* Preferred Date */}
+                <View style={sd.row}>
+                  <View style={[sd.rowIcon, { backgroundColor: C.purple100 }]}>
+                    <FontAwesome5 name="calendar-alt" size={14} color={C.purple600} />
+                  </View>
+                  <View style={sd.rowBody}>
+                    <Text style={sd.rowLabel}>Preferred Date & Time</Text>
+                    <Text style={sd.rowValue}>{formatPreferredDate(d.preferred_date)}</Text>
+                  </View>
+                </View>
+
+                {/* Related Case */}
+                {!!d.case_title && (
+                  <View style={sd.row}>
+                    <View style={[sd.rowIcon, { backgroundColor: C.indigo100 }]}>
+                      <FontAwesome5 name="briefcase" size={14} color={C.indigo600} />
+                    </View>
+                    <View style={sd.rowBody}>
+                      <Text style={sd.rowLabel}>Related Case</Text>
+                      <Text style={sd.rowValue}>{d.case_title}</Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Notes */}
+                {!!d.notes && (
+                  <View style={sd.row}>
+                    <View style={[sd.rowIcon, { backgroundColor: C.amber100 }]}>
+                      <FontAwesome5 name="sticky-note" size={14} color={C.amber600} />
+                    </View>
+                    <View style={sd.rowBody}>
+                      <Text style={sd.rowLabel}>Notes</Text>
+                      <Text style={sd.rowValue}>{d.notes}</Text>
+                    </View>
+                  </View>
+                )}
+              </>
+            ) : (
+              /* Contenu générique pour tous les autres types */
+              !!notif.desc && (
+                <View style={sd.row}>
+                  <View style={[sd.rowIcon, { backgroundColor: notif.iconBg }]}>
+                    <FontAwesome5 name={notif.iconName} size={14} color={notif.iconColor} />
+                  </View>
+                  <View style={sd.rowBody}>
+                    <Text style={sd.rowLabel}>Details</Text>
+                    <Text style={sd.rowValue}>{notif.desc}</Text>
+                  </View>
+                </View>
+              )
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // ─── COMPOSANT NOTIFICATION CARD ─────────────────────────────────────────────
-const NotifCard = ({ n, onMarkRead }) => (
+const NotifCard = ({ n, onMarkRead, onView }) => (
   <TouchableOpacity
     activeOpacity={0.85}
     onPress={() => !n.is_read && onMarkRead?.(n.id)}
@@ -266,12 +438,12 @@ const NotifCard = ({ n, onMarkRead }) => (
                 </TouchableOpacity>
               )}
               {n.actionStyle === 'link' && (
-                <TouchableOpacity onPress={() => onMarkRead?.(n.id)}>
+                <TouchableOpacity onPress={() => { onMarkRead?.(n.id); onView?.(n); }}>
                   <Text style={[s.actionLink, { color: n.actionColor }]}>{n.actionLabel}</Text>
                 </TouchableOpacity>
               )}
               {n.actionStyle === 'filled' && (
-                <TouchableOpacity style={[s.actionChip, { backgroundColor: n.actionBg }]} onPress={() => onMarkRead?.(n.id)}>
+                <TouchableOpacity style={[s.actionChip, { backgroundColor: n.actionBg }]} onPress={() => { onMarkRead?.(n.id); onView?.(n); }}>
                   {n.actionIcon && (
                     n.actionLib === 'FA'
                       ? <FontAwesome name={n.actionIcon} size={11} color={n.actionColor} />
@@ -297,6 +469,7 @@ export default function NotificationsScreen({ navigation }) {
   const [invoices, setInvoices]           = useState([]);
   const [analytics, setAnalytics]         = useState(null);
   const [recentDocs, setRecentDocs]       = useState([]);
+  const [selectedMeeting, setSelectedMeeting] = useState(null);
 
   // Chargement notifications + marquage auto comme lues
   const loadNotifications = useCallback(() => {
@@ -486,7 +659,7 @@ export default function NotificationsScreen({ navigation }) {
               <Text style={s.groupDate}>{todayLabel}</Text>
             </View>
             {displayToday.map((n, i) => (
-              <NotifCard key={n.id ?? i} n={n} onMarkRead={handleMarkOneRead} />
+              <NotifCard key={n.id ?? i} n={n} onMarkRead={handleMarkOneRead} onView={setSelectedMeeting} />
             ))}
           </View>
         )}
@@ -499,7 +672,7 @@ export default function NotificationsScreen({ navigation }) {
               <Text style={s.groupDate}>{yesterdayLabel}</Text>
             </View>
             {displayYesterday.map((n, i) => (
-              <NotifCard key={n.id ?? i} n={n} onMarkRead={handleMarkOneRead} />
+              <NotifCard key={n.id ?? i} n={n} onMarkRead={handleMarkOneRead} onView={setSelectedMeeting} />
             ))}
           </View>
         )}
@@ -512,7 +685,7 @@ export default function NotificationsScreen({ navigation }) {
               <Text style={s.groupDate}>{usingApi ? '' : 'This Week'}</Text>
             </View>
             {displayOlder.map((n, i) => (
-              <NotifCard key={n.id ?? i} n={n} onMarkRead={handleMarkOneRead} />
+              <NotifCard key={n.id ?? i} n={n} onMarkRead={handleMarkOneRead} onView={setSelectedMeeting} />
             ))}
           </View>
         )}
@@ -594,6 +767,12 @@ export default function NotificationsScreen({ navigation }) {
         </View>
 
       </ScrollView>
+
+      <NotifDetailModal
+        visible={!!selectedMeeting}
+        notif={selectedMeeting}
+        onClose={() => setSelectedMeeting(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -667,4 +846,21 @@ const s = StyleSheet.create({
   docSub:    { fontSize: 12, color: C.g600, marginBottom: 8 },
   docFooter: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   docMeta:   { fontSize: 11, color: C.g400 },
+});
+
+const sd = StyleSheet.create({
+  overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet:        { backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: '85%' },
+  handle:       { width: 40, height: 4, borderRadius: 2, backgroundColor: C.g200, alignSelf: 'center', marginBottom: 20 },
+  header:       { flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  iconWrap:     { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  headerTitle:  { fontSize: 15, fontWeight: '800', color: C.dark, marginTop: 4 },
+  typePill:     { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, marginBottom: 4 },
+  typePillTxt:  { fontSize: 10, fontWeight: '700' },
+  closeBtn:     { width: 34, height: 34, borderRadius: 17, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center' },
+  row:          { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  rowIcon:      { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginRight: 14 },
+  rowBody:      { flex: 1 },
+  rowLabel:     { fontSize: 11, fontWeight: '700', color: C.g400, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  rowValue:     { fontSize: 14, fontWeight: '600', color: C.dark },
 });

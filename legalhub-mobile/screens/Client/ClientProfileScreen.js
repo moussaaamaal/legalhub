@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert,
+  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert, Image,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../context/AuthContext';
-import { clientPortalAPI } from '../../services/api';
+import { clientPortalAPI, authAPI } from '../../services/api';
 
 const C = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B',
@@ -82,13 +83,52 @@ export default function ClientProfileScreen({ navigation }) {
   const { signOut } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  useEffect(() => {
+  const loadProfile = () => {
+    setLoading(true);
     clientPortalAPI.profile()
       .then(d => setProfile(d))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  const handlePickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your photo library.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    const formData = new FormData();
+    formData.append('file', {
+      uri: asset.uri,
+      name: asset.fileName || 'avatar.jpg',
+      type: asset.mimeType || 'image/jpeg',
+    });
+    setUploadingAvatar(true);
+    try {
+      const data = await authAPI.uploadAvatar(formData);
+      setProfile(prev => ({ ...prev, avatar_url: data.avatar_url }));
+    } catch (err) {
+      Alert.alert('Upload failed', err.message || 'Could not update profile photo.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+    const unsubscribe = navigation.addListener('focus', loadProfile);
+    return unsubscribe;
+  }, [navigation]);
 
   const handleSignOut = () => {
     Alert.alert(
@@ -123,7 +163,13 @@ export default function ClientProfileScreen({ navigation }) {
           <Ionicons name="arrow-back" size={20} color={C.white} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>My Profile</Text>
-        <View style={{ width: 38 }} />
+        <TouchableOpacity
+          style={s.editBtn}
+          onPress={() => navigation.navigate('ClientEditProfile', { profile })}
+          activeOpacity={0.8}
+        >
+          <FontAwesome5 name="pen" size={13} color={C.white} />
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -140,9 +186,21 @@ export default function ClientProfileScreen({ navigation }) {
 
           {/* Hero */}
           <View style={s.heroCard}>
-            <View style={[s.avatarCircle, { backgroundColor: avatarBg(fullName) }]}>
-              <Text style={s.avatarInitials}>{getInitials(fullName)}</Text>
-            </View>
+            <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.85} style={s.avatarWrapper}>
+              {profile.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} style={s.avatarImage} />
+              ) : (
+                <View style={[s.avatarCircle, { backgroundColor: avatarBg(fullName) }]}>
+                  <Text style={s.avatarInitials}>{getInitials(fullName)}</Text>
+                </View>
+              )}
+              <View style={s.cameraOverlay}>
+                {uploadingAvatar
+                  ? <ActivityIndicator size="small" color={C.white} />
+                  : <FontAwesome5 name="camera" size={13} color={C.white} />
+                }
+              </View>
+            </TouchableOpacity>
             <Text style={s.fullName}>{fullName}</Text>
             {!!profile.occupation && <Text style={s.occupation}>{profile.occupation}</Text>}
             <View style={[s.tagBadge, { backgroundColor: tagMeta.bg }]}>
@@ -228,13 +286,17 @@ const s = StyleSheet.create({
 
   header:      { backgroundColor: C.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16 },
   backBtn:     { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  editBtn:     { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '800', color: C.white },
 
   emptyIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center' },
 
   heroCard:       { backgroundColor: C.white, alignItems: 'center', paddingVertical: 28, paddingHorizontal: 24, borderBottomWidth: 1, borderBottomColor: C.g100, marginBottom: 10 },
-  avatarCircle:   { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  avatarWrapper:  { position: 'relative', marginBottom: 14 },
+  avatarCircle:   { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center' },
+  avatarImage:    { width: 84, height: 84, borderRadius: 42 },
   avatarInitials: { color: C.white, fontWeight: '800', fontSize: 32 },
+  cameraOverlay:  { position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.white },
   fullName:       { fontSize: 22, fontWeight: '800', color: C.dark, marginBottom: 4 },
   occupation:     { fontSize: 13, color: C.g500, marginBottom: 8 },
   tagBadge:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, marginBottom: 8 },

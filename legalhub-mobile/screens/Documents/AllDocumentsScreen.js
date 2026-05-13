@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
   Alert, RefreshControl, Linking, Modal, FlatList,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -66,6 +67,18 @@ export default function AllDocumentsScreen({ navigation }) {
   const [selectedCase,  setSelectedCase]  = useState(null);
   const [uploading,     setUploading]     = useState(false);
 
+  // ── Review state ──────────────────────────────────────────────────────────
+  const [reviewing, setReviewing] = useState(null); // doc id being processed
+  const [showStorageTracker, setShowStorageTracker] = useState(false);
+
+  // ── Request state ─────────────────────────────────────────────────────────
+  const [requestModal,    setRequestModal]    = useState(false);
+  const [requests,        setRequests]        = useState([]);
+  const [requestDesc,     setRequestDesc]     = useState('');
+  const [reqCaseSearch,   setReqCaseSearch]   = useState('');
+  const [reqSelectedCase, setReqSelectedCase] = useState(null);
+  const [submittingReq,   setSubmittingReq]   = useState(false);
+
   const load = useCallback(async () => {
     try {
       const data = await documentsAPI.list();
@@ -75,7 +88,15 @@ export default function AllDocumentsScreen({ navigation }) {
     }
   }, []);
 
+  const loadRequests = useCallback(async () => {
+    try {
+      const data = await documentsAPI.listRequests();
+      setRequests(data || []);
+    } catch { /* silent */ }
+  }, []);
+
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
+  useEffect(() => { loadRequests(); }, [loadRequests]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -114,9 +135,74 @@ export default function AllDocumentsScreen({ navigation }) {
     }
   };
 
+  const openRequestModal = async () => {
+    setReqSelectedCase(null);
+    setReqCaseSearch('');
+    setRequestDesc('');
+    setRequestModal(true);
+    try {
+      const data = await casesAPI.list();
+      setCases(data || []);
+    } catch {
+      Alert.alert('Error', 'Could not load cases.');
+    }
+  };
+
+  const handleCreateRequest = async () => {
+    if (!reqSelectedCase) { Alert.alert('Select a case', 'Please select a case.'); return; }
+    if (!requestDesc.trim()) { Alert.alert('Add a description', 'Please describe the document you need.'); return; }
+    setSubmittingReq(true);
+    try {
+      await documentsAPI.createRequest({ case_id: reqSelectedCase.id, description: requestDesc.trim() });
+      Alert.alert('Request Sent', 'The client will be notified to upload the document.');
+      setRequestModal(false);
+      loadRequests();
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not send request.');
+    } finally {
+      setSubmittingReq(false);
+    }
+  };
+
+  const handleCancelRequest = (id) => {
+    Alert.alert('Cancel Request', 'Cancel this document request?', [
+      { text: 'No', style: 'cancel' },
+      { text: 'Yes', style: 'destructive', onPress: async () => {
+        try {
+          await documentsAPI.cancelRequest(id);
+          setRequests(prev => prev.filter(r => r.id !== id));
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not cancel request.');
+        }
+      }},
+    ]);
+  };
+
   const handleView = (doc) => {
     if (!doc.storage_url) { Alert.alert('Unavailable', 'No file URL for this document.'); return; }
     Linking.openURL(doc.storage_url).catch(() => Alert.alert('Error', 'Could not open the document.'));
+  };
+
+  const handleReview = (doc, status) => {
+    const label = status === 'APPROVED' ? 'Approve' : 'Reject';
+    Alert.alert(
+      `${label} Document`,
+      `${label} "${doc.file_name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: label, style: status === 'REJECTED' ? 'destructive' : 'default', onPress: async () => {
+          setReviewing(doc.id);
+          try {
+            await documentsAPI.updateStatus(doc.id, status);
+            setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status } : d));
+          } catch (err) {
+            Alert.alert('Error', err.message || 'Could not update document status.');
+          } finally {
+            setReviewing(null);
+          }
+        }},
+      ]
+    );
   };
 
   const filtered = docs.filter(d => {
@@ -134,6 +220,8 @@ export default function AllDocumentsScreen({ navigation }) {
     return matchSearch;
   });
 
+  const pendingClientDocs = docs.filter(d => d.category === 'CLIENT_DOC' && d.status === 'PENDING_REVIEW');
+
   const groups      = groupByDate(filtered);
   const totalCount  = docs.length;
   const thisWeekCount = docs.filter(d => {
@@ -145,6 +233,20 @@ export default function AllDocumentsScreen({ navigation }) {
   const sizeLabel   = totalSizeMb >= 1024
     ? `${(totalSizeMb / 1024).toFixed(1)} GB`
     : `${totalSizeMb.toFixed(0)} MB`;
+
+  const storageByType = [
+    { type: 'PDF',   color: C.red600,    bg: C.red100,    icon: 'file-pdf'   },
+    { type: 'WORD',  color: C.blue600,   bg: C.blue100,   icon: 'file-word'  },
+    { type: 'IMAGE', color: C.purple600, bg: C.purple100, icon: 'file-image' },
+    { type: 'OTHER', color: C.g500,      bg: C.g100,      icon: 'file-alt'   },
+  ].map(({ type, color, bg, icon }) => {
+    const items = docs.filter(d => {
+      const t = (d.file_type || '').toUpperCase();
+      return type === 'OTHER' ? !['PDF', 'WORD', 'IMAGE'].includes(t) : t === type;
+    });
+    const size = items.reduce((acc, d) => acc + (Number(d.file_size_mb) || 0), 0);
+    return { type, color, bg, icon, count: items.length, size };
+  });
 
   return (
     <SafeAreaView style={s.safe}>
@@ -212,7 +314,45 @@ export default function AllDocumentsScreen({ navigation }) {
             <Text style={[s.filterTabTxt, activeFilter === i && s.filterTabTxtActive]}>{t}</Text>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={[s.filterTab, showStorageTracker && s.filterTabActive, { flexDirection: 'row', alignItems: 'center', gap: 5 }]}
+          onPress={() => setShowStorageTracker(v => !v)}
+        >
+          <FontAwesome5 name="hdd" size={10} color={showStorageTracker ? C.white : C.g600} />
+          <Text style={[s.filterTabTxt, showStorageTracker && s.filterTabTxtActive]}>Usage</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      {/* STORAGE TRACKER */}
+      {showStorageTracker && !loading && (
+        <View style={s.storageCard}>
+          <View style={s.storageCardHeader}>
+            <FontAwesome5 name="hdd" size={13} color={C.primary} />
+            <Text style={s.storageCardTitle}>Storage Breakdown</Text>
+            <Text style={s.storageCardTotal}>{sizeLabel} total</Text>
+          </View>
+          {storageByType.map(({ type, color, bg, icon, count, size }) => {
+            const pct = totalSizeMb > 0 ? size / totalSizeMb : 0;
+            const sStr = size >= 1024 ? `${(size / 1024).toFixed(1)} GB` : `${size.toFixed(1)} MB`;
+            return (
+              <View key={type} style={s.storageRow}>
+                <View style={[s.storageIconWrap, { backgroundColor: bg }]}>
+                  <FontAwesome5 name={icon} size={11} color={color} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={s.storageTypeTxt}>{type}</Text>
+                    <Text style={s.storageMetaTxt}>{count} file{count !== 1 ? 's' : ''} · {sStr}</Text>
+                  </View>
+                  <View style={s.storageBarTrack}>
+                    <View style={[s.storageBarFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: color }]} />
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
 
       {/* CONTENT */}
       {loading ? (
@@ -226,6 +366,84 @@ export default function AllDocumentsScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[C.primary]} />}
         >
+          {/* Pending Client Documents — awaiting review */}
+          {pendingClientDocs.length > 0 && (
+            <View style={s.reviewSection}>
+              <View style={s.reqSectionHeader}>
+                <FontAwesome5 name="user-clock" size={13} color={C.primary} />
+                <Text style={[s.reqSectionTitle, { color: C.primary }]}>Pending Review</Text>
+                <View style={[s.reqBadge, { backgroundColor: C.primary }]}>
+                  <Text style={s.reqBadgeTxt}>{pendingClientDocs.length}</Text>
+                </View>
+              </View>
+              {pendingClientDocs.map(doc => {
+                const fs = getFileStyle(doc.file_type);
+                const isProcessing = reviewing === doc.id;
+                return (
+                  <View key={doc.id} style={s.reviewCard}>
+                    <View style={[s.docIconWrap, { backgroundColor: fs.bg, width: 42, height: 42, borderRadius: 12 }]}>
+                      <FontAwesome5 name={fs.icon} size={18} color={fs.color} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={s.docName} numberOfLines={1}>{doc.file_name}</Text>
+                      <Text style={s.docCase} numberOfLines={1}>
+                        {doc.case_file?.title || doc.case_file?.case_number || 'No case'}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 8, marginLeft: 8 }}>
+                      {isProcessing ? (
+                        <ActivityIndicator size="small" color={C.primary} />
+                      ) : (
+                        <>
+                          <TouchableOpacity
+                            style={s.rejectBtn}
+                            onPress={() => handleReview(doc, 'REJECTED')}
+                            activeOpacity={0.8}
+                          >
+                            <FontAwesome5 name="times" size={12} color={C.red600} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={s.approveBtn}
+                            onPress={() => handleReview(doc, 'APPROVED')}
+                            activeOpacity={0.8}
+                          >
+                            <FontAwesome5 name="check" size={12} color={C.green600} />
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Pending Requests */}
+          {requests.filter(r => r.status === 'PENDING').length > 0 && (
+            <View style={s.reqSection}>
+              <View style={s.reqSectionHeader}>
+                <FontAwesome5 name="inbox" size={13} color={C.amber600} />
+                <Text style={s.reqSectionTitle}>Pending Requests</Text>
+                <View style={s.reqBadge}>
+                  <Text style={s.reqBadgeTxt}>{requests.filter(r => r.status === 'PENDING').length}</Text>
+                </View>
+              </View>
+              {requests.filter(r => r.status === 'PENDING').map(req => (
+                <View key={req.id} style={s.reqCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.reqDesc} numberOfLines={2}>{req.description}</Text>
+                    <Text style={s.reqCaseName} numberOfLines={1}>
+                      {req.case_file?.title || req.case_file?.case_number || 'Unknown case'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={s.cancelReqBtn} onPress={() => handleCancelRequest(req.id)}>
+                    <FontAwesome5 name="times" size={12} color={C.red600} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
           {groups.length === 0 && (
             <View style={s.empty}>
               <FontAwesome5 name="folder-open" size={36} color={C.g200} />
@@ -248,7 +466,11 @@ export default function AllDocumentsScreen({ navigation }) {
           ))}
         </ScrollView>
       )}
-      {/* FAB */}
+      {/* FAB Request */}
+      <TouchableOpacity style={s.fabRequest} onPress={openRequestModal} activeOpacity={0.85}>
+        <FontAwesome5 name="inbox" size={18} color={C.white} />
+      </TouchableOpacity>
+      {/* FAB Upload */}
       <TouchableOpacity style={s.fab} onPress={openUploadModal} activeOpacity={0.85}>
         <FontAwesome5 name="cloud-upload-alt" size={18} color={C.white} />
       </TouchableOpacity>
@@ -323,6 +545,94 @@ export default function AllDocumentsScreen({ navigation }) {
               <Text style={s.uploadBtnTxt}>{uploading ? 'Uploading…' : 'Pick & Upload File'}</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
+      {/* Request Modal */}
+      <Modal visible={requestModal} animationType="slide" transparent onRequestClose={() => setRequestModal(false)}>
+        <View style={s.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+            style={{ width: '100%' }}
+          >
+            <View style={s.modalSheet}>
+              {/* Header fixe */}
+              <View style={s.modalHeader}>
+                <Text style={s.modalTitle}>Request Document</Text>
+                <TouchableOpacity onPress={() => setRequestModal(false)}>
+                  <Ionicons name="close" size={22} color={C.g500} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Contenu scrollable — clavier ne cache rien */}
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 12 }}
+              >
+                <Text style={s.modalStep}>1. Select a case</Text>
+                <View style={s.modalSearch}>
+                  <Ionicons name="search-outline" size={14} color={C.g400} />
+                  <TextInput
+                    style={s.modalSearchInput}
+                    placeholder="Search cases..."
+                    placeholderTextColor={C.g400}
+                    value={reqCaseSearch}
+                    onChangeText={setReqCaseSearch}
+                  />
+                </View>
+
+                {cases.filter(c =>
+                  !reqCaseSearch ||
+                  c.title?.toLowerCase().includes(reqCaseSearch.toLowerCase()) ||
+                  c.case_number?.toLowerCase().includes(reqCaseSearch.toLowerCase())
+                ).map(item => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[s.caseItem, reqSelectedCase?.id === item.id && s.caseItemActive]}
+                    onPress={() => setReqSelectedCase(item)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[s.caseItemDot, { backgroundColor: reqSelectedCase?.id === item.id ? C.primary : C.g200 }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.caseItemTitle, reqSelectedCase?.id === item.id && { color: C.primary }]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      {item.case_number ? <Text style={s.caseItemNum}>{item.case_number}</Text> : null}
+                    </View>
+                    {reqSelectedCase?.id === item.id && (
+                      <FontAwesome5 name="check-circle" size={14} color={C.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+                {cases.length === 0 && (
+                  <Text style={s.caseListEmpty}>No cases found</Text>
+                )}
+
+                <Text style={[s.modalStep, { marginTop: 16 }]}>2. Describe the document needed</Text>
+                <TextInput
+                  style={s.descInput}
+                  placeholder="e.g. National ID copy, bank statement..."
+                  placeholderTextColor={C.g400}
+                  value={requestDesc}
+                  onChangeText={setRequestDesc}
+                  multiline
+                  numberOfLines={3}
+                />
+
+                <TouchableOpacity
+                  style={[s.uploadBtn, (!reqSelectedCase || !requestDesc.trim() || submittingReq) && { opacity: 0.5 }]}
+                  onPress={handleCreateRequest}
+                  disabled={!reqSelectedCase || !requestDesc.trim() || submittingReq}
+                  activeOpacity={0.8}
+                >
+                  {submittingReq
+                    ? <ActivityIndicator size="small" color={C.white} />
+                    : <FontAwesome5 name="paper-plane" size={15} color={C.white} />}
+                  <Text style={s.uploadBtnTxt}>{submittingReq ? 'Sending…' : 'Send Request'}</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -420,8 +730,19 @@ const s = StyleSheet.create({
   viewBtn:           { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.purple50, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   viewBtnTxt:        { fontSize: 12, fontWeight: '700', color: C.purple600 },
   fab:               { position: 'absolute', bottom: 28, right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', shadowColor: C.primary, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  fabRequest:        { position: 'absolute', bottom: 92, right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: C.amber600, alignItems: 'center', justifyContent: 'center', shadowColor: C.amber600, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  reqSection:        { backgroundColor: C.amber50, borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: C.amber100 },
+  reqSectionHeader:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  reqSectionTitle:   { fontSize: 13, fontWeight: '800', color: C.amber600, flex: 1 },
+  reqBadge:          { backgroundColor: C.amber600, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  reqBadgeTxt:       { fontSize: 11, fontWeight: '800', color: C.white },
+  reqCard:           { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderRadius: 12, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: C.amber100 },
+  reqDesc:           { fontSize: 13, fontWeight: '600', color: C.dark, marginBottom: 3 },
+  reqCaseName:       { fontSize: 11, color: C.g500 },
+  cancelReqBtn:      { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
+  descInput:         { borderWidth: 1, borderColor: C.g200, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, color: C.dark, backgroundColor: C.g50, minHeight: 72, marginBottom: 16, textAlignVertical: 'top' },
   modalOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modalSheet:        { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
+  modalSheet:        { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   modalTitle:        { fontSize: 17, fontWeight: '800', color: C.dark },
   modalStep:         { fontSize: 13, fontWeight: '700', color: C.g600, marginBottom: 10 },
@@ -436,4 +757,19 @@ const s = StyleSheet.create({
   caseListEmpty:     { textAlign: 'center', color: C.g400, paddingVertical: 20, fontSize: 13 },
   uploadBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14 },
   uploadBtnTxt:      { fontSize: 14, fontWeight: '700', color: C.white },
+
+  reviewSection:  { backgroundColor: C.blue50, borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: C.blue100 },
+  reviewCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderRadius: 12, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: C.blue100 },
+  approveBtn:     { width: 34, height: 34, borderRadius: 10, backgroundColor: C.green100, alignItems: 'center', justifyContent: 'center' },
+  rejectBtn:      { width: 34, height: 34, borderRadius: 10, backgroundColor: C.red100,   alignItems: 'center', justifyContent: 'center' },
+  storageCard:    { backgroundColor: C.white, marginHorizontal: 16, marginBottom: 8, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.g200, elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6 },
+  storageCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  storageCardTitle:  { fontSize: 13, fontWeight: '800', color: C.dark, flex: 1 },
+  storageCardTotal:  { fontSize: 12, color: C.g500, fontWeight: '600' },
+  storageRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  storageIconWrap:{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  storageTypeTxt: { fontSize: 12, fontWeight: '700', color: C.dark },
+  storageMetaTxt: { fontSize: 11, color: C.g500 },
+  storageBarTrack:{ height: 6, backgroundColor: C.g100, borderRadius: 3, overflow: 'hidden' },
+  storageBarFill: { height: 6, borderRadius: 3 },
 });

@@ -2,8 +2,8 @@
 
 > **Projet :** PFE (Projet de Fin d'Études)  
 > **Plateforme :** SaaS de gestion de cabinet juridique multi-tenant  
-> **Date :** Avril 2026  
-> **Stack :** FastAPI · Supabase (PostgreSQL + Storage) · JWT Custom · OpenAI GPT-4o · Stripe · Sadad
+> **Date :** Mai 2026  
+> **Stack :** FastAPI · Supabase (PostgreSQL + Storage) · JWT Custom · OpenAI GPT-4o · Stripe · Sadad · React Native / Expo SDK 54
 
 ---
 
@@ -13,7 +13,7 @@
 2. [Architecture & Structure des fichiers](#2-architecture--structure-des-fichiers)
 3. [Fichiers Core](#3-fichiers-core)
 4. [Tous les Endpoints API (par router)](#4-tous-les-endpoints-api-par-router)
-   - 4.1 Authentication
+   - 4.1 Authentication (+ OAuth Social Login)
    - 4.2 Cases (Dossiers)
    - 4.3 Clients
    - 4.4 Billing (Facturation)
@@ -42,22 +42,23 @@ LegalHub est une plateforme SaaS complète pour la gestion de cabinets d'avocats
 - **Multi-tenancy** : chaque cabinet est isolé par `firm_id` — aucune donnée d'un cabinet n'est accessible à un autre
 - **RBAC (Role-Based Access Control)** : 3 rôles — `FIRM_ADMIN`, `LAWYER`, `CLIENT`
 - **JWT custom** : authentification via access token (15 min) + refresh token (7 jours)
+- **OAuth Social Login** : Google, Microsoft (Azure), Apple — via Supabase Auth comme intermédiaire OAuth + native Apple Sign In
 - **IA intégrée** : GPT-4o pour résumés de documents, rédaction de contrats, suggestions d'actions légales ; Whisper pour transcription vocale
 - **Paiements** : Stripe (international) + Sadad (marché du Golfe)
-- **Frontend cible** : Dashboard React (web) + Application Flutter (mobile)
+- **Frontend cible** : Application Mobile React Native / Expo (testée sur iPhone via Expo Go)
 
 ---
 
 ## 2. Architecture & Structure des fichiers
 
 ```
-d:/legalhub-backend/
+legalhub-backend/
 │
 ├── .env                          # Variables d'environnement (ne pas commit sur Git)
 ├── requirements.txt              # Dépendances Python
 │
 └── app/
-    ├── main.py                   # Point d'entrée — enregistrement des 12 routers + CORS
+    ├── main.py                   # Point d'entrée — enregistrement des 13 routers + CORS
     │
     ├── core/
     │   ├── config.py             # Settings Pydantic — lit le fichier .env
@@ -69,18 +70,19 @@ d:/legalhub-backend/
     │   └── enums.py              # Tous les enums Python du domaine métier
     │
     └── routers/
-        ├── auth.py               # Authentification, invitations, 2FA, reset password
+        ├── auth.py               # Auth email/password + OAuth (Google, Microsoft, Apple) + 2FA + invitations
         ├── cases.py              # Gestion des dossiers juridiques
         ├── clients.py            # Gestion des clients
-        ├── documents.py          # Upload, partage, transcription, résumé IA
+        ├── documents.py          # Upload, partage, transcription, résumé IA, demandes de documents
         ├── billing.py            # Facturation, analytics financières
         ├── calendar.py           # Agenda, audiences, deadlines
-        ├── tasks.py              # Tâches et notes (fichier créé de zéro)
-        ├── firm.py               # Paramètres du cabinet (fichier créé de zéro)
-        ├── payments.py           # Stripe + Sadad (fichier créé de zéro)
-        ├── dashboard.py          # KPIs tableau de bord (fichier créé de zéro)
+        ├── tasks.py              # Tâches et notes
+        ├── firm.py               # Paramètres du cabinet
+        ├── payments.py           # Stripe + Sadad
+        ├── dashboard.py          # KPIs tableau de bord
         ├── ai.py                 # Sessions IA — résumé, contrat, assistant
-        └── notifications.py      # Notifications utilisateur
+        ├── notifications.py      # Notifications utilisateur
+        └── client_portal.py      # Portail client (rôle CLIENT uniquement)
 ```
 
 ---
@@ -115,7 +117,7 @@ Deux clients Supabase sont créés au démarrage :
 # Client standard (anon key) — utilisé dans la majorité des routers
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
 
-# Client admin (service role) — utilisé pour les opérations privilégiées (invitations)
+# Client admin (service role) — utilisé pour les opérations privilégiées (invitations, avatars)
 supabase_admin: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 ```
 
@@ -159,29 +161,56 @@ ClientTag:       ACTIVE | PENDING | PREMIUM | VIP
 |---------|----------|-------------|-------------|
 | `POST` | `/api/auth/register-firm` | Public | Crée un nouveau cabinet + compte FIRM_ADMIN + abonnement Free. Retourne `firm_id` et `office_code` |
 | `POST` | `/api/auth/login` | Public | Login email+password. Retourne `access_token`, `refresh_token`, profil utilisateur |
+| `POST` | `/api/auth/oauth/token` | Public | **Social login OAuth** — vérifie le token du provider et retourne des JWT LegalHub |
 | `POST` | `/api/auth/refresh` | Public | Renouvelle l'access token via refresh token |
 | `POST` | `/api/auth/logout` | Authentifié | Déconnexion (stateless) |
 | `GET` | `/api/auth/me` | Authentifié | Retourne le profil complet de l'utilisateur connecté |
 | `POST` | `/api/auth/2fa/setup` | Authentifié | Génère secret TOTP + QR code URL pour Google Authenticator |
 | `POST` | `/api/auth/2fa/verify` | Authentifié | Vérifie le code TOTP et active la 2FA |
-| `POST` | `/api/auth/forgot-password` | Public | Génère un token de reset (1h expiry), stocké dans `password_reset_token` |
-| `POST` | `/api/auth/reset-password` | Public | Valide le token, change le mot de passe, efface le token |
+| `POST` | `/api/auth/2fa/login` | Public | Valide le code TOTP après login (utilise le `temp_token`) |
+| `POST` | `/api/auth/forgot-password` | Public | Génère un token de reset (1h expiry) |
+| `POST` | `/api/auth/reset-password` | Public | Valide le token, change le mot de passe |
 | `POST` | `/api/auth/invite/lawyer` | FIRM_ADMIN | Crée un compte LAWYER inactif + envoie invitation |
 | `POST` | `/api/auth/invite/client` | LAWYER | Crée un client lié au cabinet + génère `invite_token` |
 | `POST` | `/api/auth/office-code/validate` | Public | Crée un compte LAWYER via code bureau du cabinet (mobile) |
-| `POST` | `/api/auth/accept-invite` | Public | Finalise l'inscription d'un utilisateur invité (définit son mot de passe, active le compte) |
-| `POST` | `/api/auth/2fa/login` | Public | Valide le code TOTP après login (utilise le `temp_token` retourné lors d'un login avec 2FA activée) |
-| `PUT` | `/api/auth/me` | Authentifié | Met à jour le profil de l'utilisateur connecté (`full_name`, `phone`) |
-| `POST` | `/api/auth/avatar` | Authentifié | Upload d'un avatar (`multipart/form-data`, champ `file`) → Supabase Storage → met à jour `avatar_url` |
-| `PUT` | `/api/auth/change-password` | Authentifié | Change le mot de passe (`current_password` + `new_password`) |
-| `GET` | `/api/auth/login-history` | Authentifié | 20 dernières connexions de l'utilisateur |
-| `GET` | `/api/auth/notification-preferences` | Authentifié | Préférences de notification de l'utilisateur |
+| `POST` | `/api/auth/accept-invite` | Public | Finalise l'inscription d'un utilisateur invité |
+| `PUT` | `/api/auth/me` | Authentifié | Met à jour le profil (`full_name`, `phone`) |
+| `POST` | `/api/auth/avatar` | Authentifié | Upload avatar → Supabase Storage bucket `avatars` |
+| `PUT` | `/api/auth/change-password` | Authentifié | Change le mot de passe |
+| `GET` | `/api/auth/login-history` | Authentifié | 10 dernières connexions de l'utilisateur |
+| `GET` | `/api/auth/notification-preferences` | Authentifié | Préférences de notification |
 | `PUT` | `/api/auth/notification-preferences` | Authentifié | Met à jour les préférences de notification |
+
+#### OAuth Social Login — `POST /api/auth/oauth/token`
+
+Endpoint unifié qui supporte 4 providers. Le mobile envoie le token obtenu via le provider, le backend le vérifie auprès du provider puis retourne des JWT LegalHub.
+
+**Schema request :**
+```json
+{
+  "provider": "supabase | google | microsoft | apple",
+  "token": "le_token_du_provider",
+  "token_type": "id_token | access_token"
+}
+```
+
+**Vérification par provider :**
+
+| Provider | `token_type` | Méthode de vérification |
+|----------|-------------|------------------------|
+| `supabase` | `access_token` | `GET {SUPABASE_URL}/auth/v1/user` avec Bearer + apikey header |
+| `google` | `access_token` | `GET https://www.googleapis.com/oauth2/v3/userinfo` |
+| `google` | `id_token` | `GET https://oauth2.googleapis.com/tokeninfo?id_token=...` |
+| `microsoft` | `access_token` | `GET https://graph.microsoft.com/v1.0/me` |
+| `apple` | `id_token` | Décodage JWT RS256 sans vérification de signature (claims email + sub) |
+
+**Comportement :** Cherche l'email dans `app_user`. Si trouvé et actif → retourne JWT LegalHub. Si non trouvé → HTTP 404 (l'utilisateur doit s'inscrire d'abord via email ou office code).
 
 **Schémas request importants :**
 ```json
 POST /register-firm : { "firm_name", "legal_entity_type", "email", "password", "full_name", "phone?" }
 POST /login         : { "email", "password" }
+POST /oauth/token   : { "provider", "token", "token_type" }
 POST /invite/lawyer : { "email", "full_name" }
 POST /invite/client : { "email", "full_name", "phone?" }
 POST /reset-password      : { "token", "new_password" }
@@ -206,6 +235,7 @@ PUT  /notification-preferences : { "push_notifications?", "hearing_reminders?", 
 | `GET` | `/api/cases/{case_id}` | Authentifié | Détail d'un dossier avec join client |
 | `PUT` | `/api/cases/{case_id}` | LAWYER | Mise à jour partielle (tous champs optionnels) + timeline |
 | `PATCH` | `/api/cases/{case_id}/status` | LAWYER | Change le statut du dossier + timeline |
+| `PATCH` | `/api/cases/{case_id}/restore` | LAWYER | Restaure un dossier archivé |
 | `DELETE` | `/api/cases/{case_id}` | LAWYER | Archive le dossier (status → CLOSED) + timeline |
 | `GET` | `/api/cases/{case_id}/timeline` | Authentifié | Historique chronologique du dossier |
 | `GET` | `/api/cases/{case_id}/team` | LAWYER | Membres de l'équipe du dossier avec profils |
@@ -256,6 +286,7 @@ PUT  /notification-preferences : { "push_notifications?", "hearing_reminders?", 
 | `POST` | `/api/invoices` | LAWYER | Crée une facture avec calcul automatique `subtotal`, `tax_amount`, `total` |
 | `GET` | `/api/invoices/{invoice_id}` | Authentifié | Détail facture + lignes + client |
 | `PUT` | `/api/invoices/{invoice_id}` | LAWYER | Mise à jour. Interdit si status = PAID. Remplace les lignes atomiquement |
+| `DELETE` | `/api/invoices/{invoice_id}` | LAWYER | Suppression d'une facture |
 | `POST` | `/api/invoices/{invoice_id}/send` | LAWYER | Marque la facture PENDING (envoi au client) |
 | `POST` | `/api/invoices/{invoice_id}/reminder` | LAWYER | Envoie une relance de paiement |
 
@@ -283,20 +314,25 @@ PUT  /notification-preferences : { "push_notifications?", "hearing_reminders?", 
 | `GET` | `/api/documents` | LAWYER | Liste documents. Filtres : `case_id`, `category`, `status` |
 | `POST` | `/api/documents/upload` | LAWYER | Upload fichier → Supabase Storage → enregistrement DB + timeline |
 | `POST` | `/api/documents/voice-note` | LAWYER | Upload audio → Storage → Whisper STT → sauvegarde comme note |
+| `POST` | `/api/documents/voice-note-ai` | LAWYER | Upload audio → Whisper + GPT-4o → analyse IA enrichie |
+| `POST` | `/api/documents/voice-note-ai/confirm` | LAWYER | Confirme et sauvegarde la note IA en base |
+| `POST` | `/api/documents/request` | LAWYER | Crée une demande de document à un client |
+| `GET` | `/api/documents/requests` | LAWYER | Liste les demandes de documents. Filtre : `case_id` |
+| `DELETE` | `/api/documents/requests/{request_id}` | LAWYER | Annule une demande de document |
 | `GET` | `/api/documents/{doc_id}` | Authentifié | Détail d'un document |
 | `DELETE` | `/api/documents/{doc_id}` | LAWYER | Suppression |
 | `PATCH` | `/api/documents/{doc_id}/status` | LAWYER | Change statut : `PENDING_REVIEW | APPROVED | REJECTED` |
 | `POST` | `/api/documents/{doc_id}/share` | LAWYER | Partage le document avec le client (`is_shared_with_client = true`) |
-| `POST` | `/api/documents/{doc_id}/ai-summarize` | LAWYER | GPT-4o analyse le document et génère un résumé structuré → table `ai_summary` |
+| `POST` | `/api/documents/{doc_id}/ai-summarize` | LAWYER | GPT-4o génère un résumé structuré → table `ai_summary` |
 
 **Upload :** `multipart/form-data` avec champs `file` (binaire) + `case_id` (string)
 
-**Voice Note Flow :**
+**Voice Note AI Flow :**
 ```
-Audio file → Supabase Storage (documents/{firm_id}/{case_id}/voice/)
-           → OpenAI Whisper API (transcription)
-           → Table note (content = transcript, is_voice_note = true)
-           → Table case_timeline (action = "Voice note uploaded")
+Audio file → OpenAI Whisper API (transcription)
+           → GPT-4o (analyse enrichie : titre, catégorie, entités, actions)
+           → Retourne JSON structuré pour confirmation mobile
+           → POST /voice-note-ai/confirm → sauvegarde en DB
 ```
 
 ---
@@ -309,14 +345,13 @@ Audio file → Supabase Storage (documents/{firm_id}/{case_id}/voice/)
 | `POST` | `/api/calendar/events` | LAWYER | Crée un événement. Ajoute timeline si lié à un dossier |
 | `PUT` | `/api/calendar/events/{event_id}` | LAWYER | Mise à jour d'un événement |
 | `DELETE` | `/api/calendar/events/{event_id}` | LAWYER | Suppression |
+| `POST` | `/api/calendar/test-reminder` | LAWYER | Déclenche manuellement un test de rappel email |
 
 **Types d'événements :** `HEARING | MEETING | DEADLINE | CONSULTATION | COURT_DATE`
 
 ---
 
 ### 4.7 Tasks & Notes — `/api/tasks/...` et `/api/notes/...`
-
-*(Fichier créé de zéro)*
 
 **Tâches :**
 
@@ -341,8 +376,6 @@ Audio file → Supabase Storage (documents/{firm_id}/{case_id}/voice/)
 
 ### 4.8 Firm (Cabinet) — `/api/firm/...`
 
-*(Fichier créé de zéro)*
-
 | Méthode | Endpoint | Rôle requis | Description |
 |---------|----------|-------------|-------------|
 | `GET` | `/api/firm/profile` | LAWYER | Profil complet du cabinet |
@@ -359,8 +392,6 @@ Audio file → Supabase Storage (documents/{firm_id}/{case_id}/voice/)
 
 ### 4.9 Payments (Paiements) — `/api/payments/...`
 
-*(Fichier créé de zéro)*
-
 | Méthode | Endpoint | Rôle requis | Description |
 |---------|----------|-------------|-------------|
 | `POST` | `/api/payments/stripe/create` | Authentifié | Crée un Stripe PaymentIntent. Retourne `client_secret` pour le frontend |
@@ -376,21 +407,16 @@ Frontend → POST /stripe/create → client_secret
         → invoice.status = PAID + table payment créée
 ```
 
-**Helper `_mark_invoice_paid()` :**
-- Met `invoice.status = "PAID"` et `invoice.paid_at = now()`
-- Crée un enregistrement dans la table `payment` avec `gateway`, `amount`, `transaction_id`
-
 ---
 
 ### 4.10 Dashboard — `/api/dashboard/...`
 
-*(Fichier créé de zéro)*
-
 | Méthode | Endpoint | Description | Données retournées |
 |---------|----------|-------------|-------------------|
-| `GET` | `/api/dashboard/stats` | KPIs accueil | `active_cases`, `closed_cases`, `upcoming_hearings`, `pending_payments` (montant), `active_reminders` |
-| `GET` | `/api/dashboard/today` | Agenda du jour | Tous les événements aujourd'hui, triés par heure, avec join `case_file` |
+| `GET` | `/api/dashboard/stats` | KPIs accueil | `active_cases`, `closed_cases`, `upcoming_hearings`, `pending_payments`, `active_reminders` |
+| `GET` | `/api/dashboard/today` | Agenda du jour | Tous les événements aujourd'hui triés par heure avec join `case_file` |
 | `GET` | `/api/dashboard/recent-cases` | Derniers dossiers | 5 dossiers actifs les plus récemment modifiés avec nom du client |
+| `GET` | `/api/dashboard/recent-activity` | Activité récente | Activité des N derniers jours (défaut: 3). Paramètre: `?days=N` |
 
 ---
 
@@ -412,17 +438,22 @@ Frontend → POST /stripe/create → client_secret
 
 | Méthode | Endpoint | Description |
 |---------|----------|-------------|
-| `GET` | `/api/client/dashboard` | Stats du tableau de bord client : dossiers actifs, factures en attente (montant + nombre), documents partagés en attente, 3 prochains rendez-vous |
-| `GET` | `/api/client/cases` | Tous les dossiers du client connecté (champs publics : status, priority, progress_percent, first_hearing_date…) |
-| `GET` | `/api/client/cases/{case_id}` | Détail d'un dossier + avocat principal (full_name, email, avatar) + 10 dernières entrées timeline |
-| `GET` | `/api/client/invoices` | Toutes les factures avec leurs lignes (`invoice_item`). Filtre optionnel `?status=` |
+| `GET` | `/api/client/dashboard` | Stats du tableau de bord client : dossiers actifs, factures en attente, documents partagés, prochains RDV |
+| `GET` | `/api/client/cases` | Tous les dossiers du client connecté |
+| `GET` | `/api/client/cases/{case_id}` | Détail d'un dossier + avocat principal + 10 dernières entrées timeline |
+| `GET` | `/api/client/invoices` | Toutes les factures avec leurs lignes. Filtre optionnel `?status=` |
 | `GET` | `/api/client/invoices/{invoice_id}` | Détail d'une facture spécifique |
-| `GET` | `/api/client/documents` | Documents partagés (`is_shared_with_client = true`) liés aux dossiers du client |
-| `GET` | `/api/client/appointments` | Rendez-vous à venir liés aux dossiers du client |
+| `POST` | `/api/client/invoices/{invoice_id}/pay` | Paiement d'une facture depuis le portail client |
+| `GET` | `/api/client/documents` | Documents partagés (`is_shared_with_client = true`) |
+| `POST` | `/api/client/documents/upload` | Upload d'un document par le client |
+| `GET` | `/api/client/document-requests` | Demandes de documents envoyées par l'avocat |
+| `POST` | `/api/client/document-requests/{id}/fulfill` | Le client répond à une demande en uploadant un fichier |
+| `GET` | `/api/client/appointments` | Rendez-vous à venir. Filtre: `?case_id=` |
+| `POST` | `/api/client/appointments/request` | Le client demande un rendez-vous |
 | `GET` | `/api/client/profile` | Profil complet du client + infos cabinet |
 | `GET` | `/api/client/activity` | 20 dernières actions sur les dossiers du client (timeline) |
 
-**Sécurité :** La dépendance `_require_client` vérifie à la fois le rôle `CLIENT` ET que l'enregistrement `client` existe dans la table. Les données sont toujours filtrées par `client_id` ET `firm_id` — un client ne peut jamais accéder aux données d'un autre cabinet.
+**Sécurité :** La dépendance `_require_client` vérifie à la fois le rôle `CLIENT` ET que l'enregistrement `client` existe. Les données sont filtrées par `client_id` ET `firm_id`.
 
 ---
 
@@ -431,7 +462,10 @@ Frontend → POST /stripe/create → client_secret
 | Méthode | Endpoint | Description |
 |---------|----------|-------------|
 | `GET` | `/api/notifications` | 50 dernières notifications de l'utilisateur |
+| `GET` | `/api/notifications/unread-count` | Nombre de notifications non lues |
 | `PATCH` | `/api/notifications/read-all` | Marque toutes les notifications comme lues |
+| `PATCH` | `/api/notifications/{id}/read` | Marque une notification spécifique comme lue |
+| `POST` | `/api/notifications/test` | Crée une notification de test |
 
 ---
 
@@ -648,6 +682,7 @@ CREATE TABLE lawyer (
 CREATE TABLE client (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     firm_id            UUID NOT NULL REFERENCES firm(id) ON DELETE CASCADE,
+    user_id            UUID REFERENCES app_user(id),
     assigned_lawyer_id UUID REFERENCES lawyer(id),
     first_name         TEXT NOT NULL,
     last_name          TEXT NOT NULL,
@@ -897,7 +932,45 @@ CREATE TABLE ai_summary (
 
 ---
 
-### Étape 4 — Créer les Index de performance
+### Étape 4 — Tables supplémentaires (migrations)
+
+```sql
+-- Table historique de connexions
+CREATE TABLE login_history (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+    logged_in_at TIMESTAMPTZ DEFAULT NOW(),
+    login_method TEXT DEFAULT 'email'
+);
+
+-- Table préférences de notifications (upsert par user)
+CREATE TABLE notification_preferences (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                 UUID UNIQUE NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+    push_notifications      BOOLEAN DEFAULT TRUE,
+    hearing_reminders       BOOLEAN DEFAULT TRUE,
+    hearing_reminder_offset TEXT DEFAULT '1 hour before',
+    task_reminders          BOOLEAN DEFAULT TRUE,
+    document_updates        BOOLEAN DEFAULT TRUE,
+    client_messages         BOOLEAN DEFAULT TRUE,
+    payment_notifications   BOOLEAN DEFAULT TRUE,
+    email_notifications     BOOLEAN DEFAULT FALSE,
+    whatsapp_updates        BOOLEAN DEFAULT TRUE
+);
+
+-- Colonnes reset de mot de passe dans app_user (si pas déjà créées)
+ALTER TABLE app_user
+    ADD COLUMN IF NOT EXISTS password_reset_token TEXT,
+    ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+
+-- Colonne user_id dans client (lien vers le compte app_user du client)
+ALTER TABLE client
+    ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES app_user(id);
+```
+
+---
+
+### Étape 5 — Créer les Index de performance
 
 ```sql
 -- firm_id (recherches multi-tenant sur toutes les tables)
@@ -937,68 +1010,64 @@ CREATE INDEX idx_invoice_due          ON invoice(due_date);
 
 ---
 
-### Étape 5 — Désactiver RLS sur toutes les tables
+### Étape 6 — Désactiver RLS sur toutes les tables
 
 > **Pourquoi ?** Le backend utilise un JWT custom (pas Supabase Auth). La fonction `auth.uid()` de Supabase ne reconnaît pas nos tokens. L'autorisation est entièrement gérée dans le code Python via les guards RBAC.
 
 ```sql
-ALTER TABLE firm            DISABLE ROW LEVEL SECURITY;
-ALTER TABLE subscription    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE app_user        DISABLE ROW LEVEL SECURITY;
-ALTER TABLE firm_branding   DISABLE ROW LEVEL SECURITY;
-ALTER TABLE lawyer          DISABLE ROW LEVEL SECURITY;
-ALTER TABLE client          DISABLE ROW LEVEL SECURITY;
-ALTER TABLE case_file       DISABLE ROW LEVEL SECURITY;
-ALTER TABLE case_team       DISABLE ROW LEVEL SECURITY;
-ALTER TABLE case_timeline   DISABLE ROW LEVEL SECURITY;
-ALTER TABLE document        DISABLE ROW LEVEL SECURITY;
-ALTER TABLE note            DISABLE ROW LEVEL SECURITY;
-ALTER TABLE task            DISABLE ROW LEVEL SECURITY;
-ALTER TABLE calendar_event  DISABLE ROW LEVEL SECURITY;
-ALTER TABLE invoice         DISABLE ROW LEVEL SECURITY;
-ALTER TABLE invoice_item    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE payment         DISABLE ROW LEVEL SECURITY;
-ALTER TABLE notification    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE ai_session      DISABLE ROW LEVEL SECURITY;
-ALTER TABLE ai_summary      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE firm                    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE subscription            DISABLE ROW LEVEL SECURITY;
+ALTER TABLE app_user                DISABLE ROW LEVEL SECURITY;
+ALTER TABLE firm_branding           DISABLE ROW LEVEL SECURITY;
+ALTER TABLE lawyer                  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE client                  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE case_file               DISABLE ROW LEVEL SECURITY;
+ALTER TABLE case_team               DISABLE ROW LEVEL SECURITY;
+ALTER TABLE case_timeline           DISABLE ROW LEVEL SECURITY;
+ALTER TABLE document                DISABLE ROW LEVEL SECURITY;
+ALTER TABLE note                    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE task                    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_event          DISABLE ROW LEVEL SECURITY;
+ALTER TABLE invoice                 DISABLE ROW LEVEL SECURITY;
+ALTER TABLE invoice_item            DISABLE ROW LEVEL SECURITY;
+ALTER TABLE payment                 DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notification            DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_session              DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_summary              DISABLE ROW LEVEL SECURITY;
+ALTER TABLE login_history           DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_preferences DISABLE ROW LEVEL SECURITY;
 ```
 
 ---
 
-### Étape 6 — Créer le bucket Storage
+### Étape 7 — Créer les buckets Storage
 
-1. Dans Supabase Dashboard → **Storage** → **New Bucket**
-2. Nom : `documents`
-3. Cocher **Public bucket** → Save
+**Bucket `documents` (upload avocat/client) :**
 
-Puis dans **SQL Editor**, exécuter :
+1. Supabase Dashboard → **Storage** → **New Bucket** → nom : `documents` → Public ✓
+
+**Bucket `avatars` (photos de profil) :**
+
+1. Supabase Dashboard → **Storage** → **New Bucket** → nom : `avatars` → Public ✓
 
 ```sql
--- Autoriser le service role à tout faire dans le bucket documents
-CREATE POLICY "service_role_full_access"
-ON storage.objects
-FOR ALL
-TO service_role
+-- Autoriser le service role à tout faire dans les deux buckets
+CREATE POLICY "service_role_full_access_documents"
+ON storage.objects FOR ALL TO service_role
 USING (bucket_id = 'documents');
 
--- Autoriser la lecture publique des fichiers
+CREATE POLICY "service_role_full_access_avatars"
+ON storage.objects FOR ALL TO service_role
+USING (bucket_id = 'avatars');
+
+-- Lecture publique
 CREATE POLICY "public_read_documents"
-ON storage.objects
-FOR SELECT
-TO public
+ON storage.objects FOR SELECT TO public
 USING (bucket_id = 'documents');
-```
 
----
-
-### Étape 7 — Migration requise pour le reset de mot de passe
-
-```sql
--- Ajouter les colonnes dédiées au reset de mot de passe
--- (corrige le bug où biometric_token était utilisé à tort)
-ALTER TABLE app_user
-    ADD COLUMN IF NOT EXISTS password_reset_token TEXT,
-    ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+CREATE POLICY "public_read_avatars"
+ON storage.objects FOR SELECT TO public
+USING (bucket_id = 'avatars');
 ```
 
 ---
@@ -1018,7 +1087,7 @@ Le scheduler tourne en arrière-plan grâce à **APScheduler** (démarré via `l
 | 1440 min | 1 jour avant |
 
 **Mécanisme anti-doublon :**  
-Un `set` en mémoire `_sent: set[tuple(event_id, offset)]` empêche d'envoyer deux fois le même rappel. Ce set se réinitialise au redémarrage du serveur (comportement acceptable pour un projet PFE / développement).
+Un `set` en mémoire `_sent: set[tuple(event_id, offset)]` empêche d'envoyer deux fois le même rappel. Ce set se réinitialise au redémarrage du serveur.
 
 **Flow :**
 ```
@@ -1042,103 +1111,174 @@ Chaque minute :
 
 | Composant | Technologie |
 |-----------|-------------|
-| Framework | React Native (Expo SDK) |
+| Framework | React Native (Expo SDK 54) |
 | Navigation | Navigation par état (useState) — single-file architecture |
-| Icônes | `@expo/vector-icons` (FontAwesome5, Ionicons, MaterialIcons) |
-| HTTP | `fetch()` natif avec token JWT Bearer |
+| Icônes | `@expo/vector-icons` (FontAwesome5, FontAwesome, Ionicons) |
+| HTTP | `fetch()` natif avec token JWT Bearer + auto-refresh sur 401 |
 | Auth | JWT stocké via `SecureStore` (`expo-secure-store`) |
+| OAuth | `expo-web-browser` + Supabase Auth (implicit flow) + `expo-apple-authentication` |
 | SafeArea | `react-native-safe-area-context` |
 | Calendrier | Composant custom `CalendarStrip` (bande de 7 jours) |
 | Upload | `FormData` multipart pour documents et photos |
+| Biométrie | `expo-local-authentication` (Face ID / Touch ID) |
+| Date picker | `@react-native-community/datetimepicker` |
 
-### 7.2 Structure des écrans
+### 7.2 Authentification OAuth — Architecture
+
+Le login social (Google, Microsoft, Apple) fonctionne en 3 étapes :
+
+```
+1. Mobile → supabase.auth.signInWithOAuth({ provider, redirectTo, skipBrowserRedirect: true })
+   → Reçoit l'URL d'autorisation Supabase OAuth
+
+2. Mobile → WebBrowser.openAuthSessionAsync(oauthUrl, redirectTo)
+   → Ouvre le browser système (ASWebAuthenticationSession sur iOS)
+   → L'utilisateur choisit son compte sur la page Google/Microsoft
+   → Supabase redirige vers exp://... avec #access_token=... (implicit flow)
+   → WebBrowser intercepte la redirection et retourne result.url
+
+3. Mobile → Parse result.url pour extraire params.access_token
+   → authAPI.oauthLogin('supabase', supabaseToken, 'access_token')
+   → Backend vérifie le token auprès de Supabase /auth/v1/user
+   → Retourne JWT LegalHub → signIn()
+```
+
+**Pourquoi Supabase comme intermédiaire ?**  
+Expo Go utilise le bundle ID `host.exp.Exponent` (pas `com.legalhub.mobile`). Les credentials OAuth natifs (iOS/Android) ne fonctionnent pas. Supabase OAuth avec redirection `exp://` contourne cette limitation.
+
+**Pourquoi implicit flow (pas PKCE) ?**  
+Le `code_verifier` PKCE est stocké dans SecureStore async. Lors du retour du browser, le contexte JS est suspendu et le verifier est perdu → erreur "both auth code and code verifier should be non-empty". L'implicit flow retourne l'`access_token` directement dans le hash de l'URL sans besoin de verifier.
+
+**Apple Sign In :**  
+Utilise `expo-apple-authentication` (natif iOS uniquement). Le `identityToken` JWT est envoyé directement au backend (`/api/auth/oauth/token` avec `provider: "apple"`).
+
+### 7.3 Fichier `supabase/supabase.js`
+
+```javascript
+import { createClient } from '@supabase/supabase-js';
+import * as SecureStore from 'expo-secure-store';
+
+const ExpoSecureStoreAdapter = {
+  getItem: (key) => SecureStore.getItemAsync(key),
+  setItem: (key, value) => SecureStore.setItemAsync(key, value),
+  removeItem: (key) => SecureStore.deleteItemAsync(key),
+};
+
+export const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      storage: ExpoSecureStoreAdapter,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+      flowType: 'implicit',   // évite la perte du code_verifier PKCE en Expo Go
+    },
+  }
+);
+```
+
+### 7.4 Structure des écrans
 
 ```
 legalhub-mobile/
+├── supabase/
+│   └── supabase.js              # Client Supabase (implicit flow, SecureStore)
+│
 ├── context/
-│   ├── AuthContext.js         # JWT storage, refresh, getStoredToken/Refresh
-│   └── AppPrefsContext.js     # Préférences utilisateur (thème, langue)
+│   ├── AuthContext.js           # JWT storage, refresh automatique, getStoredToken
+│   └── AppPrefsContext.js       # Préférences utilisateur (thème, langue)
 │
 ├── services/
-│   └── api.js                 # Toutes les fonctions API — 13 namespaces
+│   └── api.js                   # Toutes les fonctions API — 14 namespaces
 │
 └── screens/
-    ├── AuthScreen.js          # Login / Inscription / Reset password / 2FA
-    ├── HomeScreen.js          # Dashboard principal (stats + QuickAdd + navigation)
-    ├── QuickAddScreen.js      # Écran de création rapide (4 formulaires)
+    ├── AuthScreen.js            # Login / Inscription / Reset password / 2FA / OAuth Social
+    ├── HomeScreen.js            # Dashboard principal (stats + QuickAdd + navigation)
+    ├── QuickAddScreen.js        # Écran de création rapide (4 formulaires)
     │
     ├── Cases/
-    │   ├── AddCaseScreen.js   # Création dossier (autocomplete client + avocat, calendar strip)
+    │   ├── AddCaseScreen.js     # Création dossier (autocomplete client + avocat, calendar strip)
     │   ├── CaseDetailsScreen.js # Détail dossier (onglets : Overview, Documents, Timeline, Team)
-    │   ├── CaseManagement.js  # Gestion des dossiers
-    │   └── AllCasesScreen.js  # Liste complète des dossiers
+    │   ├── CaseManagement.js    # Gestion des dossiers
+    │   └── AllCasesScreen.js    # Liste complète des dossiers
     │
     ├── Clients/
-    │   ├── AddClientScreen.js         # Formulaire ajout client
-    │   └── ClientsManagementScreen.js # Liste et gestion des clients
+    │   ├── AddClientScreen.js            # Formulaire ajout client
+    │   ├── ClientDetailsScreen.js        # Détail d'un client
+    │   └── ClientsManagementScreen.js    # Liste et gestion des clients
     │
     ├── Documents/
-    │   ├── DocumentsScreen.js      # Documents liés à un dossier
-    │   ├── UploadDocumentScreen.js # Upload de document (multipart)
-    │   └── AllDocumentsScreen.js   # Liste complète des documents
+    │   ├── DocumentsScreen.js       # Documents liés à un dossier
+    │   ├── UploadDocumentScreen.js  # Upload de document (multipart)
+    │   └── AllDocumentsScreen.js    # Liste complète des documents
     │
     ├── TasksNotes/
     │   ├── AddTaskScreen.js              # Création tâche (calendrier, membres réels, enum catégorie)
-    │   ├── AddNoteScreen.js             # Création note (autocomplete dossier, formatage inline)
+    │   ├── AddNoteScreen.js              # Création note (autocomplete dossier, formatage inline)
     │   ├── TasksNotesManagementScreen.js # Gestion tâches & notes
-    │   ├── AllTasksScreen.js            # Liste complète des tâches
-    │   └── VoiceNoteScreen.js           # Enregistrement note vocale (Whisper STT)
+    │   ├── AllTasksScreen.js             # Liste complète des tâches
+    │   └── VoiceNoteScreen.js            # Enregistrement note vocale (Whisper STT + GPT-4o)
     │
     ├── Schedule/
-    │   ├── ScheduleScreen.js    # Agenda avec CalendarStrip + liste événements
-    │   ├── AllScheduleScreen.js # Vue complète de l'agenda
+    │   ├── ScheduleScreen.js     # Agenda avec CalendarStrip + liste événements
+    │   ├── AllScheduleScreen.js  # Vue complète de l'agenda
     │   └── EventDetailsScreen.js # Détail d'un événement
     │
     ├── AI/
-    │   └── AIAssistantScreen.js # Assistant IA conversationnel (GPT-4o)
+    │   └── AIAssistantScreen.js  # Assistant IA conversationnel (GPT-4o)
     │
     ├── Invoices/
-    │   ├── InvoiceScreen.js          # Création/édition facture
-    │   └── InvoicesManagementScreen.js # Gestion des factures
+    │   ├── InvoiceScreen.js             # Création/édition facture
+    │   ├── InvoiceDetailsScreen.js      # Détail d'une facture
+    │   └── InvoicesManagementScreen.js  # Gestion des factures
     │
     ├── Notifications/
-    │   └── NotificationsScreen.js # Notifications in-app
+    │   └── NotificationsScreen.js  # Notifications in-app
     │
     ├── Profile/
-    │   └── ProfileScreen.js # Profil utilisateur, préférences, 2FA
+    │   └── ProfileScreen.js  # Profil utilisateur, préférences, 2FA, biométrie
     │
     ├── Calender/
-    │   └── CalendarScreen.js # Vue calendrier mensuelle
+    │   └── CalendarScreen.js  # Vue calendrier mensuelle
     │
-    └── Client/                 # Écrans réservés au rôle CLIENT
+    └── Client/                  # Écrans réservés au rôle CLIENT
         ├── ClientDashboard.js
         ├── ClientCasesScreen.js
         ├── ClientCaseDetailScreen.js
         ├── ClientInvoicesScreen.js
+        ├── ClientInvoiceDetailScreen.js
         ├── ClientDocumentsScreen.js
+        ├── ClientAppointmentsScreen.js
+        ├── ClientActivityScreen.js
+        ├── ClientNotificationsScreen.js
+        ├── ClientSettingsScreen.js
         └── ClientProfileScreen.js
 ```
 
-### 7.3 Fichier `services/api.js` — Namespaces
+### 7.5 Fichier `services/api.js` — Namespaces
 
-| Namespace | Endpoints couverts |
-|-----------|-------------------|
-| `authAPI` | login, registerFirm, refresh, logout, me, forgotPassword, resetPassword, validateOfficeCode, inviteLawyer, inviteClient, acceptInvite, setup2FA, verify2FA, login2FA, updateMe, uploadAvatar, changePassword, loginHistory, getNotifPreferences, updateNotifPreferences |
-| `dashboardAPI` | stats, today, recentCases |
-| `casesAPI` | list, create, getById, update, updateStatus, archive, getTimeline, getTeam, addTeamMember, removeTeamMember, getByClient |
+| Namespace | Méthodes principales |
+|-----------|---------------------|
+| `authAPI` | login, **oauthLogin**, registerFirm, refresh, logout, me, forgotPassword, resetPassword, validateOfficeCode, inviteLawyer, inviteClient, acceptInvite, setup2FA, verify2FA, login2FA, updateMe, uploadAvatar, changePassword, loginHistory, getNotifPreferences, updateNotifPreferences |
+| `dashboardAPI` | stats, today, recentCases, **recentActivity** |
+| `casesAPI` | list, create, getById, update, updateStatus, **restore**, archive, getTimeline, getTeam, addTeamMember, removeTeamMember, getByClient |
 | `clientsAPI` | list, create, getById, update, delete, invite, getCases, getInvoices |
-| `documentsAPI` | list, getById, delete, updateStatus, share, summarize, upload (multipart), uploadVoice (multipart) |
-| `billingAPI` | listInvoices, createInvoice, getInvoice, updateInvoice, sendInvoice, sendReminder, getAnalytics |
+| `documentsAPI` | list, getById, delete, updateStatus, share, summarize, upload (multipart), uploadVoice (multipart), **voiceNoteAI**, **voiceNoteConfirm**, **createRequest**, **listRequests**, **cancelRequest** |
+| `billingAPI` | listInvoices, createInvoice, getInvoice, updateInvoice, **deleteInvoice**, sendInvoice, sendReminder, getAnalytics |
 | `calendarAPI` | listEvents, createEvent, updateEvent, deleteEvent, testReminder |
 | `tasksAPI` | list, create, update, updateStatus, delete |
 | `notesAPI` | list, create, update, delete |
 | `firmAPI` | getProfile, updateProfile, getTeam, updateMemberRole, removeMember, getSubscription, getBranding, updateBranding, getOfficeCode |
 | `paymentsAPI` | stripeCreate, stripeConfirm, sadadInitiate |
 | `aiAPI` | summarize, draftContract, suggestActions, caseAssistant, getHistory |
-| `notificationsAPI` | list, markAllRead |
-| `clientPortalAPI` | dashboard, cases, caseDetail, invoices, invoiceDetail, documents, appointments, profile, activity |
+| `notificationsAPI` | list, **unreadCount**, markAllRead, **markOneRead**, **createTest** |
+| `clientPortalAPI` | dashboard, cases, caseDetail, invoices, invoiceDetail, **payInvoice**, documents, **uploadDocument**, **documentRequests**, **fulfillRequest**, appointments, **requestMeeting**, profile, activity |
 
-### 7.4 Pattern authentification — `AuthContext.js`
+> **En gras** = méthodes ajoutées depuis la version précédente du rapport.
+
+### 7.6 Pattern authentification — `AuthContext.js`
 
 ```
 Login :
@@ -1155,14 +1295,33 @@ Sur 401 :
   → Si échec → l'utilisateur est redirigé vers le login
 ```
 
-### 7.5 Composants réutilisables
+### 7.7 Composants réutilisables
 
 | Composant | Description | Utilisé dans |
 |-----------|-------------|-------------|
 | `CalendarStrip` | Bande de 7 jours horizontale (amber), navigation semaine précédente/suivante | AddCaseScreen, AddTaskScreen, ScheduleScreen |
-| `AutocompleteField` | Champ texte avec dropdown, recherche debounced (300ms) via API | AddCaseScreen (client/avocat), AddTaskScreen (dossier), AddNoteScreen (dossier) |
+| `AutocompleteField` | Champ texte avec dropdown, recherche debounced (300ms) via API | AddCaseScreen (client/avocat), AddTaskScreen (dossier), AddNoteScreen |
 | `ToggleRow` | Ligne avec icône + titre + sous-titre + toggle switch | AddTaskScreen, AddNoteScreen |
 | `RichText` | Rendu markdown inline (`**gras**`, `*italique*`, `__souligné__`) dans la preview | AddNoteScreen |
+
+### 7.8 Variables d'environnement mobile (`.env`)
+
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://ydzbgkblqnznbujzaple.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=...
+
+# Google OAuth (console.cloud.google.com → Credentials)
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=...      # iOS credential (bundle: host.exp.Exponent pour Expo Go)
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=...      # Web Application credential (requis pour Supabase OAuth proxy)
+
+# Microsoft OAuth (portal.azure.com → App registrations)
+EXPO_PUBLIC_MICROSOFT_CLIENT_ID=...
+```
+
+**Configuration Supabase Dashboard requise :**
+- Authentication → URL Configuration → Redirect URLs → ajouter `exp://**`
+- Authentication → Providers → Google → coller les credentials Web Application
+- Authentication → Providers → Azure → coller le client ID Microsoft
 
 ---
 
@@ -1200,7 +1359,7 @@ Sur 401 :
 ### Bug 5 — Mauvais ID dans `invite_client` (app_user.id vs lawyer.id)
 **Fichier :** `app/routers/auth.py` — `invite_client()`  
 **Problème :** `assigned_lawyer_id` recevait `current_user["id"]` (= `app_user.id`) mais la colonne référence `lawyer.id` (table séparée).  
-**Fix :** Résolution du profil lawyer :
+**Fix :**
 ```python
 lawyer_result = supabase.table("lawyer").select("id").eq("user_id", current_user["id"]).execute()
 lawyer_id = lawyer_result.data[0]["id"]
@@ -1217,26 +1376,55 @@ lawyer_id = lawyer_result.data[0]["id"]
 ---
 
 ### Bug 7 — Valeur enum `task_category` rejetée par PostgreSQL
-
 **Contexte :** Mobile — `AddTaskScreen.js`  
-**Problème :** Le frontend envoyait le label d'affichage `"Research"` au lieu de la valeur enum PostgreSQL `"RESEARCH"`. PostgreSQL rejetait avec `invalid input value for enum task_category: "Research"` (HTTP 500).  
-**Fix :** Conversion des catégories en objets `{ label, key }` côté mobile :
+**Problème :** Le frontend envoyait le label d'affichage `"Research"` au lieu de la valeur enum PostgreSQL `"RESEARCH"`. PostgreSQL rejetait avec HTTP 500.  
+**Fix :** Conversion des catégories en objets `{ label, key }` :
 ```js
 const CATEGORIES = [
-  { label: 'Research',        key: 'RESEARCH'       },
-  { label: 'Court Filing',    key: 'COURT_FILING'   },
-  { label: 'Document Review', key: 'DOC_REVIEW'     },
-  // ...
+  { label: 'Research',        key: 'RESEARCH'     },
+  { label: 'Court Filing',    key: 'COURT_FILING'  },
+  { label: 'Document Review', key: 'DOC_REVIEW'    },
 ];
 ```
-Le champ de formulaire stocke `categoryKey` (valeur enum) et envoie `form.categoryKey` au backend.  
-**Règle générale :** Les labels d'affichage UI ne doivent jamais être envoyés directement à un endpoint qui attend une valeur enum PostgreSQL.
+**Règle générale :** Les labels UI ne doivent jamais être envoyés directement à un endpoint attendant une valeur enum PostgreSQL.
+
+---
+
+### Bug 8 — OAuth Google : erreur 400 "invalid_request" (mauvais type de credential)
+**Contexte :** Mobile OAuth Google sur iPhone via Expo Go  
+**Problème :** Un credential de type "Web Application" ou "iOS" standard ne fonctionne pas dans Expo Go car le bundle ID est `host.exp.Exponent` (pas `com.legalhub.mobile`).  
+**Fix :** Remplacement de l'approche native (`expo-auth-session` avec Google credentials directs) par Supabase OAuth comme intermédiaire. Le mobile ouvre l'URL Supabase OAuth → Supabase gère le flow Google → retourne l'`access_token` Supabase dans l'URL de redirection.
+
+---
+
+### Bug 9 — "Safari ne peut pas ouvrir la page" (mauvais scheme de redirection)
+**Contexte :** Mobile OAuth — redirection après authentification Google  
+**Problème :** `makeRedirectUri({ scheme: 'legalhub' })` et `makeRedirectUri()` retournaient `legalhub://` (depuis `app.json`), scheme non enregistré dans Expo Go. iOS ouvrait Safari qui ne pouvait pas résoudre l'URL.  
+**Fix :** Utilisation de `Linking.createURL('auth/callback')` qui retourne `exp://192.168.x.x/...` en Expo Go (scheme `exp://` reconnu par l'app Expo Go). Ce scheme doit aussi être déclaré dans Supabase Dashboard → Redirect URLs.
+
+---
+
+### Bug 10 — PKCE : "both auth code and code verifier should be non-empty"
+**Contexte :** Mobile OAuth — échange du code PKCE contre une session  
+**Problème :** Le `code_verifier` PKCE est stocké par `@supabase/supabase-js` dans SecureStore (async). Lors du retour depuis le browser, le contexte JS reprend mais le `code_verifier` est introuvable → Supabase rejette l'échange.  
+**Fix :** Passage en `flowType: 'implicit'` dans le client Supabase. En implicit flow, Supabase retourne l'`access_token` directement dans le fragment `#` de l'URL de redirection, sans besoin d'échange de code :
+```javascript
+// Extraction du token depuis le fragment URL
+const fragment = result.url.includes('#') ? result.url.split('#')[1] : '';
+const params = Object.fromEntries(
+  fragment.split('&').filter(Boolean).map(p => {
+    const [k, ...v] = p.split('=');
+    return [decodeURIComponent(k), decodeURIComponent(v.join('='))];
+  })
+);
+const supabaseToken = params.access_token;
+```
 
 ---
 
 ## 9. Configuration & Lancement
 
-### Fichier `.env` (à créer à la racine du projet)
+### Fichier `.env` backend
 
 ```env
 # ── Supabase (récupérer dans Dashboard → Project Settings → API) ──
@@ -1276,7 +1464,7 @@ TWILIO_PHONE_NUMBER=+1...
 ```bash
 pip install fastapi uvicorn supabase python-jose[cryptography] bcrypt \
             pydantic[email] pydantic-settings python-multipart \
-            openai stripe pyotp python-dotenv
+            openai stripe pyotp python-dotenv httpx apscheduler
 ```
 
 ### Lancement du serveur
@@ -1306,30 +1494,32 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 | Catégorie | Détails |
 |-----------|---------|
 | **Routers** | 13 au total (auth, cases, clients, documents, billing, calendar, tasks, firm, payments, dashboard, ai, notifications, client_portal) |
-| **Endpoints API** | ~70 endpoints couvrant tous les domaines métier |
-| **Tables DB** | 19 tables avec clés étrangères et contraintes |
+| **Endpoints API** | ~80 endpoints couvrant tous les domaines métier |
+| **OAuth Social Login** | Google + Microsoft (via Supabase Auth intermédiaire) + Apple (natif iOS) |
+| **Tables DB** | 19 tables principales + 2 tables de migration (login_history, notification_preferences) |
 | **Types ENUM PostgreSQL** | 22 enums pour toutes les valeurs métier |
 | **Index DB** | ~25 index pour les requêtes fréquentes |
-| **Bugs corrigés** | 7 bugs (sécurité, routing, données, enum mobile) |
-| **Fichiers créés (zéro)** | 5 : tasks.py, firm.py, payments.py, dashboard.py, client_portal.py |
+| **Bugs corrigés** | 10 bugs (sécurité, routing, données, enum mobile, OAuth) |
 | **Scheduler** | APScheduler — rappels email 30 min / 1h / 1 jour avant événement |
-| **Intégrations IA** | GPT-4o (résumé doc, rédaction contrat, assistant dossier, suggestions) + Whisper (transcription vocale) |
+| **Intégrations IA** | GPT-4o (résumé doc, rédaction contrat, assistant dossier, suggestions, analyse voice note) + Whisper (transcription vocale) |
 | **Paiements** | Stripe PaymentIntent + Sadad (Gulf) + webhooks automatiques |
 | **Multi-tenancy** | Isolation complète par `firm_id` sur toutes les tables |
-| **Sécurité** | JWT custom HS256 (access 15 min + refresh 7 jours) + RBAC 3 niveaux + bcrypt+SHA256 |
+| **Sécurité** | JWT custom HS256 (access 15 min + refresh 7 jours) + RBAC 3 niveaux + bcrypt |
 
-### Application Mobile (React Native / Expo)
+### Application Mobile (React Native / Expo SDK 54)
 
 | Catégorie | Détails |
 |-----------|---------|
-| **Écrans** | 30+ écrans couvrant tous les modules |
-| **Rôles supportés** | LAWYER / FIRM_ADMIN (écrans principaux) + CLIENT (portail dédié) |
+| **Écrans** | 39 écrans couvrant tous les modules |
+| **Rôles supportés** | LAWYER / FIRM_ADMIN (écrans principaux) + CLIENT (portail dédié 11 écrans) |
+| **OAuth** | Google + Microsoft via Supabase OAuth (implicit flow) + Apple natif (expo-apple-authentication) |
 | **Namespaces API** | 14 namespaces dans `services/api.js` (100% des endpoints backend couverts) |
 | **Auto-refresh JWT** | Transparent côté mobile — retry automatique sur 401 |
 | **Formatage notes** | Éditeur markdown inline avec toggle gras/italique/souligné + détection de contexte |
 | **Composants réutilisables** | CalendarStrip, AutocompleteField (debounce 300ms), ToggleRow, RichText |
-| **Upload** | Documents PDF + notes vocales (multipart/form-data) |
+| **Upload** | Documents PDF + notes vocales (multipart/form-data) + upload client depuis portail |
+| **Biométrie** | Face ID / Touch ID via expo-local-authentication |
 
 ---
 
-*Document mis à jour le 12/04/2026 — LegalHub v2.0 (Backend FastAPI + Mobile React Native/Expo)*
+*Document mis à jour le 12/05/2026 — LegalHub v2.1 (Backend FastAPI + Mobile React Native/Expo SDK 54)*

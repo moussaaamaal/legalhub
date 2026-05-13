@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontAwesome5 } from '@expo/vector-icons';
-import { casesAPI, clientsAPI, firmAPI } from '../../services/api';
+import * as DocumentPicker from 'expo-document-picker';
+import { casesAPI, clientsAPI, firmAPI, documentsAPI } from '../../services/api';
 
 const COLORS = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B',
@@ -28,6 +29,13 @@ const CASE_TYPE_MAP = {
   'Real Estate Law': 'REAL_ESTATE', 'Immigration Law': 'IMMIGRATION',
   'Personal Injury': 'PERSONAL_INJURY', 'Intellectual Property': 'IP',
 };
+
+const BILLING_TYPES = [
+  { label: 'Hourly Rate', value: 'HOURLY',      icon: 'clock',       color: '#2563EB', bg: '#EFF6FF' },
+  { label: 'Flat Fee',    value: 'FLAT_FEE',    icon: 'tag',         color: '#7C3AED', bg: '#F5F3FF' },
+  { label: 'Contingency', value: 'CONTINGENCY', icon: 'percent',     color: '#D97706', bg: '#FFFBEB' },
+  { label: 'Retainer',    value: 'RETAINER',    icon: 'handshake',   color: '#059669', bg: '#ECFDF5' },
+];
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const toISO = (d) => d.toISOString().split('T')[0];
@@ -153,6 +161,7 @@ export default function AddCaseScreen({ navigation }) {
   const [form, setForm] = useState({
     title: '', caseType: '', priority: '',
     court: '', judge: '', filingDate: '', description: '', notes: '',
+    billingType: '', estimatedValue: '',
   });
 
   // ── Client autocomplete ──
@@ -171,6 +180,7 @@ export default function AddCaseScreen({ navigation }) {
 
   // ── Calendar strip ──
   const [calendarBase, setCalendarBase] = useState(new Date());
+  const [attachedDocs, setAttachedDocs] = useState([]);
 
   const progress = (step / 3) * 100;
   const update = (key, val) => setForm(p => ({ ...p, [key]: val }));
@@ -240,6 +250,16 @@ export default function AddCaseScreen({ navigation }) {
     setCalendarBase(d);
   };
 
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
+      if (result.canceled) return;
+      setAttachedDocs(prev => [...prev, ...result.assets]);
+    } catch {
+      Alert.alert('Error', 'Could not open document picker.');
+    }
+  };
+
   // ── Submit ──
   const handleCreateCase = async () => {
     if (!form.title.trim()) { Alert.alert('Missing Field', 'Case title is required.'); return; }
@@ -247,18 +267,29 @@ export default function AddCaseScreen({ navigation }) {
 
     setLoading(true);
     try {
-      await casesAPI.create({
-        title:       form.title,
-        case_number: `CASE-${Date.now()}`,
-        case_type:   CASE_TYPE_MAP[form.caseType] || 'CIVIL',
-        priority:    form.priority?.toUpperCase() || 'NORMAL',
-        description: form.description,
-        court_name:  form.court,
-        judge_name:  form.judge,
-        filing_date: form.filingDate || null,
-        ...(selectedClientId  ? { client_id: selectedClientId }   : {}),
-        ...(selectedAttorneyId ? { attorney_id: selectedAttorneyId } : {}),
+      const created = await casesAPI.create({
+        title:           form.title,
+        case_number:     `CASE-${Date.now()}`,
+        case_type:       CASE_TYPE_MAP[form.caseType] || 'CIVIL',
+        priority:        form.priority?.toUpperCase() || 'NORMAL',
+        description:     form.description,
+        court_name:      form.court,
+        judge_name:      form.judge,
+        filing_date:     form.filingDate || null,
+        ...(form.billingType    ? { billing_type:     form.billingType }                    : {}),
+        ...(form.estimatedValue ? { estimated_value:  parseFloat(form.estimatedValue) }     : {}),
+        ...(selectedClientId    ? { client_id:        selectedClientId }                    : {}),
+        ...(selectedAttorneyId  ? { attorney_id:      selectedAttorneyId }                  : {}),
       });
+      if (attachedDocs.length > 0 && created?.id) {
+        try {
+          await Promise.all(
+            attachedDocs.map(doc =>
+              documentsAPI.upload({ uri: doc.uri, name: doc.name, mimeType: doc.mimeType }, created.id)
+            )
+          );
+        } catch { /* docs are optional — case was still created */ }
+      }
       Alert.alert('Success', 'Case created successfully!', [
         { text: 'OK', onPress: () => navigation?.goBack() }
       ]);
@@ -404,6 +435,34 @@ export default function AddCaseScreen({ navigation }) {
               </View>
             </View>
 
+            {/* Billing Type */}
+            <Text style={s.label}>Billing Type</Text>
+            <View style={s.billingGrid}>
+              {BILLING_TYPES.map(bt => {
+                const active = form.billingType === bt.value;
+                return (
+                  <TouchableOpacity
+                    key={bt.value}
+                    style={[s.billingBtn, { backgroundColor: active ? bt.color : bt.bg, borderColor: active ? bt.color : bt.color + '40' }]}
+                    onPress={() => update('billingType', active ? '' : bt.value)}
+                    activeOpacity={0.8}
+                  >
+                    <FontAwesome5 name={bt.icon} size={15} color={active ? COLORS.white : bt.color} />
+                    <Text style={[s.billingLabel, { color: active ? COLORS.white : bt.color }]}>{bt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Estimated Value */}
+            <Field
+              label="Estimated Case Value ($)"
+              placeholder="e.g., 50000"
+              value={form.estimatedValue}
+              onChange={v => update('estimatedValue', v.replace(/[^0-9.]/g, ''))}
+              icon="dollar-sign"
+            />
+
             <Text style={s.label}>Case Description</Text>
             <TextInput
               style={[s.input, s.textarea]}
@@ -424,15 +483,37 @@ export default function AddCaseScreen({ navigation }) {
               multiline numberOfLines={4}
             />
 
+            {/* Attach Documents */}
+            <Text style={s.label}>Attach Documents (Optional)</Text>
+            <TouchableOpacity style={s.attachBtn} onPress={handlePickDocument} activeOpacity={0.8}>
+              <FontAwesome5 name="paperclip" size={14} color={COLORS.primary} />
+              <Text style={s.attachBtnTxt}>Attach Files</Text>
+            </TouchableOpacity>
+            {attachedDocs.length > 0 && (
+              <View style={{ gap: 6, marginBottom: 16 }}>
+                {attachedDocs.map((doc, idx) => (
+                  <View key={idx} style={s.attachedItem}>
+                    <FontAwesome5 name="file-alt" size={12} color={COLORS.gray500} />
+                    <Text style={s.attachedName} numberOfLines={1}>{doc.name}</Text>
+                    <TouchableOpacity onPress={() => setAttachedDocs(prev => prev.filter((_, i) => i !== idx))}>
+                      <FontAwesome5 name="times" size={12} color="#DC2626" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
             <View style={s.summaryCard}>
               <Text style={s.summaryTitle}>Case Summary</Text>
               {[
-                ['Title',    form.title],
-                ['Type',     form.caseType],
-                ['Priority', form.priority],
-                ['Client',   clientSearch],
-                ['Attorney', attorneySearch],
-                ['Filing',   form.filingDate],
+                ['Title',           form.title],
+                ['Type',            form.caseType],
+                ['Priority',        form.priority],
+                ['Billing',         BILLING_TYPES.find(b => b.value === form.billingType)?.label],
+                ['Estimated Value', form.estimatedValue ? `$${form.estimatedValue}` : null],
+                ['Client',          clientSearch],
+                ['Attorney',        attorneySearch],
+                ['Filing',          form.filingDate],
               ].map(([k, v]) => v ? (
                 <View key={k} style={s.summaryRow}>
                   <Text style={s.summaryKey}>{k}</Text>
@@ -546,6 +627,11 @@ const s = StyleSheet.create({
   priorityBtn:      { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', gap: 4 },
   priorityText:     { fontSize: 11, fontWeight: '700' },
 
+  // Billing type
+  billingGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  billingBtn:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, width: '47%' },
+  billingLabel: { fontSize: 13, fontWeight: '700' },
+
   // Summary
   summaryCard:      { backgroundColor: COLORS.blue50, borderRadius: 16, padding: 14, marginTop: 8 },
   summaryTitle:     { fontSize: 14, fontWeight: '700', color: COLORS.primary, marginBottom: 10 },
@@ -559,4 +645,8 @@ const s = StyleSheet.create({
   btnPrimaryText:   { color: COLORS.white, fontWeight: '700', fontSize: 15 },
   btnSecondary:     { paddingHorizontal: 20, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.gray200, alignItems: 'center', justifyContent: 'center' },
   btnSecondaryText: { fontSize: 15, fontWeight: '600', color: COLORS.gray600 },
+  attachBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: COLORS.primary, borderStyle: 'dashed', borderRadius: 12, paddingVertical: 12, marginBottom: 10, backgroundColor: '#EFF6FF' },
+  attachBtnTxt:     { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  attachedItem:     { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.gray50, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.gray200 },
+  attachedName:     { flex: 1, fontSize: 12, color: COLORS.dark },
 });

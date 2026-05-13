@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  StyleSheet, StatusBar, Alert, ActivityIndicator, Modal,
+  StyleSheet, StatusBar, Alert, ActivityIndicator, Modal, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import { supabase } from '../supabase/supabase';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const BIO_EMAIL_KEY = 'lh_bio_email';
 const BIO_PASS_KEY  = 'lh_bio_pass';
@@ -54,6 +59,7 @@ export default function AuthScreen() {
   const [showPass, setShowPass]               = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [loading, setLoading]                 = useState(false);
+  const [oauthLoading, setOauthLoading]       = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [bioLoading, setBioLoading]           = useState(false);
   // 2FA challenge modal
@@ -61,6 +67,72 @@ export default function AuthScreen() {
   const [twoFATempToken, setTwoFATempToken]   = useState('');
   const [twoFACode, setTwoFACode]             = useState('');
   const [twoFALoading, setTwoFALoading]       = useState(false);
+
+  // ── OAuth via Supabase ───────────────────────────────────────────────────
+  const handleOAuthLogin = async (provider) => {
+    setOauthLoading(true);
+    try {
+      if (provider === 'apple') {
+        if (Platform.OS !== 'ios') {
+          Alert.alert('Indisponible', 'Sign in with Apple est uniquement disponible sur iOS.');
+          return;
+        }
+        const AppleAuth = require('expo-apple-authentication');
+        const credential = await AppleAuth.signInAsync({
+          requestedScopes: [
+            AppleAuth.AppleAuthenticationScope.FULL_NAME,
+            AppleAuth.AppleAuthenticationScope.EMAIL,
+          ],
+        });
+        if (!credential.identityToken) throw new Error('Aucun identity token reçu.');
+        const data = await authAPI.oauthLogin('apple', credential.identityToken, 'id_token');
+        await signIn(data.access_token, data.refresh_token, data.user);
+        return;
+      }
+
+      // Google ou Microsoft via Supabase OAuth
+      // Linking.createURL retourne exp:// dans Expo Go, legalhub:// en production
+      const supabaseProvider = provider === 'azure' ? 'azure' : 'google';
+      const redirectTo = Linking.createURL('auth/callback');
+      console.log('[OAuth] redirectTo =', redirectTo);
+
+      const { data: oauthData, error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: supabaseProvider,
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+          ...(supabaseProvider === 'azure' ? { scopes: 'email profile openid' } : {}),
+        },
+      });
+
+      if (oauthError) throw new Error(oauthError.message);
+      if (!oauthData?.url) throw new Error('URL OAuth manquante');
+
+      const result = await WebBrowser.openAuthSessionAsync(oauthData.url, redirectTo);
+
+      if (result.type === 'success' && result.url) {
+        // Implicit flow: Supabase puts access_token in the URL fragment
+        const fragment = result.url.includes('#') ? result.url.split('#')[1] : '';
+        const params = Object.fromEntries(
+          fragment.split('&').filter(Boolean).map(p => {
+            const [k, ...v] = p.split('=');
+            return [decodeURIComponent(k), decodeURIComponent(v.join('='))];
+          })
+        );
+        const supabaseToken = params.access_token;
+        if (!supabaseToken) throw new Error('Token absent de la réponse OAuth');
+
+        const lhData = await authAPI.oauthLogin('supabase', supabaseToken, 'access_token');
+        await signIn(lhData.access_token, lhData.refresh_token, lhData.user);
+      }
+    } catch (err) {
+      if (err.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Connexion échouée', err.message || 'Une erreur est survenue.');
+      }
+    } finally {
+      setOauthLoading(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -308,18 +380,6 @@ export default function AuthScreen() {
             <FontAwesome5 name="shield-alt" size={10} color="#6EE7B7" />
             <Text style={s.badgeSecureTxt}>Secure</Text>
           </View>
-        </View>
-        <View style={s.statsRow}>
-          {[
-            { val: '2,847', label: 'Law Firms' },
-            { val: '15K+',  label: 'Lawyers'   },
-            { val: '99.9%', label: 'Uptime'    },
-          ].map((st, i) => (
-            <View key={i} style={s.statItem}>
-              <Text style={s.statVal}>{st.val}</Text>
-              <Text style={s.statLabel}>{st.label}</Text>
-            </View>
-          ))}
         </View>
       </View>
 
@@ -788,16 +848,16 @@ export default function AuthScreen() {
               icon: 'apple',
               color: C.dark,
               label: 'Continue with Apple',
-              handler: () => Alert.alert('Coming Soon', 'Apple login coming soon.'),
+              handler: () => handleOAuthLogin('apple'),
             },
           ].map((social, i) => (
             <TouchableOpacity
               key={i}
               style={s.socialBtn}
               onPress={social.handler}
-              disabled={loading}
+              disabled={oauthLoading || loading}
             >
-              {loading
+              {oauthLoading
                 ? <ActivityIndicator color={C.g400} />
                 : <>
                     <FontAwesome name={social.icon} size={20} color={social.color} />
@@ -806,25 +866,6 @@ export default function AuthScreen() {
               }
             </TouchableOpacity>
           ))}
-        </View>
-
-        {/* ── NEW TO LEGALHUB ───────────────────────────────────────── */}
-        <View style={[s.card, { backgroundColor: C.blue50, borderColor: C.blue100 }]}>
-          <View style={s.row}>
-            <View style={[s.iconBox, { backgroundColor: C.white }]}>
-              <FontAwesome5 name="user-plus" size={18} color={C.primary} />
-            </View>
-            <View style={{ flex: 1, marginLeft: 14 }}>
-              <Text style={s.cardTitle}>New to LegalHub?</Text>
-              <Text style={[s.cardSub, { marginBottom: 10 }]}>
-                Join your law office team and start managing cases efficiently
-              </Text>
-              <TouchableOpacity style={s.outlineBtn} onPress={() => setActiveTab('signup')}>
-                <Text style={s.outlineBtnTxt}>Create Account</Text>
-                <FontAwesome5 name="arrow-right" size={12} color={C.primary} />
-              </TouchableOpacity>
-            </View>
-          </View>
         </View>
 
         {/* ── SECURITY ──────────────────────────────────────────────── */}
@@ -842,25 +883,6 @@ export default function AuthScreen() {
               </View>
             </View>
           ))}
-        </View>
-
-        {/* ── SUPPORT ───────────────────────────────────────────────── */}
-        <View style={[s.card, { backgroundColor: C.indigo50, borderColor: '#C7D2FE' }]}>
-          <View style={{ alignItems: 'center', marginBottom: 16 }}>
-            <View style={[s.iconBox, { width: 64, height: 64, borderRadius: 20, backgroundColor: C.white, marginBottom: 10 }]}>
-              <FontAwesome5 name="headset" size={26} color={C.indigo600} />
-            </View>
-            <Text style={s.cardTitle}>Need Help?</Text>
-            <Text style={s.cardSub}>Our support team is here to assist you 24/7</Text>
-          </View>
-          <View style={s.supportGrid}>
-            {SUPPORT_BTNS.map((b, i) => (
-              <TouchableOpacity key={i} style={[s.supportBtn, { borderColor: '#C7D2FE' }]}>
-                <FontAwesome5 name={b.icon} size={20} color={C.indigo600} />
-                <Text style={[s.supportBtnTxt, { color: C.dark }]}>{b.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
         </View>
 
         {/* ── WHY LEGALHUB ──────────────────────────────────────────── */}

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.core.dependencies import get_current_user
@@ -5,6 +6,7 @@ from app.core.database import supabase
 from app.core.config import settings
 from pydantic import BaseModel
 
+_log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/payments", tags=["Payments"])
 
 # ─── Schemas ────────────────────────────────────────────
@@ -23,6 +25,18 @@ class StripePaymentRequest(BaseModel):
 class SadadPaymentRequest(BaseModel):
     invoice_id: str
 
+class SaveMethodRequest(BaseModel):
+    card_number: str
+    card_name:   str
+    exp_month:   str
+    exp_year:    str
+    cvc:         str
+
+class PayWithMethodRequest(BaseModel):
+    invoice_id:       str
+    payment_method_id: str
+    currency:         str = "usd"
+
 # ─── Helpers ────────────────────────────────────────────
 
 def _get_stripe():
@@ -31,6 +45,15 @@ def _get_stripe():
     import stripe
     stripe.api_key = settings.STRIPE_SECRET_KEY
     return stripe
+
+def _get_or_create_stripe_customer(stripe_lib, user_id: str, email: str) -> str:
+    """Find existing Stripe customer by metadata or create a new one."""
+    existing = stripe_lib.Customer.search(query=f'metadata["lh_user_id"]:"{user_id}"', limit=1)
+    if existing.data:
+        return existing.data[0]["id"]
+    customer = stripe_lib.Customer.create(email=email, metadata={"lh_user_id": user_id})
+    return customer["id"]
+
 
 def _mark_invoice_paid(invoice_id: str, gateway: str, transaction_id: str):
     supabase.table("invoice").update({
@@ -137,6 +160,121 @@ async def confirm_stripe_payment(payment_intent_id: str, current_user=Depends(ge
 
     return {"message": "Payment confirmed", "status": intent["status"]}
 
+# ─── GET /api/payments/stripe/methods ──────────────────
+
+@router.get("/stripe/methods")
+async def list_saved_methods(current_user=Depends(get_current_user)):
+    stripe_lib = _get_stripe()
+    try:
+        customer_id = _get_or_create_stripe_customer(
+            stripe_lib, current_user["id"], current_user.get("email", "")
+        )
+        methods = stripe_lib.PaymentMethod.list(customer=customer_id, type="card")
+        return [
+            {
+                "id":        pm["id"],
+                "brand":     pm["card"]["brand"],
+                "last4":     pm["card"]["last4"],
+                "exp_month": pm["card"]["exp_month"],
+                "exp_year":  pm["card"]["exp_year"],
+            }
+            for pm in (methods.data or [])
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── POST /api/payments/stripe/methods/save ─────────────
+
+@router.post("/stripe/methods/save", status_code=201)
+async def save_payment_method(body: SaveMethodRequest, current_user=Depends(get_current_user)):
+    stripe_lib = _get_stripe()
+    try:
+        exp_year = int(body.exp_year)
+        if exp_year < 100:
+            exp_year += 2000
+
+        pm = stripe_lib.PaymentMethod.create(
+            type="card",
+            card={
+                "number":    body.card_number.replace(" ", ""),
+                "exp_month": int(body.exp_month),
+                "exp_year":  exp_year,
+                "cvc":       body.cvc,
+            },
+            billing_details={"name": body.card_name},
+        )
+        customer_id = _get_or_create_stripe_customer(
+            stripe_lib, current_user["id"], current_user.get("email", "")
+        )
+        stripe_lib.PaymentMethod.attach(pm["id"], customer=customer_id)
+        return {
+            "id":        pm["id"],
+            "brand":     pm["card"]["brand"],
+            "last4":     pm["card"]["last4"],
+            "exp_month": pm["card"]["exp_month"],
+            "exp_year":  pm["card"]["exp_year"],
+        }
+    except stripe_lib.error.CardError as e:
+        raise HTTPException(status_code=400, detail=e.user_message or str(e))
+    except stripe_lib.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── DELETE /api/payments/stripe/methods/{method_id} ────
+
+@router.delete("/stripe/methods/{method_id}")
+async def delete_saved_method(method_id: str, current_user=Depends(get_current_user)):
+    stripe_lib = _get_stripe()
+    try:
+        stripe_lib.PaymentMethod.detach(method_id)
+        return {"message": "Payment method removed"}
+    except stripe_lib.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── POST /api/payments/stripe/pay-with-method ──────────
+
+@router.post("/stripe/pay-with-method")
+async def pay_with_saved_method(body: PayWithMethodRequest, current_user=Depends(get_current_user)):
+    invoice = (
+        supabase.table("invoice")
+        .select("*")
+        .eq("id", body.invoice_id)
+        .maybe_single()
+        .execute()
+    )
+    if not invoice or not invoice.data:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    inv = invoice.data
+    if inv["status"] == "PAID":
+        raise HTTPException(status_code=400, detail="Invoice already paid")
+
+    stripe_lib = _get_stripe()
+    try:
+        customer_id = _get_or_create_stripe_customer(
+            stripe_lib, current_user["id"], current_user.get("email", "")
+        )
+        amount_cents = int(float(inv["total_amount"]) * 100)
+        intent = stripe_lib.PaymentIntent.create(
+            amount=amount_cents,
+            currency=body.currency.lower(),
+            customer=customer_id,
+            payment_method=body.payment_method_id,
+            confirm=True,
+            off_session=True,
+            metadata={"invoice_id": body.invoice_id, "firm_id": inv.get("firm_id", "")},
+        )
+        if intent["status"] == "succeeded":
+            _mark_invoice_paid(body.invoice_id, "STRIPE", intent["id"])
+            return {"status": "succeeded", "message": "Payment successful"}
+        raise HTTPException(status_code=400, detail=f"Payment status: {intent['status']}")
+    except stripe_lib.error.CardError as e:
+        raise HTTPException(status_code=400, detail=e.user_message or str(e))
+    except stripe_lib.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ─── POST /api/payments/sadad/initiate ──────────────────
 
 @router.post("/sadad/initiate")
@@ -155,21 +293,53 @@ async def initiate_sadad_payment(body: SadadPaymentRequest, current_user=Depends
     if inv["status"] == "PAID":
         raise HTTPException(status_code=400, detail="Invoice already paid")
 
-    # Sadad bill reference = invoice number (client uses this in their bank app)
     bill_reference = inv["invoice_number"]
 
-    # TODO: Call Sadad API to register the bill and get a payment reference
-    # For now, return the reference so the client can pay via their bank
+    if not settings.SADAD_API_KEY or not settings.SADAD_MERCHANT_ID:
+        _log.warning("[sadad] Credentials not configured — returning reference only")
+        return {
+            "bill_reference": bill_reference,
+            "amount":         inv["total_amount"],
+            "currency":       inv["currency"],
+            "instructions":   (
+                f"Use reference '{bill_reference}' to pay SAR {inv['total_amount']:.2f} "
+                "through your bank's SADAD service."
+            ),
+        }
 
-    return {
-        "bill_reference": bill_reference,
-        "amount":         inv["total_amount"],
-        "currency":       inv["currency"],
-        "instructions":   (
-            f"Use reference '{bill_reference}' to pay SAR {inv['total_amount']:.2f} "
-            "through your bank's SADAD service."
-        ),
+    # ── Real Sadad API call ──────────────────────────────
+    import requests as _req
+    headers = {
+        "Authorization": f"Bearer {settings.SADAD_API_KEY}",
+        "Content-Type":  "application/json",
     }
+    payload = {
+        "merchantId":    settings.SADAD_MERCHANT_ID,
+        "billNumber":    bill_reference,
+        "amount":        float(inv["total_amount"]),
+        "currency":      "SAR",
+        "description":   f"Invoice {bill_reference} — LegalHub",
+    }
+    try:
+        resp = _req.post(
+            f"{settings.SADAD_API_URL}/bills/register",
+            json=payload, headers=headers, timeout=15,
+        )
+        resp.raise_for_status()
+        sadad_data = resp.json()
+        return {
+            "bill_reference":  sadad_data.get("billNumber", bill_reference),
+            "sadad_reference": sadad_data.get("sadadReference"),
+            "amount":          inv["total_amount"],
+            "currency":        "SAR",
+            "instructions":    (
+                f"Bill registered with SADAD. Use reference '{bill_reference}' "
+                "in your bank's SADAD portal to complete payment."
+            ),
+        }
+    except _req.exceptions.RequestException as e:
+        _log.error(f"[sadad] API call failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Sadad API error: {e}")
 
 # ─── POST /api/payments/webhook ─────────────────────────
 

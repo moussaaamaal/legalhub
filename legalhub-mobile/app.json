@@ -47,7 +47,14 @@
     "plugins": [
       "expo-secure-store",
       "expo-web-browser",
+      "expo-apple-authentication",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "de3828fd-81bf-4042-9bc0-fab07e25647f"
+      }
+    },
+    "owner": "siwarbenrhoumaa"
   }
 }

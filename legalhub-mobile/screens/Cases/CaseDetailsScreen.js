@@ -291,7 +291,7 @@ const toDocDisplay = (doc) => {
   const dateLabel = doc.created_at
     ? new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : '—';
-  return { id: doc.id, icon, iconBg: bg, name, size: sizeLabel, date: dateLabel, url: doc.storage_url || null };
+  return { id: doc.id, icon, iconBg: bg, name, size: sizeLabel, date: dateLabel, url: doc.storage_url || null, isShared: !!doc.is_shared_with_client };
 };
 
 // ─── TASK ADAPTER ─────────────────────────────────────────────────────────────
@@ -1010,10 +1010,28 @@ const ov = StyleSheet.create({
 //  TAB: DOCUMENTS
 // ═════════════════════════════════════════════════════════════════════════════
 const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onUploaded }) => {
-  const [uploading, setUploading] = useState(false);
-  const [localDocs, setLocalDocs] = useState(documents);
+  const [uploading,    setUploading]    = useState(false);
+  const [localDocs,    setLocalDocs]    = useState(documents);
+  const [reqModal,     setReqModal]     = useState(false);
+  const [reqDesc,      setReqDesc]      = useState('');
+  const [sendingReq,   setSendingReq]   = useState(false);
 
   useEffect(() => { setLocalDocs(documents); }, [documents]);
+
+  const handleSendRequest = async () => {
+    if (!reqDesc.trim()) return;
+    setSendingReq(true);
+    try {
+      await documentsAPI.createRequest({ case_id: caseId, description: reqDesc.trim() });
+      setReqModal(false);
+      setReqDesc('');
+      Alert.alert('Request Sent', 'The client will be notified to upload this document.');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not send request.');
+    } finally {
+      setSendingReq(false);
+    }
+  };
 
   const handleDeleteDoc = (doc) => {
     Alert.alert('Delete Document', `Delete "${doc.name}"?`, [
@@ -1031,6 +1049,29 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
         }
       }},
     ]);
+  };
+
+  const handleShareDoc = (doc) => {
+    if (doc.isShared) {
+      Alert.alert('Already Shared', 'This document is already visible to the client.');
+      return;
+    }
+    Alert.alert(
+      'Share with Client',
+      `Share "${doc.name}" with the client?\n\nThey will be able to view and download it from their portal.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Share', onPress: async () => {
+          try {
+            await documentsAPI.share(doc.id);
+            setLocalDocs(prev => prev.map(d => d.id === doc.id ? { ...d, is_shared_with_client: true } : d));
+            Alert.alert('Shared', `"${doc.name}" is now visible to the client.`);
+          } catch (err) {
+            Alert.alert('Error', err.message || 'Could not share document.');
+          }
+        }},
+      ]
+    );
   };
 
   const items = localDocs.map(toDocDisplay);
@@ -1072,13 +1113,67 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
   return (
     <View style={{ paddingTop: 4 }}>
       <Card accent={C.red600}>
-        <SectionHead
-          icon="folder-open"
-          iconColor={C.red600}
-          title={`Documents (${count})`}
-          action={uploading ? null : 'Upload'}
-          onAction={handleUpload}
-        />
+        {/* Header with Upload + Request buttons */}
+        <View style={util.sHead}>
+          <View style={[util.sHeadIcon, { backgroundColor: C.red600 + '18' }]}>
+            <FontAwesome5 name="folder-open" size={13} color={C.red600} />
+          </View>
+          <Text style={util.sHeadTitle}>{`Documents (${count})`}</Text>
+          {!uploading && (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={[util.sHeadAction, { backgroundColor: C.amber50 }]}
+                onPress={() => { setReqDesc(''); setReqModal(true); }}
+              >
+                <Text style={[util.sHeadActionTxt, { color: C.amber600 }]}>Request</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={util.sHeadAction} onPress={handleUpload}>
+                <Text style={util.sHeadActionTxt}>Upload</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Request Modal */}
+        <Modal visible={reqModal} transparent animationType="slide" onRequestClose={() => setReqModal(false)}>
+          <View style={dc.modalOverlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}>
+              <View style={dc.modalBox}>
+                <View style={dc.modalHandle} />
+                <View style={dc.modalTitleRow}>
+                  <View style={dc.modalIcon}>
+                    <FontAwesome5 name="inbox" size={18} color={C.amber600} />
+                  </View>
+                  <Text style={dc.modalTitle}>Request Document from Client</Text>
+                </View>
+                <Text style={dc.modalLabel}>Describe the document you need</Text>
+                <TextInput
+                  style={dc.modalInput}
+                  placeholder="e.g. National ID copy, signed contract, bank statement..."
+                  placeholderTextColor={C.g400}
+                  value={reqDesc}
+                  onChangeText={setReqDesc}
+                  multiline
+                  numberOfLines={3}
+                  autoFocus
+                />
+                <TouchableOpacity
+                  style={[dc.modalSendBtn, (!reqDesc.trim() || sendingReq) && { opacity: 0.5 }]}
+                  onPress={handleSendRequest}
+                  disabled={!reqDesc.trim() || sendingReq}
+                >
+                  {sendingReq
+                    ? <ActivityIndicator size="small" color={C.white} />
+                    : <FontAwesome5 name="paper-plane" size={14} color={C.white} />}
+                  <Text style={dc.modalSendTxt}>{sendingReq ? 'Sending…' : 'Send Request'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={dc.modalCancelBtn} onPress={() => setReqModal(false)} disabled={sendingReq}>
+                  <Text style={dc.modalCancelTxt}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
 
         {uploading && (
           <View style={dc.uploadingRow}>
@@ -1130,6 +1225,13 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
                   <FontAwesome5 name="download" size={10} color={doc.url ? doc.iconBg : C.g400} />
                   <Text style={[dc.btnTxt, { color: doc.url ? doc.iconBg : C.g400 }]}>Download</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={[dc.btn, { backgroundColor: doc.isShared ? C.green600 : C.g400 }]}
+                  onPress={() => handleShareDoc(doc)}
+                >
+                  <FontAwesome5 name={doc.isShared ? 'check' : 'share-alt'} size={10} color={C.white} />
+                  <Text style={dc.btnTxt}>{doc.isShared ? 'Shared' : 'Share'}</Text>
+                </TouchableOpacity>
               </View>
             </View>
             <TouchableOpacity style={{ padding: 6 }} onPress={() => handleDeleteDoc(doc)}>
@@ -1155,7 +1257,19 @@ const dc = StyleSheet.create({
   emptyUploadIcon:  { width: 64, height: 64, borderRadius: 20, backgroundColor: C.blue50, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   emptyUploadTitle: { fontSize: 14, fontWeight: '700', color: C.dark },
   emptyUploadSub:   { fontSize: 12, color: C.g400 },
-  btnTxt:     { fontSize: 11, fontWeight: '700', color: C.white },
+  btnTxt:           { fontSize: 11, fontWeight: '700', color: C.white },
+  modalOverlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalBox:         { backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36 },
+  modalHandle:      { width: 40, height: 4, backgroundColor: C.g200, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  modalTitleRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 },
+  modalIcon:        { width: 44, height: 44, borderRadius: 14, backgroundColor: C.amber50, alignItems: 'center', justifyContent: 'center' },
+  modalTitle:       { fontSize: 16, fontWeight: '800', color: C.dark, flex: 1 },
+  modalLabel:       { fontSize: 13, fontWeight: '700', color: C.g600, marginBottom: 10 },
+  modalInput:       { borderWidth: 1, borderColor: C.g200, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: C.dark, backgroundColor: C.g50, minHeight: 80, marginBottom: 16, textAlignVertical: 'top' },
+  modalSendBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: C.amber600, borderRadius: 16, paddingVertical: 15, marginBottom: 4 },
+  modalSendTxt:     { fontSize: 15, fontWeight: '700', color: C.white },
+  modalCancelBtn:   { alignItems: 'center', paddingVertical: 12 },
+  modalCancelTxt:   { fontSize: 14, fontWeight: '600', color: C.g500 },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

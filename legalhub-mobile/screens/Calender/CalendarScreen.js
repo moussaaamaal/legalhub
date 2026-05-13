@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar, Switch,
   Modal, TextInput, Alert, ActivityIndicator,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -127,9 +127,18 @@ const REMINDER_DEFAULTS    = { push: true, email: true };
 
 // ─── EVENT CARD ───────────────────────────────────────────────────────────
 const EventCard = ({ ev, onDelete, showDate = false }) => {
-  const meta = getMeta(ev.event_type);
-  const tf   = formatTime(ev.start_datetime);
-  const d    = localD(parseDate(ev.start_datetime)); // shifted to Africa/Tunis for date display
+  const meta    = getMeta(ev.event_type);
+  const tf      = formatTime(ev.start_datetime);
+  const d       = localD(parseDate(ev.start_datetime));
+  const hasVideo = ev.is_video_call && ev.video_call_url;
+  const isPast   = parseDate(ev.start_datetime) < new Date();
+
+  const handleJoin = () => {
+    Linking.openURL(ev.video_call_url).catch(() =>
+      Alert.alert('Cannot Open Link', 'The meeting link could not be opened.')
+    );
+  };
+
   return (
     <View style={[s.card, { borderLeftWidth: 4, borderLeftColor: meta.border, padding: 0, marginBottom: 10, overflow: 'hidden' }]}>
       <View style={{ padding: 14 }}>
@@ -144,13 +153,21 @@ const EventCard = ({ ev, onDelete, showDate = false }) => {
                 {DAY_NAMES[d.getUTCDay()]} {d.getUTCDate()} {MONTH_NAMES[d.getUTCMonth()]}
               </Text>
             )}
-            <View style={[s.row, { marginBottom: 4 }]}>
+            <View style={[s.row, { marginBottom: 4, gap: 6, flexWrap: 'wrap' }]}>
               <View style={[s.tag, { backgroundColor: meta.bg }]}>
                 <View style={s.row}>
                   <Icon lib="FA5" name={meta.icon} size={10} color={meta.color} />
                   <Text style={[s.tagText, { color: meta.color, marginLeft: 4 }]}>{meta.label}</Text>
                 </View>
               </View>
+              {ev.is_video_call && (
+                <View style={[s.tag, { backgroundColor: C.green50 }]}>
+                  <View style={s.row}>
+                    <Icon lib="FA5" name="video" size={10} color={C.green600} />
+                    <Text style={[s.tagText, { color: C.green600, marginLeft: 4 }]}>Video</Text>
+                  </View>
+                </View>
+              )}
             </View>
             <Text style={s.cardTitle}>{ev.title}</Text>
             {ev.description ? <Text style={[s.xs, { marginTop: 2 }]}>{ev.description}</Text> : null}
@@ -159,6 +176,13 @@ const EventCard = ({ ev, onDelete, showDate = false }) => {
             <Icon lib="FA5" name="trash-alt" size={14} color={C.gray400} />
           </TouchableOpacity>
         </View>
+
+        {hasVideo && !isPast && (
+          <TouchableOpacity style={s.joinBtn} onPress={handleJoin} activeOpacity={0.8}>
+            <Icon lib="FA5" name="video" size={13} color={C.white} />
+            <Text style={s.joinBtnTxt}>Join Video Call</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -247,6 +271,10 @@ function AddEventModal({ visible, onClose, onCreated }) {
   const [cases,   setCases]   = useState([]);
   const [caseId,  setCaseId]  = useState(null);
 
+  // Video call
+  const [isVideoCall,   setIsVideoCall]   = useState(false);
+  const [videoCallUrl,  setVideoCallUrl]  = useState('');
+
   // Recurrence
   const [recurrence,      setRecurrence]      = useState('none');
   const [limitType,       setLimitType]       = useState('count');   // 'count' | 'until'
@@ -263,6 +291,7 @@ function AddEventModal({ visible, onClose, onCreated }) {
     setSelDate(new Date()); setStartH('09'); setStartM('00');
     setEndH('10'); setEndM('00'); setShowCal(false);
     setCaseId(null);
+    setIsVideoCall(false); setVideoCallUrl('');
     setRecurrence('none'); setLimitType('count'); setRecCount('4');
     setUntilDate(new Date()); setShowUntilCal(false);
   };
@@ -294,6 +323,10 @@ function AddEventModal({ visible, onClose, onCreated }) {
       recurrence,
     };
     if (caseId) payload.case_id = caseId;
+    if (isVideoCall) {
+      payload.is_video_call = true;
+      if (videoCallUrl.trim()) payload.video_call_url = videoCallUrl.trim();
+    }
 
     if (recurrence !== 'none') {
       if (limitType === 'count') {
@@ -387,6 +420,48 @@ function AddEventModal({ visible, onClose, onCreated }) {
             {/* Description */}
             <Text style={m.label}>Description</Text>
             <TextInput style={[m.input, { height: 80, textAlignVertical: 'top' }]} placeholder="Optional details..." value={description} onChangeText={setDescription} multiline />
+
+            {/* Video Call */}
+            <Text style={m.label}>Video Call</Text>
+            <TouchableOpacity
+              style={[m.videoToggleRow, isVideoCall && m.videoToggleRowActive]}
+              onPress={() => setIsVideoCall(v => !v)}
+              activeOpacity={0.8}
+            >
+              <View style={[m.videoIconWrap, { backgroundColor: isVideoCall ? C.green100 : C.gray100 }]}>
+                <Icon lib="FA5" name="video" size={16} color={isVideoCall ? C.green600 : C.gray400} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[m.videoToggleTitle, isVideoCall && { color: C.green600 }]}>
+                  {isVideoCall ? 'Video Call Enabled' : 'Enable Video Call'}
+                </Text>
+                <Text style={m.videoToggleSub}>This event takes place online</Text>
+              </View>
+              <Switch
+                value={isVideoCall}
+                onValueChange={setIsVideoCall}
+                trackColor={{ false: C.gray200, true: C.green500 }}
+                thumbColor={C.white}
+              />
+            </TouchableOpacity>
+
+            {isVideoCall && (
+              <>
+                <Text style={m.label}>Meeting Link</Text>
+                <View style={m.videoUrlRow}>
+                  <Icon lib="FA5" name="link" size={14} color={C.gray400} style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={m.videoUrlInput}
+                    placeholder="https://meet.google.com/..."
+                    placeholderTextColor={C.gray400}
+                    value={videoCallUrl}
+                    onChangeText={setVideoCallUrl}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                </View>
+              </>
+            )}
 
             {/* Linked Case */}
             {cases.length > 0 && (
@@ -844,6 +919,14 @@ const m = StyleSheet.create({
   radioDot:      { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primary },
   caseText:      { fontSize: 13, color: C.gray600, flex: 1 },
   caseTextActive:{ color: C.primary, fontWeight: '600' },
+  // Video call
+  videoToggleRow:       { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: C.gray200, borderRadius: 14, padding: 14, backgroundColor: C.gray50 },
+  videoToggleRowActive: { borderColor: C.green500, backgroundColor: C.green50 },
+  videoIconWrap:        { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  videoToggleTitle:     { fontSize: 14, fontWeight: '700', color: C.dark },
+  videoToggleSub:       { fontSize: 12, color: C.gray500, marginTop: 2 },
+  videoUrlRow:          { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.gray200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: C.gray50, marginBottom: 4 },
+  videoUrlInput:        { flex: 1, fontSize: 13, color: C.dark },
   // Recurrence
   recRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
   recBtn:          { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: C.gray200 },
@@ -914,6 +997,8 @@ const s = StyleSheet.create({
   prefRow:            { flexDirection: 'row', alignItems: 'center', paddingBottom: 14 },
   iconBtn40:          { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   reminderOption:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, marginBottom: 6 },
+  joinBtn:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.green600, borderRadius: 10, paddingVertical: 10, marginTop: 12 },
+  joinBtnTxt:         { color: C.white, fontWeight: '700', fontSize: 13 },
   emptyBox:           { alignItems: 'center', paddingVertical: 24 },
   dayLabelBadge:      { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: C.gray100 },
   dayLabelText:       { fontSize: 13, fontWeight: '700', color: C.gray700 },

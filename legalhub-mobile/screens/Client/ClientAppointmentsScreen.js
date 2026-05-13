@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   SafeAreaView, StatusBar, ActivityIndicator, Modal,
-  TextInput, Alert, Platform, Linking,
+  TextInput, Alert, Platform, Linking, KeyboardAvoidingView,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -138,6 +138,17 @@ export default function ClientAppointmentsScreen({ navigation }) {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [notes, setNotes]               = useState('');
   const [submitting, setSubmitting]     = useState(false);
+  const [cases, setCases]               = useState([]);
+  const [selectedCaseId, setSelectedCaseId] = useState(null);
+
+  const loadCases = useCallback(async () => {
+    try {
+      const data = await clientPortalAPI.cases();
+      setCases(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -177,8 +188,14 @@ export default function ClientAppointmentsScreen({ navigation }) {
     setMeetingType('IN_PERSON');
     setPreferredDate(new Date());
     setNotes('');
+    setSelectedCaseId(null);
     setShowDatePicker(false);
     setShowTimePicker(false);
+  };
+
+  const openModal = () => {
+    loadCases();
+    setModalVisible(true);
   };
 
   const handleSubmit = async () => {
@@ -193,6 +210,7 @@ export default function ClientAppointmentsScreen({ navigation }) {
         meeting_type: meetingType,
         preferred_date: preferredDate.toISOString(),
         notes: notes.trim() || undefined,
+        case_id: selectedCaseId || undefined,
       });
       setModalVisible(false);
       resetForm();
@@ -234,7 +252,7 @@ export default function ClientAppointmentsScreen({ navigation }) {
           </View>
           <Text style={s.emptyTitle}>No Appointments</Text>
           <Text style={s.emptySubtitle}>Request a meeting with your attorney</Text>
-          <TouchableOpacity style={s.emptyBtn} onPress={() => setModalVisible(true)} activeOpacity={0.8}>
+          <TouchableOpacity style={s.emptyBtn} onPress={openModal} activeOpacity={0.8}>
             <FontAwesome5 name="plus" size={13} color={C.white} style={{ marginRight: 8 }} />
             <Text style={s.emptyBtnTxt}>Request Meeting</Text>
           </TouchableOpacity>
@@ -264,13 +282,17 @@ export default function ClientAppointmentsScreen({ navigation }) {
 
       {/* FAB */}
       {!loading && appointments.length > 0 && (
-        <TouchableOpacity style={s.fab} onPress={() => setModalVisible(true)} activeOpacity={0.85}>
+        <TouchableOpacity style={s.fab} onPress={openModal} activeOpacity={0.85}>
           <FontAwesome5 name="plus" size={18} color={C.white} />
         </TouchableOpacity>
       )}
 
       {/* Request Meeting Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <View style={s.modalOverlay}>
           <View style={s.modalSheet}>
             {/* Drag handle */}
@@ -348,6 +370,30 @@ export default function ClientAppointmentsScreen({ navigation }) {
                 />
               )}
 
+              {/* Related Case */}
+              <Text style={s.fieldLabel}>Related Case (optional)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 18 }}>
+                <TouchableOpacity
+                  style={[s.typeChip, !selectedCaseId && s.typeChipActive]}
+                  onPress={() => setSelectedCaseId(null)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[s.typeChipTxt, !selectedCaseId && s.typeChipTxtActive]}>None</Text>
+                </TouchableOpacity>
+                {cases.map(c => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[s.typeChip, selectedCaseId === c.id && s.typeChipActive, { marginLeft: 8 }]}
+                    onPress={() => setSelectedCaseId(c.id)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[s.typeChipTxt, selectedCaseId === c.id && s.typeChipTxtActive]} numberOfLines={1}>
+                      {c.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
               {/* Notes */}
               <Text style={s.fieldLabel}>Notes (optional)</Text>
               <TextInput
@@ -374,6 +420,7 @@ export default function ClientAppointmentsScreen({ navigation }) {
             </ScrollView>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

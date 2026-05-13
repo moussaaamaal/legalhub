@@ -2,11 +2,32 @@
 Client Portal Router — /api/client/*
 Routes réservées au rôle CLIENT pour accéder à leurs propres données.
 """
+import uuid
+import re
+import unicodedata
+import json
+import logging
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from urllib.parse import unquote
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.core.dependencies import get_current_user
-from app.core.database import supabase
+from app.core.database import supabase, supabase_admin
 from app.models.enums import UserRole
+
+_log = logging.getLogger(__name__)
+
+def _sanitize(filename: str) -> str:
+    n = unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode("ascii")
+    n = re.sub(r"[^\w.\-]", "_", n)
+    return re.sub(r"_+", "_", n).strip("_") or "file"
+
+def _file_type(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower()
+    if ext == "pdf": return "PDF"
+    if ext in ("doc", "docx"): return "WORD"
+    if ext in ("jpg", "jpeg", "png", "gif", "webp"): return "IMAGE"
+    return "OTHER"
 
 router = APIRouter(prefix="/api/client", tags=["Client Portal"])
 
@@ -96,6 +117,7 @@ async def client_dashboard(ctx=Depends(_require_client)):
             "last_name": client["last_name"],
             "email": client["email"],
             "tag": client.get("tag"),
+            "avatar_url": ctx["user"].get("avatar_url"),
         }
     }
 
@@ -218,11 +240,10 @@ async def client_invoice_detail(invoice_id: str, ctx=Depends(_require_client)):
 # ─── GET /api/client/documents ───────────────────────────
 
 @router.get("/documents")
-async def client_documents(ctx=Depends(_require_client)):
-    """Documents partagés avec le client connecté."""
+async def client_documents(case_id: Optional[str] = None, ctx=Depends(_require_client)):
+    """Documents partagés avec le client connecté, filtrables par case_id."""
     client = ctx["client"]
 
-    # Documents liés aux dossiers du client ET marqués comme partagés
     cases_result = (
         supabase.table("case_file")
         .select("id")
@@ -230,17 +251,25 @@ async def client_documents(ctx=Depends(_require_client)):
         .eq("firm_id", client["firm_id"])
         .execute()
     )
-    case_ids = [c["id"] for c in (cases_result.data or [])]
+    all_case_ids = [c["id"] for c in (cases_result.data or [])]
 
-    if not case_ids:
+    if not all_case_ids:
         return []
+
+    # If a specific case is requested, verify it belongs to this client
+    if case_id:
+        if case_id not in all_case_ids:
+            return []
+        filter_ids = [case_id]
+    else:
+        filter_ids = all_case_ids
 
     result = (
         supabase.table("document")
-        .select("id, file_name, file_type, file_size_mb, category, status, created_at, case_id")
+        .select("id, file_name, file_type, file_size_mb, category, status, created_at, case_id, storage_url")
         .eq("firm_id", client["firm_id"])
         .eq("is_shared_with_client", True)
-        .in_("case_id", case_ids)
+        .in_("case_id", filter_ids)
         .order("created_at", desc=True)
         .execute()
     )
@@ -250,8 +279,8 @@ async def client_documents(ctx=Depends(_require_client)):
 # ─── GET /api/client/appointments ────────────────────────
 
 @router.get("/appointments")
-async def client_appointments(ctx=Depends(_require_client)):
-    """Rendez-vous (passés et à venir) pour le client connecté."""
+async def client_appointments(case_id: Optional[str] = None, ctx=Depends(_require_client)):
+    """Rendez-vous (passés et à venir) pour le client connecté, filtrables par case_id."""
     client = ctx["client"]
 
     cases_result = (
@@ -261,10 +290,17 @@ async def client_appointments(ctx=Depends(_require_client)):
         .eq("firm_id", client["firm_id"])
         .execute()
     )
-    case_ids = [c["id"] for c in (cases_result.data or [])]
+    all_case_ids = [c["id"] for c in (cases_result.data or [])]
 
-    if not case_ids:
+    if not all_case_ids:
         return []
+
+    if case_id:
+        if case_id not in all_case_ids:
+            return []
+        filter_ids = [case_id]
+    else:
+        filter_ids = all_case_ids
 
     result = (
         supabase.table("calendar_event")
@@ -273,19 +309,100 @@ async def client_appointments(ctx=Depends(_require_client)):
             "location, is_video_call, video_call_url, case_id"
         )
         .eq("firm_id", client["firm_id"])
-        .in_("case_id", case_ids)
-        .order("start_datetime", desc=True)
+        .in_("case_id", filter_ids)
+        .order("start_datetime", desc=False)
         .limit(50)
         .execute()
     )
 
     events = result.data or []
-    # Normalize field names for the mobile app
     for ev in events:
         ev["start_time"]   = ev.pop("start_datetime", None)
-        ev["meeting_type"] = ev.pop("event_type", "IN_PERSON")
+        ev["meeting_type"] = ev.pop("event_type", "MEETING")
         ev["meeting_link"] = ev.pop("video_call_url", None)
     return events
+
+
+# ─── POST /api/client/documents/upload ──────────────────
+
+@router.post("/documents/upload", status_code=201)
+async def client_upload_document(
+    file: UploadFile = File(...),
+    case_id: str = Form(...),
+    original_name: Optional[str] = Form(None),
+    ctx=Depends(_require_client),
+):
+    """Le client télécharge un document pour l'un de ses dossiers."""
+    client = ctx["client"]
+    user   = ctx["user"]
+
+    case_check = (
+        supabase.table("case_file")
+        .select("id, title, lawyer_id")
+        .eq("id", case_id)
+        .eq("client_id", client["id"])
+        .eq("firm_id", client["firm_id"])
+        .maybe_single()
+        .execute()
+    )
+    if not case_check.data:
+        raise HTTPException(status_code=404, detail="Case not found or access denied")
+
+    file_content = await file.read()
+    file_name    = unquote(original_name) if original_name else (file.filename or "document")
+    safe_name    = _sanitize(file_name)
+    content_type = file.content_type or "application/octet-stream"
+
+    try:
+        supabase_admin.storage.create_bucket("documents", options={"public": True})
+    except Exception as e:
+        err = str(e).lower()
+        if not any(k in err for k in ("already exists", "409", "duplicate", "already_exists", "violates unique")):
+            raise HTTPException(status_code=500, detail=f"Storage setup failed: {e}")
+
+    storage_path = f"{client['firm_id']}/{case_id}/{uuid.uuid4()}_{safe_name}"
+    supabase_admin.storage.from_("documents").upload(
+        storage_path, file_content, file_options={"content-type": content_type}
+    )
+    storage_url = supabase_admin.storage.from_("documents").get_public_url(storage_path)
+
+    doc = supabase.table("document").insert({
+        "firm_id":               client["firm_id"],
+        "case_id":               case_id,
+        "uploaded_by":           user["id"],
+        "file_name":             file_name,
+        "file_type":             _file_type(safe_name),
+        "file_size_mb":          round(len(file_content) / (1024 * 1024), 4),
+        "storage_url":           storage_url,
+        "category":              "CLIENT_DOC",
+        "status":                "PENDING_REVIEW",
+        "is_shared_with_client": True,
+    }).execute()
+
+    lawyer_id = case_check.data.get("lawyer_id")
+    _log.info(f"[upload_doc] case_id={case_id} lawyer_id={lawyer_id!r} file={file_name}")
+    if lawyer_id:
+        try:
+            result = supabase_admin.table("notification").insert({
+                "user_id": lawyer_id,
+                "type":    "DOCUMENT_SHARED",
+                "title":   "Document Uploaded by Client",
+                "message": f"The client uploaded: {file_name}",
+            }).execute()
+            _log.info(f"[upload_doc] ✅ Lawyer notification inserted — notif_id={result.data[0].get('id') if result.data else 'unknown'}")
+        except Exception as e:
+            _log.error(f"[upload_doc] ❌ Lawyer notification failed: {e}")
+    else:
+        _log.warning(f"[upload_doc] ⚠️  No lawyer_id on case {case_id} — notification skipped")
+
+    supabase.table("case_timeline").insert({
+        "case_id":      case_id,
+        "firm_id":      client["firm_id"],
+        "action":       f"Client uploaded document: {file_name}",
+        "performed_by": user["id"],
+    }).execute()
+
+    return doc.data[0]
 
 
 @router.post("/appointments/request")
@@ -296,6 +413,7 @@ async def client_request_appointment(body: dict, ctx=Depends(_require_client)):
     record = {
         "firm_id":        client["firm_id"],
         "client_id":      client["id"],
+        "case_id":        body.get("case_id"),
         "title":          body.get("title", "Meeting Request"),
         "meeting_type":   body.get("meeting_type", "IN_PERSON"),
         "preferred_date": body.get("preferred_date"),
@@ -309,10 +427,74 @@ async def client_request_appointment(body: dict, ctx=Depends(_require_client)):
             .insert(record)
             .execute()
         )
-        return result.data[0] if result.data else {"status": "pending", "message": "Request received"}
+        saved = result.data[0] if result.data else None
     except Exception:
-        # Fallback: table may not exist yet — return success so the app doesn't break
-        return {"status": "pending", "message": "Request received"}
+        saved = None
+
+    # Notify the assigned lawyer
+    _log.info(
+        f"[request_meeting] client_id={client.get('id')} "
+        f"assigned_lawyer_id={client.get('assigned_lawyer_id')!r}"
+    )
+    if client.get("assigned_lawyer_id"):
+        try:
+            lawyer_result = (
+                supabase.table("lawyer")
+                .select("user_id")
+                .eq("id", client["assigned_lawyer_id"])
+                .maybe_single()
+                .execute()
+            )
+            if lawyer_result and lawyer_result.data:
+                lawyer_user_id = lawyer_result.data.get("user_id")
+                client_name = f"{client.get('first_name', '')} {client.get('last_name', '')}".strip() or "A client"
+
+                case_title = None
+                if record.get("case_id"):
+                    try:
+                        case_res = (
+                            supabase.table("case_file")
+                            .select("title")
+                            .eq("id", record["case_id"])
+                            .maybe_single()
+                            .execute()
+                        )
+                        if case_res and case_res.data:
+                            case_title = case_res.data.get("title")
+                    except Exception:
+                        pass
+
+                notif_message = json.dumps({
+                    "client_name":    client_name,
+                    "request_title":  record["title"],
+                    "meeting_type":   record["meeting_type"],
+                    "preferred_date": record.get("preferred_date") or "",
+                    "notes":          record.get("notes") or "",
+                    "case_title":     case_title or "",
+                }, ensure_ascii=False)
+
+                result = supabase_admin.table("notification").insert({
+                    "user_id": lawyer_user_id,
+                    "type":    "MEETING_REQUEST",
+                    "title":   f"New Meeting Request from {client_name}",
+                    "message": notif_message,
+                }).execute()
+                _log.info(
+                    f"[request_meeting] ✅ Lawyer notification inserted — "
+                    f"lawyer_user_id={lawyer_user_id} "
+                    f"notif_id={result.data[0].get('id') if result.data else 'unknown'}"
+                )
+            else:
+                _log.warning(
+                    f"[request_meeting] ⚠️  Lawyer {client.get('assigned_lawyer_id')} "
+                    "has no user_id — notification skipped"
+                )
+        except Exception as e:
+            _log.error(f"[request_meeting] ❌ Lawyer notification failed: {e}")
+    else:
+        _log.warning(f"[request_meeting] ⚠️  No assigned_lawyer_id on client {client.get('id')} — notification skipped")
+
+    return saved if saved else {"status": "pending", "message": "Request received"}
 
 
 # ─── GET /api/client/profile ──────────────────────────────
@@ -376,6 +558,31 @@ async def client_profile(ctx=Depends(_require_client)):
     }
 
 
+# ─── PUT /api/client/profile ─────────────────────────────
+
+@router.put("/profile")
+async def update_client_profile(body: dict, ctx=Depends(_require_client)):
+    """Le client met à jour ses informations personnelles modifiables."""
+    client = ctx["client"]
+
+    EDITABLE_FIELDS = {
+        "phone", "whatsapp_number", "date_of_birth", "gender",
+        "nationality", "occupation", "company_name", "address",
+    }
+
+    updates = {k: v for k, v in body.items() if k in EDITABLE_FIELDS}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+
+    result = (
+        supabase.table("client")
+        .update(updates)
+        .eq("id", client["id"])
+        .execute()
+    )
+    return result.data[0] if result.data else {"message": "Profile updated"}
+
+
 # ─── GET /api/client/activity ────────────────────────────
 
 @router.get("/activity")
@@ -404,3 +611,101 @@ async def client_activity(ctx=Depends(_require_client)):
         .execute()
     )
     return result.data or []
+
+
+# ─── GET /api/client/document-requests ───────────────────
+
+@router.get("/document-requests")
+async def client_document_requests(ctx=Depends(_require_client)):
+    """Demandes de documents envoyées par l'avocat au client connecté."""
+    client = ctx["client"]
+    result = (
+        supabase.table("document_request")
+        .select("*, case_file(id, title, case_number)")
+        .eq("client_id", client["id"])
+        .eq("firm_id", client["firm_id"])
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data or []
+
+
+# ─── POST /api/client/document-requests/:id/fulfill ──────
+
+@router.post("/document-requests/{request_id}/fulfill", status_code=201)
+async def fulfill_document_request(
+    request_id: str,
+    file: UploadFile = File(...),
+    original_name: Optional[str] = Form(None),
+    ctx=Depends(_require_client),
+):
+    """Le client télécharge le document demandé par son avocat."""
+    client = ctx["client"]
+    user   = ctx["user"]
+
+    req = (
+        supabase.table("document_request")
+        .select("*")
+        .eq("id", request_id)
+        .eq("client_id", client["id"])
+        .eq("firm_id", client["firm_id"])
+        .maybe_single()
+        .execute()
+    )
+    if not req.data:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if req.data["status"] != "PENDING":
+        raise HTTPException(status_code=400, detail="Request is not pending")
+
+    file_content = await file.read()
+    file_name    = unquote(original_name) if original_name else (file.filename or "document")
+    safe_name    = _sanitize(file_name)
+    content_type = file.content_type or "application/octet-stream"
+
+    try:
+        supabase_admin.storage.create_bucket("documents", options={"public": True})
+    except Exception as e:
+        err = str(e).lower()
+        if not any(k in err for k in ("already exists", "409", "duplicate", "already_exists", "violates unique")):
+            raise HTTPException(status_code=500, detail=f"Storage setup failed: {e}")
+
+    storage_path = f"{client['firm_id']}/{req.data['case_id']}/{uuid.uuid4()}_{safe_name}"
+    supabase_admin.storage.from_("documents").upload(
+        storage_path, file_content, file_options={"content-type": content_type}
+    )
+    storage_url = supabase_admin.storage.from_("documents").get_public_url(storage_path)
+
+    doc = supabase.table("document").insert({
+        "firm_id":               client["firm_id"],
+        "case_id":               req.data["case_id"],
+        "uploaded_by":           user["id"],
+        "file_name":             file_name,
+        "file_type":             _file_type(safe_name),
+        "file_size_mb":          round(len(file_content) / (1024 * 1024), 4),
+        "storage_url":           storage_url,
+        "category":              req.data.get("category") or "CLIENT_DOC",
+        "status":                "PENDING_REVIEW",
+        "is_shared_with_client": True,
+    }).execute()
+
+    supabase.table("document_request").update({
+        "status":               "FULFILLED",
+        "fulfilled_document_id": doc.data[0]["id"],
+        "fulfilled_at":         "now()",
+    }).eq("id", request_id).execute()
+
+    supabase_admin.table("notification").insert({
+        "user_id": req.data["requested_by"],
+        "type":    "DOCUMENT_SHARED",
+        "title":   "Document Uploaded by Client",
+        "message": f"The client uploaded: {file_name}",
+    }).execute()
+
+    supabase.table("case_timeline").insert({
+        "case_id":      req.data["case_id"],
+        "firm_id":      client["firm_id"],
+        "action":       f"Client uploaded document: {file_name}",
+        "performed_by": user["id"],
+    }).execute()
+
+    return doc.data[0]

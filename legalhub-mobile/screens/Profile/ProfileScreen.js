@@ -2,16 +2,21 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   Image, StyleSheet, SafeAreaView, StatusBar,
-  Switch, TextInput, Alert, Share, Linking,
+  Switch, TextInput, Alert, Share,
   Modal, ActivityIndicator,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as ImagePicker from 'expo-image-picker';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import { supabase } from '../../supabase/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useAppPrefs, LANGUAGES, THEME_OPTIONS, TIME_OPTIONS, CAL_OPTIONS as CALENDAR_OPTIONS } from '../../context/AppPrefsContext';
-import { authAPI, firmAPI, dashboardAPI, clientsAPI } from '../../services/api';
+import { authAPI, firmAPI, dashboardAPI, clientsAPI, calendarAPI } from '../../services/api';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const BIOMETRIC_KEY = 'lh_biometric_enabled';
 
@@ -167,6 +172,12 @@ export default function ProfileScreen({ navigation }) {
   const scrollRef   = useRef(null);
   const notifSectionY = useRef(0);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  // Calendar integrations
+  const [googleConnecting,  setGoogleConnecting]  = useState(false);
+  const [googleSyncing,     setGoogleSyncing]     = useState(false);
+  const [googleSyncResult,  setGoogleSyncResult]  = useState(null);
+  const [googleConnected,   setGoogleConnected]   = useState(false);
+
 
   useEffect(() => {
     // Profile + office code
@@ -175,7 +186,7 @@ export default function ProfileScreen({ navigation }) {
       updateUser(data);
       setEditName(data.full_name || '');
       setEditPhone(data.phone || '');
-      if (data.role === 'FIRM_ADMIN') {
+      if (data.role === 'FIRM_ADMIN' || data.role === 'LAWYER') {
         firmAPI.getOfficeCode().then(res => setOfficeCode(res.office_code)).catch(() => {});
       }
     }).catch(() => {});
@@ -199,6 +210,7 @@ export default function ProfileScreen({ navigation }) {
     });
 
   }, []);
+
 
   // ── 2FA ────────────────────────────────────────────────
   const handleToggle2FA = useCallback(async () => {
@@ -364,6 +376,83 @@ export default function ProfileScreen({ navigation }) {
     }
   }, [me, updateUser]);
 
+  // ── Google Calendar — même pattern qu'AuthScreen (Supabase OAuth) ──────────
+  const handleConnectGoogle = async () => {
+    setGoogleConnecting(true);
+    try {
+      const redirectTo = Linking.createURL('oauth/google/callback');
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          scopes:              'https://www.googleapis.com/auth/calendar',
+          redirectTo,
+          skipBrowserRedirect: true,
+          queryParams:         { access_type: 'offline', prompt: 'consent' },
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (!data?.url) throw new Error('URL OAuth manquante');
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type !== 'success' || !result.url) return;
+
+      // Supabase met les tokens dans le fragment (#) — même parsing qu'AuthScreen
+      const raw = result.url.includes('#')
+        ? result.url.split('#')[1]
+        : result.url.split('?')[1] || '';
+      const params = Object.fromEntries(
+        raw.split('&').filter(Boolean).map(p => {
+          const [k, ...v] = p.split('=');
+          return [decodeURIComponent(k), decodeURIComponent(v.join('='))];
+        })
+      );
+
+      const providerToken = params.provider_token;
+      if (!providerToken) throw new Error('Token Google Calendar absent. Vérifiez que le scope calendar est autorisé dans Supabase → Providers → Google.');
+
+      await calendarAPI.saveGoogleToken({
+        access_token:  providerToken,
+        refresh_token: params.provider_refresh_token || null,
+        expires_in:    parseInt(params.expires_in) || 3600,
+      });
+
+      setGoogleConnected(true);
+      Alert.alert('Connecté ✓', 'Google Calendar connecté ! Appuyez sur Sync Now pour synchroniser.');
+    } catch (err) {
+      if (err.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Erreur', err.message || 'Impossible de connecter Google Calendar.');
+      }
+    } finally {
+      setGoogleConnecting(false);
+    }
+  };
+
+  const handleSyncGoogle = async () => {
+    setGoogleSyncing(true);
+    setGoogleSyncResult(null);
+    try {
+      const result = await calendarAPI.syncGoogle({});
+      setGoogleSyncResult(result);
+      Alert.alert(
+        'Google Calendar Synced ✅',
+        `${result.synced} event${result.synced !== 1 ? 's' : ''} sent to Google Calendar` +
+        (result.failed > 0 ? `\n⚠️ ${result.failed} event(s) failed` : '')
+      );
+    } catch (err) {
+      Alert.alert(
+        'Sync Failed',
+        err.message?.includes('not connected')
+          ? 'Connect Google Calendar first by tapping "Connect".'
+          : err.message || 'Sync failed. Try reconnecting.'
+      );
+    } finally {
+      setGoogleSyncing(false);
+    }
+  };
+
+
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -487,8 +576,8 @@ export default function ProfileScreen({ navigation }) {
           )}
         </View>
 
-        {/* ── OFFICE CODE (FIRM_ADMIN only) ── */}
-        {role === 'FIRM_ADMIN' && officeCode && (
+        {/* ── OFFICE CODE (FIRM_ADMIN & LAWYER) ── */}
+        {(role === 'FIRM_ADMIN' || role === 'LAWYER') && officeCode && (
           <View style={s.section}>
             <SectionHeader title="Office Code" />
             <View style={[s.card, { backgroundColor: C.blue50, borderWidth: 1, borderColor: C.blue100 }]}>
@@ -497,8 +586,8 @@ export default function ProfileScreen({ navigation }) {
                   <Icon lib="FA5" name="key" size={20} color={C.primary} />
                 </View>
                 <View style={{ marginLeft: 12, flex: 1 }}>
-                  <Text style={s.smBold}>Firm Office Code</Text>
-                  <Text style={s.xs}>Share this code with lawyers to join your firm</Text>
+                  <Text style={s.smBold}>{role === 'FIRM_ADMIN' ? 'Firm Office Code' : 'Your Office Code'}</Text>
+                  <Text style={s.xs}>{role === 'FIRM_ADMIN' ? 'Share this code with lawyers to join your firm' : 'Your unique code for firm identification'}</Text>
                 </View>
               </View>
               <View style={[s.row, { justifyContent: 'space-between', backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: C.gray200 }]}>
@@ -511,6 +600,66 @@ export default function ProfileScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             </View>
+          </View>
+        )}
+
+        {/* ── CALENDAR INTEGRATIONS ── */}
+        {(role === 'FIRM_ADMIN' || role === 'LAWYER') && (
+          <View style={[s.section, { backgroundColor: '#F0FDF4' }]}>
+            <SectionHeader title="Calendar Integrations" />
+
+            {/* Google Calendar */}
+            <View style={s.card}>
+              <View style={[s.row, { marginBottom: 14 }]}>
+                <View style={[s.iconBtn48, { backgroundColor: '#FEE2E2' }]}>
+                  <Icon lib="FA5" name="calendar-alt" size={20} color="#DC2626" />
+                </View>
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text style={s.smBold}>Google Calendar</Text>
+                  <Text style={s.xs}>Push your LegalHub events to Google</Text>
+                  {googleConnected && (
+                    <View style={[s.tag, { backgroundColor: C.green100, alignSelf: 'flex-start', marginTop: 4 }]}>
+                      <Text style={[s.tagText, { color: C.green600 }]}>Connected ✓</Text>
+                    </View>
+                  )}
+                  {googleSyncResult && (
+                    <Text style={[s.xs, { color: C.green600, marginTop: 3 }]}>
+                      Last sync: {googleSyncResult.synced} events ✓
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <View style={[s.row, { gap: 8 }]}>
+                <TouchableOpacity
+                  style={[s.integBtn, { backgroundColor: C.blue50, borderColor: C.blue100 }]}
+                  onPress={handleConnectGoogle}
+                  disabled={googleConnecting}
+                  activeOpacity={0.8}
+                >
+                  {googleConnecting
+                    ? <ActivityIndicator size="small" color={C.primary} />
+                    : <Icon lib="FA5" name="link" size={13} color={C.primary} />}
+                  <Text style={[s.integBtnTxt, { color: C.primary }]}>
+                    {googleConnecting ? 'Opening…' : 'Connect'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.integBtn, { backgroundColor: C.green50, borderColor: C.green100, flex: 1 }]}
+                  onPress={handleSyncGoogle}
+                  disabled={googleSyncing}
+                  activeOpacity={0.8}
+                >
+                  {googleSyncing
+                    ? <ActivityIndicator size="small" color={C.green600} />
+                    : <Icon lib="FA5" name="sync-alt" size={13} color={C.green600} />}
+                  <Text style={[s.integBtnTxt, { color: C.green600 }]}>
+                    {googleSyncing ? 'Syncing…' : 'Sync Now'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+
           </View>
         )}
 
@@ -928,6 +1077,7 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
       )}
+
     </SafeAreaView>
   );
 }
@@ -970,6 +1120,9 @@ const s = StyleSheet.create({
 
   radioOuter: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: C.gray300, alignItems: 'center', justifyContent: 'center' },
   radioInner: { width: 9, height: 9, borderRadius: 5, backgroundColor: C.primary },
+
+  integBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1 },
+  integBtnTxt: { fontSize: 13, fontWeight: '700' },
 
   aboutCard: { backgroundColor: C.white, borderRadius: 24, padding: 20, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: C.gray100 },
   appIconWrap: { width: 80, height: 80, borderRadius: 22, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12, shadowColor: C.primary, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6 },

@@ -8,6 +8,7 @@ from app.core.security import hash_password, verify_password, create_access_toke
 from app.core.dependencies import get_current_user, get_firm_admin, get_lawyer
 from app.models.enums import UserRole
 import pyotp
+import httpx
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -78,6 +79,11 @@ class ChangePasswordRequest(BaseModel):
 
 class NotificationPreferencesRequest(BaseModel):
     push_notifications: bool | None = None
+
+class OAuthLoginRequest(BaseModel):
+    provider: str       # "google" | "microsoft" | "apple"
+    token: str          # id_token or access_token from the provider
+    token_type: str = "id_token"  # "id_token" | "access_token"
     hearing_reminders: bool | None = None
     hearing_reminder_offset: str | None = None
     task_reminders: bool | None = None
@@ -213,6 +219,139 @@ async def login(body: LoginRequest):
             "two_fa_enabled": user["two_fa_enabled"],
             "last_login_at": user.get("last_login_at"),
         }
+    }
+
+# ─── POST /api/auth/oauth/token ─────────────────────────
+
+async def _verify_google_id_token(id_token: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": id_token},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+    d = resp.json()
+    return {"email": d.get("email"), "name": d.get("name"), "provider_id": d.get("sub")}
+
+async def _verify_google_access_token(access_token: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google access token")
+    d = resp.json()
+    return {"email": d.get("email"), "name": d.get("name"), "provider_id": d.get("sub")}
+
+async def _verify_microsoft_access_token(access_token: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://graph.microsoft.com/v1.0/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Microsoft token")
+    d = resp.json()
+    email = d.get("mail") or d.get("userPrincipalName", "")
+    return {"email": email, "name": d.get("displayName"), "provider_id": d.get("id")}
+
+async def _verify_supabase_token(access_token: str) -> dict:
+    from app.core.config import settings
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{settings.SUPABASE_URL}/auth/v1/user",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "apikey": settings.SUPABASE_ANON_KEY,
+            },
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Token Supabase invalide ou expiré")
+    d = resp.json()
+    return {
+        "email": d.get("email"),
+        "name": (d.get("user_metadata") or {}).get("full_name"),
+        "provider_id": d.get("id"),
+    }
+
+def _decode_apple_identity_token(identity_token: str) -> dict:
+    from jose import jwt as _jwt
+    try:
+        payload = _jwt.decode(
+            identity_token,
+            key="",
+            algorithms=["RS256"],
+            options={"verify_signature": False, "verify_exp": False},
+        )
+        return {"email": payload.get("email"), "provider_id": payload.get("sub")}
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Apple identity token")
+
+@router.post("/oauth/token")
+async def oauth_token_login(body: OAuthLoginRequest):
+    if body.provider == "supabase":
+        info = await _verify_supabase_token(body.token)
+    elif body.provider == "google":
+        if body.token_type == "access_token":
+            info = await _verify_google_access_token(body.token)
+        else:
+            info = await _verify_google_id_token(body.token)
+    elif body.provider == "microsoft":
+        info = await _verify_microsoft_access_token(body.token)
+    elif body.provider == "apple":
+        info = _decode_apple_identity_token(body.token)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported provider. Use: google, microsoft, apple")
+
+    email = (info.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="OAuth provider did not return an email address")
+
+    result = supabase.table("app_user").select("*").eq("email", email).execute()
+    if not result.data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No LegalHub account found for {email}. Please register first or contact your administrator.",
+        )
+
+    user = result.data[0]
+    if not user["is_active"]:
+        raise HTTPException(status_code=403, detail="Account deactivated. Contact support.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    supabase.table("app_user").update({"last_login_at": now}).eq("id", user["id"]).execute()
+
+    try:
+        supabase.table("login_history").insert({
+            "user_id": user["id"],
+            "logged_in_at": now,
+            "login_method": body.provider,
+        }).execute()
+    except Exception:
+        pass
+
+    firm_result = supabase.table("firm").select("name").eq("id", user["firm_id"]).single().execute()
+    firm_name = firm_result.data["name"] if firm_result.data else None
+
+    token_data = {"sub": user["id"], "firm_id": user["firm_id"], "role": user["role"]}
+    return {
+        "access_token": create_access_token(token_data),
+        "refresh_token": create_refresh_token(token_data),
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "full_name": user["full_name"],
+            "role": user["role"],
+            "firm_id": user["firm_id"],
+            "firm_name": firm_name,
+            "avatar_url": user.get("avatar_url"),
+            "phone": user.get("phone"),
+            "two_fa_enabled": user.get("two_fa_enabled", False),
+            "last_login_at": user.get("last_login_at"),
+        },
     }
 
 # ─── POST /api/auth/refresh ────────────────────────────

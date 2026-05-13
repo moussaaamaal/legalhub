@@ -6,7 +6,7 @@ from app.core.database import supabase
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
 
-VALID_TYPES = {"CASE_UPDATE", "INVOICE_DUE", "HEARING_REMINDER", "DOCUMENT_SHARED", "TASK_ASSIGNED", "GENERAL"}
+VALID_TYPES = {"CASE_UPDATE", "INVOICE_DUE", "HEARING_REMINDER", "DOCUMENT_SHARED", "DOCUMENT_REQUEST", "TASK_ASSIGNED", "MEETING_REQUEST", "GENERAL"}
 
 class CreateNotificationRequest(BaseModel):
     title: str

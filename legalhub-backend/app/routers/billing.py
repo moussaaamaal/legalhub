@@ -1,8 +1,13 @@
+import io
+import logging
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from app.core.dependencies import get_lawyer, get_current_user
-from app.core.database import supabase
+from app.core.database import supabase, supabase_admin
 from app.core.email import send_invoice_email, send_payment_reminder_email
+
+_log = logging.getLogger(__name__)
 from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
@@ -121,6 +126,131 @@ async def billing_analytics(current_user=Depends(get_lawyer)):
         "total_invoices": total_invoices,
         "collection_rate": collection_rate,
     }
+
+# ─── GET /api/invoices/export ───────────────────────────
+# Must be declared BEFORE /{invoice_id} to avoid routing conflict.
+
+@router.get("/export")
+async def export_invoices(
+    format: str = "pdf",
+    status: Optional[str] = None,
+    current_user=Depends(get_lawyer),
+):
+    firm_id  = current_user["firm_id"]
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
+    _auto_mark_overdue(firm_id)
+    query = (
+        supabase.table("invoice")
+        .select("*, invoice_item(*), client(first_name, last_name, email)")
+        .eq("firm_id", firm_id)
+    )
+    if not is_admin:
+        invoice_ids = _get_lawyer_invoice_ids(firm_id, current_user["id"])
+        if not invoice_ids:
+            query = query.in_("id", [])
+        else:
+            query = query.in_("id", invoice_ids)
+    if status:
+        query = query.eq("status", status)
+    invoices = (query.order("created_at", desc=True).execute()).data or []
+
+    firm_res  = supabase.table("firm").select("name").eq("id", firm_id).single().execute()
+    firm_name = (firm_res.data or {}).get("name", "LegalHub")
+
+    if format.lower() == "excel":
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+        except ImportError:
+            raise HTTPException(status_code=503, detail="openpyxl not installed. Run: pip install openpyxl")
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Invoices"
+        header_fill = PatternFill("solid", fgColor="1E40AF")
+        header_font = Font(bold=True, color="FFFFFF")
+        headers = ["Invoice #", "Client", "Status", "Issue Date", "Due Date", "Subtotal", "Tax", "Total", "Currency"]
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+        for row_idx, inv in enumerate(invoices, 2):
+            client = inv.get("client") or {}
+            client_name = f"{client.get('first_name','')} {client.get('last_name','')}".strip() or "—"
+            ws.cell(row=row_idx, column=1, value=inv.get("invoice_number", ""))
+            ws.cell(row=row_idx, column=2, value=client_name)
+            ws.cell(row=row_idx, column=3, value=inv.get("status", ""))
+            ws.cell(row=row_idx, column=4, value=str(inv.get("issue_date", "")))
+            ws.cell(row=row_idx, column=5, value=str(inv.get("due_date", "")))
+            ws.cell(row=row_idx, column=6, value=float(inv.get("subtotal", 0)))
+            ws.cell(row=row_idx, column=7, value=float(inv.get("tax_amount", 0)))
+            ws.cell(row=row_idx, column=8, value=float(inv.get("total_amount", 0)))
+            ws.cell(row=row_idx, column=9, value=inv.get("currency", "USD"))
+        for col in ws.columns:
+            ws.column_dimensions[col[0].column_letter].width = 18
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="invoices_{date.today()}.xlsx"'},
+        )
+
+    # Default: PDF
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
+    except ImportError:
+        raise HTTPException(status_code=503, detail="reportlab not installed. Run: pip install reportlab")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    elements = []
+    elements.append(Paragraph(f"{firm_name} — Invoice Report", styles["Title"]))
+    elements.append(Paragraph(f"Generated: {date.today()} | Invoices: {len(invoices)}", styles["Normal"]))
+    elements.append(Spacer(1, 16))
+
+    col_headers = ["Invoice #", "Client", "Status", "Due Date", "Total", "Currency"]
+    table_data  = [col_headers]
+    for inv in invoices:
+        client = inv.get("client") or {}
+        client_name = f"{client.get('first_name','')} {client.get('last_name','')}".strip() or "—"
+        table_data.append([
+            inv.get("invoice_number", ""),
+            client_name,
+            inv.get("status", ""),
+            str(inv.get("due_date", "")),
+            f"{float(inv.get('total_amount', 0)):,.2f}",
+            inv.get("currency", "USD"),
+        ])
+
+    tbl = Table(table_data, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E40AF")),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",   (0, 0), (-1, 0), 9),
+        ("FONTSIZE",   (0, 1), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F4F6")]),
+        ("GRID",       (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+        ("ALIGN",      (4, 0), (4, -1), "RIGHT"),
+    ]))
+    elements.append(tbl)
+    doc.build(elements)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="invoices_{date.today()}.pdf"'},
+    )
+
 
 # ─── GET /api/invoices ──────────────────────────────────
 
@@ -319,7 +449,7 @@ async def send_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
     # Fetch invoice with items and client email in one query
     inv_res = (
         supabase.table("invoice")
-        .select("*, invoice_item(*), client(id, first_name, last_name, email), case_file(id, title, case_number)")
+        .select("*, invoice_item(*), client(id, first_name, last_name, email, user_id), case_file(id, title, case_number)")
         .eq("id", invoice_id)
         .eq("firm_id", current_user["firm_id"])
         .single()
@@ -375,6 +505,32 @@ async def send_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
         "title":   "Invoice Sent",
         "message": f"{inv['invoice_number']} sent to {client_name} — due {inv.get('due_date', '')}.",
     }).execute()
+
+    client_user_id = client.get("user_id")
+    _log.info(
+        f"[send_invoice] client_id={client.get('id')} "
+        f"client_user_id={client_user_id!r} "
+        f"invoice={inv['invoice_number']}"
+    )
+    if not client_user_id:
+        _log.warning(
+            f"[send_invoice] ⚠️  No user_id on client {client.get('id')} — "
+            "client has not accepted portal invitation yet. Notification skipped."
+        )
+    else:
+        try:
+            result = supabase_admin.table("notification").insert({
+                "user_id": client_user_id,
+                "type":    "INVOICE_DUE",
+                "title":   "New Invoice from Your Attorney",
+                "message": f"Invoice {inv['invoice_number']} — {inv.get('currency', 'USD')} {float(inv.get('total_amount', 0)):,.2f} · Due {inv.get('due_date', '')}.",
+            }).execute()
+            _log.info(
+                f"[send_invoice] ✅ Client notification inserted — "
+                f"notif_id={result.data[0].get('id') if result.data else 'unknown'}"
+            )
+        except Exception as e:
+            _log.error(f"[send_invoice] ❌ Client notification failed: {e}")
 
     return {"message": f"Invoice sent to {client_email}"}
 
