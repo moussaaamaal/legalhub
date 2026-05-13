@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
-  Alert,
+  Alert, Image,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { clientsAPI } from '../../services/api';
@@ -230,8 +230,14 @@ export default function ClientDetailsScreen({ navigation, route }) {
         {/* PROFILE CARD */}
         <View style={s.profileCard}>
           <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
-            <View style={[s.avatar, { backgroundColor: avatarBg }]}>
-              <Text style={s.avatarTxt}>{getInitials(fullName)}</Text>
+            <View style={{ position: 'relative' }}>
+              {client.avatar_url ? (
+                <Image source={{ uri: client.avatar_url }} style={s.avatar} />
+              ) : (
+                <View style={[s.avatar, { backgroundColor: avatarBg }]}>
+                  <Text style={s.avatarTxt}>{getInitials(fullName)}</Text>
+                </View>
+              )}
               {isVip && (
                 <View style={s.vipBadgeAbsolute}>
                   <FontAwesome5 name="crown" size={9} color={C.gold} />

@@ -96,6 +96,62 @@ async def list_clients(
             or s in (c.get("last_name") or "").lower()
             or s in (c.get("email") or "").lower()
         ]
+
+    # Enrich with stats and avatar
+    if data:
+        client_ids = [c["id"] for c in data]
+
+        cases_res = (
+            supabase.table("case_file")
+            .select("client_id, status, case_type")
+            .in_("client_id", client_ids)
+            .eq("firm_id", current_user["firm_id"])
+            .execute()
+        )
+        cases_by_client: dict = {}
+        for case in (cases_res.data or []):
+            cid = case.get("client_id")
+            if cid:
+                cases_by_client.setdefault(cid, []).append(case)
+
+        invoices_res = (
+            supabase.table("invoice")
+            .select("client_id, total_amount, status")
+            .in_("client_id", client_ids)
+            .eq("firm_id", current_user["firm_id"])
+            .execute()
+        )
+        billed_by_client: dict = {}
+        unpaid_by_client: dict = {}
+        for inv in (invoices_res.data or []):
+            cid = inv.get("client_id")
+            if cid:
+                billed_by_client[cid] = billed_by_client.get(cid, 0) + float(inv.get("total_amount") or 0)
+                if inv.get("status") in ("PENDING", "OVERDUE"):
+                    unpaid_by_client[cid] = True
+
+        user_ids = [c["user_id"] for c in data if c.get("user_id")]
+        avatar_map: dict = {}
+        if user_ids:
+            users_res = (
+                supabase.table("app_user")
+                .select("id, avatar_url")
+                .in_("id", user_ids)
+                .execute()
+            )
+            avatar_map = {u["id"]: u.get("avatar_url") for u in (users_res.data or [])}
+
+        active_statuses = {"NEW", "INVESTIGATION", "PRE_TRIAL", "TRIAL", "APPEAL"}
+        for c in data:
+            cid = c["id"]
+            client_cases = cases_by_client.get(cid, [])
+            types = [x.get("case_type") for x in client_cases if x.get("case_type")]
+            c["active_cases_count"]   = sum(1 for x in client_cases if x.get("status") in active_statuses)
+            c["total_billed"]         = round(billed_by_client.get(cid, 0), 2)
+            c["has_unpaid_invoices"]  = unpaid_by_client.get(cid, False)
+            c["practice_area"]        = max(set(types), key=types.count) if types else None
+            c["avatar_url"]           = avatar_map.get(c.get("user_id"))
+
     return data
 
 # ─── POST /api/clients ──────────────────────────────────
@@ -133,7 +189,11 @@ async def get_client(client_id: str, current_user=Depends(get_lawyer)):
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Client not found")
-    return result.data
+    client = result.data
+    if client.get("user_id"):
+        user_res = supabase.table("app_user").select("avatar_url").eq("id", client["user_id"]).single().execute()
+        client["avatar_url"] = user_res.data.get("avatar_url") if user_res.data else None
+    return client
 
 # ─── PUT /api/clients/:id ───────────────────────────────
 

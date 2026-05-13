@@ -78,3 +78,5 @@ class ClientTag(str, Enum):
     PENDING = "PENDING"
     PREMIUM = "PREMIUM"
     VIP     = "VIP"
+    NEW     = "NEW"
+    URGENT  = "URGENT"

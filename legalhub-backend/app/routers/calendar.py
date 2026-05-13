@@ -449,11 +449,14 @@ async def sync_to_google(current_user=Depends(get_lawyer)):
             "description": ev.get("event_type", ""),
             "start":       {"dateTime": start, "timeZone": "UTC"},
             "end":         {"dateTime": end,   "timeZone": "UTC"},
+            # Deterministic UID so repeated syncs update instead of duplicate
+            "iCalUID":     f"{ev['id']}@legalhub.app",
         }
         if ev.get("location"):
             g_event["location"] = ev["location"]
+        # /events/import upserts by iCalUID — idempotent across multiple syncs
         resp = _req.post(
-            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events/import",
             json=g_event, headers=headers, timeout=10,
         )
         if resp.ok:
