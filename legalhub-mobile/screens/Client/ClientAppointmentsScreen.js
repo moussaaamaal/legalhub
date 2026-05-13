@@ -26,10 +26,17 @@ const MEETING_TYPES = [
 ];
 
 const TYPE_CONFIG = {
-  IN_PERSON: { label: 'In Person',  color: C.primary,  bg: C.blue50,   icon: 'building'    },
-  VIDEO:     { label: 'Video Call', color: C.green600, bg: C.green50,  icon: 'video'       },
-  PHONE:     { label: 'Phone Call', color: C.amber600, bg: C.amber50,  icon: 'phone'       },
-  DEFAULT:   { label: 'Meeting',    color: C.purple600, bg: C.purple50, icon: 'calendar-alt' },
+  IN_PERSON:    { label: 'In Person',    color: C.primary,   bg: C.blue50,    icon: 'building'     },
+  VIDEO:        { label: 'Video Call',   color: C.green600,  bg: C.green50,   icon: 'video'        },
+  PHONE:        { label: 'Phone Call',   color: C.amber600,  bg: C.amber50,   icon: 'phone'        },
+  HEARING:      { label: 'Hearing',      color: '#1D4ED8',   bg: '#DBEAFE',   icon: 'gavel'        },
+  COURT_DATE:   { label: 'Court Date',   color: '#7C3AED',   bg: '#EDE9FE',   icon: 'university'   },
+  MEETING:      { label: 'Meeting',      color: C.purple600, bg: C.purple50,  icon: 'user-friends' },
+  CONSULTATION: { label: 'Consultation', color: '#0891B2',   bg: '#CFFAFE',   icon: 'comments'     },
+  DEADLINE:     { label: 'Deadline',     color: '#DC2626',   bg: '#FEE2E2',   icon: 'clock'        },
+  DEPOSITION:   { label: 'Deposition',   color: '#D97706',   bg: '#FEF3C7',   icon: 'microphone'   },
+  MEDIATION:    { label: 'Mediation',    color: '#16A34A',   bg: '#DCFCE7',   icon: 'balance-scale'},
+  DEFAULT:      { label: 'Appointment',  color: C.purple600, bg: C.purple50,  icon: 'calendar-alt' },
 };
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

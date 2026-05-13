@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, Modal,
+  View, Text, ScrollView, TouchableOpacity, Modal, Image,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
   RefreshControl, Alert, Linking,
 } from 'react-native';
@@ -10,12 +10,18 @@ import { clientPortalAPI, documentsAPI } from '../../services/api';
 
 const C = {
   primary: '#1E40AF', dark: '#1E293B', white: '#FFFFFF',
-  g50: '#F9FAFB', g100: '#F3F4F6', g200: '#E5E7EB', g400: '#9CA3AF', g500: '#6B7280',
+  g50: '#F9FAFB', g100: '#F3F4F6', g200: '#E5E7EB', g400: '#9CA3AF', g500: '#6B7280', g600: '#4B5563',
   blue50: '#EFF6FF', blue100: '#DBEAFE',
-  green50: '#F0FDF4', green600: '#16A34A',
+  green50: '#F0FDF4', green100: '#DCFCE7', green600: '#16A34A',
   amber50: '#FFFBEB', amber100: '#FEF3C7', amber600: '#D97706',
-  red50: '#FEF2F2', red600: '#DC2626',
+  red50: '#FEF2F2', red100: '#FEE2E2', red600: '#DC2626',
   purple50: '#FAF5FF', purple600: '#9333EA',
+};
+
+const STATUS_CFG = {
+  APPROVED:       { label: 'Approved',     icon: 'check-circle', color: '#16A34A', bg: '#DCFCE7' },
+  REJECTED:       { label: 'Rejected',     icon: 'times-circle', color: '#DC2626', bg: '#FEE2E2' },
+  PENDING_REVIEW: { label: 'Under Review', icon: 'clock',        color: '#D97706', bg: '#FEF3C7' },
 };
 
 // Backend stores file_type as 'PDF', 'WORD', 'IMAGE', 'OTHER'
@@ -33,6 +39,7 @@ function RequestCard({ req, onUpload, uploading }) {
     ? new Date(req.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
     : '';
   const isFulfilled = req.status === 'FULFILLED';
+  const lawyerName = req.requested_by_user?.full_name;
   return (
     <View style={[s.reqCard, isFulfilled && s.reqCardDone]}>
       <View style={[s.reqIconWrap, { backgroundColor: isFulfilled ? C.green50 : C.amber50 }]}>
@@ -44,6 +51,12 @@ function RequestCard({ req, onUpload, uploading }) {
       </View>
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Text style={s.reqDesc} numberOfLines={2}>{req.description}</Text>
+        {!!lawyerName && (
+          <View style={s.reqLawyerRow}>
+            <FontAwesome5 name="user-tie" size={10} color={C.primary} />
+            <Text style={s.reqLawyerName}>{lawyerName}</Text>
+          </View>
+        )}
         <Text style={s.reqCase} numberOfLines={1}>
           {req.case_file?.title || req.case_file?.case_number || ''}
         </Text>
@@ -73,11 +86,19 @@ function RequestCard({ req, onUpload, uploading }) {
 
 function DocCard({ doc }) {
   const { icon, color } = getFileIcon(doc.file_type);
-  const sizeMB = doc.file_size_mb ? `${parseFloat(doc.file_size_mb).toFixed(1)} MB` : '';
-  const date   = doc.created_at
+  const sizeMB     = doc.file_size_mb ? `${parseFloat(doc.file_size_mb).toFixed(1)} MB` : '';
+  const dateLabel  = doc.created_at
     ? new Date(doc.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     : '';
-  const isNew = doc.status === 'PENDING_REVIEW';
+  const isClientDoc = doc.category === 'CLIENT_DOC';
+  const st          = isClientDoc ? (STATUS_CFG[doc.status] || null) : null;
+  const isRejected  = isClientDoc && doc.status === 'REJECTED';
+
+  const uploaderName   = doc.uploader_name || null;
+  const uploaderAvatar = doc.uploader_avatar_url || null;
+  const initials       = uploaderName
+    ? uploaderName.split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase()
+    : '?';
 
   const openDoc = () => {
     if (!doc.storage_url) {
@@ -90,39 +111,60 @@ function DocCard({ doc }) {
   };
 
   return (
-    <TouchableOpacity
-      style={[s.docCard, isNew && s.docCardNew]}
-      onPress={openDoc}
-      activeOpacity={0.75}
+    <View
+      style={[
+        s.docCard,
+        isClientDoc && doc.status === 'PENDING_REVIEW' && s.docCardPending,
+        isClientDoc && doc.status === 'APPROVED'       && s.docCardApproved,
+        isRejected                                     && s.docCardRejected,
+      ]}
     >
-      <View style={[s.docIconWrap, { backgroundColor: color + '18' }]}>
-        <FontAwesome5 name={icon} size={26} color={color} />
-      </View>
-      <View style={{ flex: 1, marginLeft: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-          <Text style={s.docName} numberOfLines={2}>{doc.file_name}</Text>
-          {isNew && <View style={s.newBadge}><Text style={s.newBadgeTxt}>New</Text></View>}
-        </View>
-        <View style={s.docMeta}>
-          {doc.category ? (
-            <View style={s.categoryChip}>
-              <Text style={s.docCategory}>{doc.category?.replace(/_/g, ' ')}</Text>
+      {/* ── Uploader row ── */}
+      {uploaderName && (
+        <View style={s.uploaderRow}>
+          {uploaderAvatar ? (
+            <Image source={{ uri: uploaderAvatar }} style={s.uploaderAvatar} />
+          ) : (
+            <View style={[s.uploaderAvatarFallback, { backgroundColor: isRejected ? C.g300 : color }]}>
+              <Text style={s.uploaderInitials}>{initials}</Text>
             </View>
+          )}
+          <Text style={s.uploaderName} numberOfLines={1}>{uploaderName}</Text>
+        </View>
+      )}
+
+      {/* ── File row ── */}
+      <TouchableOpacity style={s.docFileRow} onPress={openDoc} activeOpacity={0.75}>
+        <View style={[s.docIconWrap, { backgroundColor: isRejected ? '#E5E7EB' : color + '18' }]}>
+          <FontAwesome5 name={icon} size={26} color={isRejected ? C.g400 : color} />
+        </View>
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <Text style={[s.docName, isRejected && s.docNameRejected]} numberOfLines={2}>{doc.file_name}</Text>
+
+          {/* Status badge */}
+          {st && (
+            <View style={[s.statusBadge, { backgroundColor: st.bg }]}>
+              <FontAwesome5 name={st.icon} size={10} color={st.color} />
+              <Text style={[s.statusBadgeTxt, { color: st.color }]}>{st.label}</Text>
+            </View>
+          )}
+
+          <View style={s.docMeta}>
+            {sizeMB ? <Text style={s.docSize}>{sizeMB}</Text> : null}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <FontAwesome5 name="calendar" size={10} color={C.g400} />
+            <Text style={s.docDate}>{dateLabel}</Text>
+          </View>
+          {doc.storage_url && !isRejected ? (
+            <TouchableOpacity style={s.viewBtn} onPress={openDoc}>
+              <FontAwesome5 name="external-link-alt" size={10} color={C.white} />
+              <Text style={s.viewBtnTxt}>Open</Text>
+            </TouchableOpacity>
           ) : null}
-          {sizeMB ? <Text style={s.docSize}>{sizeMB}</Text> : null}
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-          <FontAwesome5 name="calendar" size={10} color={C.g400} />
-          <Text style={s.docDate}>{date}</Text>
-        </View>
-        {doc.storage_url ? (
-          <TouchableOpacity style={s.viewBtn} onPress={openDoc}>
-            <FontAwesome5 name="external-link-alt" size={10} color={C.white} />
-            <Text style={s.viewBtnTxt}>Open</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -451,7 +493,9 @@ export default function ClientDocumentsScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
           ) : (
-            docs.map((doc) => <DocCard key={doc.id} doc={doc} />)
+            [...docs]
+              .sort((a, b) => (a.category === 'CLIENT_DOC' && a.status === 'REJECTED' ? 1 : 0) - (b.category === 'CLIENT_DOC' && b.status === 'REJECTED' ? 1 : 0))
+              .map((doc) => <DocCard key={doc.id} doc={doc} />)
           )}
         </ScrollView>
       )}
@@ -494,21 +538,34 @@ const s = StyleSheet.create({
   newBannerTxt: { fontSize: 13, color: C.primary, fontWeight: '600', flex: 1 },
 
   docCard: {
-    backgroundColor: C.white, borderRadius: 18, padding: 14, marginBottom: 10,
-    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.white, borderRadius: 18, marginBottom: 10,
     borderWidth: 1, borderColor: C.g100,
     shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
+    overflow: 'hidden',
   },
-  docCardNew:  { borderColor: C.blue100, borderLeftWidth: 4, borderLeftColor: C.primary },
-  docIconWrap: { width: 54, height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  docName:     { fontSize: 14, fontWeight: '700', color: C.dark, marginBottom: 6, flex: 1 },
+  docCardPending:   { borderLeftWidth: 4, borderLeftColor: '#D97706', borderColor: C.amber100 },
+  docCardApproved:  { borderLeftWidth: 4, borderLeftColor: '#16A34A', borderColor: C.green100 },
+  docCardRejected:  { backgroundColor: '#F8F8F8', borderColor: C.g200, opacity: 0.75 },
+
+  // Uploader row
+  uploaderRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8, gap: 8, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  uploaderAvatar:        { width: 28, height: 28, borderRadius: 14 },
+  uploaderAvatarFallback:{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  uploaderInitials:      { fontSize: 10, fontWeight: '800', color: C.white },
+  uploaderName:          { fontSize: 12, fontWeight: '700', color: C.dark, flex: 1 },
+
+  // File row
+  docFileRow:       { flexDirection: 'row', alignItems: 'flex-start', padding: 14 },
+  docIconWrap:      { width: 54, height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  docName:          { fontSize: 14, fontWeight: '700', color: C.dark, marginBottom: 6 },
+  docNameRejected:  { color: C.g400, textDecorationLine: 'line-through' },
+  statusBadge:    { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10, marginBottom: 7 },
+  statusBadgeTxt: { fontSize: 11, fontWeight: '700' },
   docMeta:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   categoryChip:{ backgroundColor: C.blue50, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 7 },
   docCategory: { fontSize: 11, color: C.primary, fontWeight: '600' },
   docSize:     { fontSize: 11, color: C.g400 },
   docDate:     { fontSize: 11, color: C.g400 },
-  newBadge:    { backgroundColor: C.amber100, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, flexShrink: 0 },
-  newBadgeTxt: { fontSize: 10, fontWeight: '800', color: C.amber600 },
   viewBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', backgroundColor: C.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginTop: 8 },
   viewBtnTxt:  { fontSize: 11, fontWeight: '700', color: C.white },
 
@@ -519,6 +576,8 @@ const s = StyleSheet.create({
   reqCardDone:      { borderColor: C.g200, opacity: 0.7 },
   reqIconWrap:      { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   reqDesc:          { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 2 },
+  reqLawyerRow:     { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
+  reqLawyerName:    { fontSize: 11, fontWeight: '600', color: C.primary },
   reqCase:          { fontSize: 11, color: C.g500 },
   reqDate:          { fontSize: 10, color: C.g400, marginTop: 2 },
   reqUploadBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginLeft: 10 },

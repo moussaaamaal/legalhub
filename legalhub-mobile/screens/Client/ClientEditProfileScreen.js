@@ -5,6 +5,7 @@ import {
   Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { clientPortalAPI } from '../../services/api';
 
 const C = {
@@ -82,8 +83,9 @@ export default function ClientEditProfileScreen({ navigation, route }) {
     address:        initialProfile?.address        || '',
   });
 
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(!initialProfile);
+  const [saving, setSaving]       = useState(false);
+  const [loading, setLoading]     = useState(!initialProfile);
+  const [showDobPicker, setShowDobPicker] = useState(false);
 
   useEffect(() => {
     if (initialProfile) return;
@@ -183,11 +185,38 @@ export default function ClientEditProfileScreen({ navigation, route }) {
             {/* Personal */}
             <View style={s.section}>
               <Text style={s.sectionTitle}>Personal</Text>
-              <FormField
-                icon="birthday-cake" label="Date of Birth"
-                value={form.date_of_birth} onChangeText={set('date_of_birth')}
-                placeholder="YYYY-MM-DD"
-              />
+              {/* Date of Birth — calendar picker */}
+              <View style={s.field}>
+                <View style={s.fieldLabelRow}>
+                  <View style={s.fieldIcon}>
+                    <FontAwesome5 name="birthday-cake" size={11} color={C.primary} />
+                  </View>
+                  <Text style={s.fieldLabel}>Date of Birth</Text>
+                </View>
+                <TouchableOpacity style={s.dateBtn} onPress={() => setShowDobPicker(true)} activeOpacity={0.8}>
+                  <FontAwesome5 name="calendar-alt" size={13} color={C.primary} />
+                  <Text style={[s.dateBtnTxt, !form.date_of_birth && { color: C.g400 }]}>
+                    {form.date_of_birth
+                      ? new Date(form.date_of_birth).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+                      : 'Select date of birth'}
+                  </Text>
+                </TouchableOpacity>
+                {showDobPicker && (
+                  <DateTimePicker
+                    value={form.date_of_birth ? new Date(form.date_of_birth) : new Date(2000, 0, 1)}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    maximumDate={new Date()}
+                    onChange={(_, selected) => {
+                      setShowDobPicker(Platform.OS === 'ios');
+                      if (selected) {
+                        const iso = selected.toISOString().split('T')[0];
+                        set('date_of_birth')(iso);
+                      }
+                    }}
+                  />
+                )}
+              </View>
               <GenderSelector value={form.gender} onChange={set('gender')} />
               <FormField
                 icon="flag" label="Nationality"
@@ -247,6 +276,8 @@ const s = StyleSheet.create({
 
   input:         { backgroundColor: C.g50, borderRadius: 12, borderWidth: 1.5, borderColor: C.g200, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: C.dark, fontWeight: '500' },
   inputDisabled: { backgroundColor: C.g100, color: C.g400 },
+  dateBtn:       { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.g50, borderRadius: 12, borderWidth: 1.5, borderColor: C.g200, paddingHorizontal: 14, paddingVertical: 11 },
+  dateBtnTxt:    { fontSize: 14, fontWeight: '500', color: C.dark },
 
   genderRow:       { flexDirection: 'row', gap: 10 },
   genderBtn:       { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5, borderColor: C.g200, alignItems: 'center', backgroundColor: C.g50 },

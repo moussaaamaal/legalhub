@@ -291,7 +291,7 @@ const toDocDisplay = (doc) => {
   const dateLabel = doc.created_at
     ? new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : '—';
-  return { id: doc.id, icon, iconBg: bg, name, size: sizeLabel, date: dateLabel, url: doc.storage_url || null, isShared: !!doc.is_shared_with_client };
+  return { id: doc.id, icon, iconBg: bg, name, size: sizeLabel, date: dateLabel, url: doc.storage_url || null, isShared: !!doc.is_shared_with_client, uploaderName: doc.uploader_name || null, uploaderAvatar: doc.uploader_avatar_url || null, category: doc.category || null, status: doc.status || null };
 };
 
 // ─── TASK ADAPTER ─────────────────────────────────────────────────────────────
@@ -1015,6 +1015,7 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
   const [reqModal,     setReqModal]     = useState(false);
   const [reqDesc,      setReqDesc]      = useState('');
   const [sendingReq,   setSendingReq]   = useState(false);
+  const [reviewing,    setReviewing]    = useState(null);
 
   useEffect(() => { setLocalDocs(documents); }, [documents]);
 
@@ -1039,13 +1040,28 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
       { text: 'Delete', style: 'destructive', onPress: async () => {
         try {
           await documentsAPI.delete(doc.id);
-          setLocalDocs(prev => {
-            const next = prev.filter(d => d.id !== doc.id);
-            onUploaded?.(next.length);
-            return next;
-          });
+          setLocalDocs(prev => prev.filter(d => d.id !== doc.id));
+          onUploaded?.(localDocs.length - 1);
         } catch (err) {
           Alert.alert('Error', err.message || 'Could not delete document.');
+        }
+      }},
+    ]);
+  };
+
+  const handleReview = (doc, status) => {
+    const label = status === 'APPROVED' ? 'Approve' : 'Reject';
+    Alert.alert(`${label} Document`, `${label} "${doc.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: label, style: status === 'REJECTED' ? 'destructive' : 'default', onPress: async () => {
+        setReviewing(doc.id);
+        try {
+          await documentsAPI.updateStatus(doc.id, status);
+          setLocalDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status } : d));
+        } catch (err) {
+          Alert.alert('Error', err.message || 'Could not update status.');
+        } finally {
+          setReviewing(null);
         }
       }},
     ]);
@@ -1074,7 +1090,13 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
     );
   };
 
-  const items = localDocs.map(toDocDisplay);
+  const items = localDocs
+    .map(toDocDisplay)
+    .sort((a, b) => {
+      const aRej = a.category === 'CLIENT_DOC' && a.status === 'REJECTED' ? 1 : 0;
+      const bRej = b.category === 'CLIENT_DOC' && b.status === 'REJECTED' ? 1 : 0;
+      return aRej - bRej;
+    });
   const count = stats.docs ?? items.length;
 
   const handleUpload = async () => {
@@ -1194,15 +1216,69 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
           </TouchableOpacity>
         )}
 
-        {items.map(doc => (
-          <View key={doc.id} style={dc.row}>
-            <View style={[dc.iconBox, { backgroundColor: doc.iconBg }]}>
-              <FontAwesome5 name={doc.icon} size={20} color={C.white} />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={dc.name} numberOfLines={1}>{doc.name}</Text>
-              <Text style={dc.meta}>{doc.size}{doc.size && ' · '}{doc.date}</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+        {items.map(doc => {
+          const initials  = (doc.uploaderName || '?')
+            .split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+          const isRejected = doc.category === 'CLIENT_DOC' && doc.status === 'REJECTED';
+          return (
+            <View key={doc.id} style={[dc.card, isRejected && dc.cardRejected]}>
+
+              {/* ── Row 1 : uploader + delete ── */}
+              <View style={dc.cardTop}>
+                {doc.uploaderAvatar ? (
+                  <Image source={{ uri: doc.uploaderAvatar }} style={dc.avatar} />
+                ) : (
+                  <View style={[dc.avatarFallback, { backgroundColor: doc.iconBg }]}>
+                    <Text style={dc.avatarInitials}>{initials}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={dc.uploaderName} numberOfLines={1}>
+                    {doc.uploaderName || 'Unknown'}
+                  </Text>
+
+                  {doc.category === 'CLIENT_DOC' && doc.status === 'APPROVED' && (
+                    <View style={dc.statusApproved}>
+                      <FontAwesome5 name="check-circle" size={9} color="#16A34A" />
+                      <Text style={dc.statusApprovedTxt}>Approved</Text>
+                    </View>
+                  )}
+                  {doc.category === 'CLIENT_DOC' && doc.status === 'REJECTED' && (
+                    <View style={dc.statusRejected}>
+                      <FontAwesome5 name="times-circle" size={9} color="#DC2626" />
+                      <Text style={dc.statusRejectedTxt}>Rejected</Text>
+                    </View>
+                  )}
+                  {doc.category === 'CLIENT_DOC' && doc.status === 'PENDING_REVIEW' && (
+                    <View style={dc.statusPending}>
+                      <FontAwesome5 name="clock" size={9} color="#D97706" />
+                      <Text style={dc.statusPendingTxt}>Pending Review</Text>
+                    </View>
+                  )}
+                </View>
+                <TouchableOpacity style={dc.deleteBtn} onPress={() => handleDeleteDoc(doc)}>
+                  <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
+                </TouchableOpacity>
+              </View>
+
+              {/* ── Divider ── */}
+              <View style={dc.divider} />
+
+              {/* ── Row 2 : file icon + name + meta ── */}
+              <View style={dc.fileRow}>
+                <View style={[dc.iconBox, { backgroundColor: isRejected ? C.g300 : doc.iconBg }]}>
+                  <FontAwesome5 name={doc.icon} size={20} color={C.white} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[dc.name, isRejected && dc.nameRejected]} numberOfLines={2}>{doc.name}</Text>
+                  <Text style={dc.meta}>
+                    {[doc.size, doc.date].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+              </View>
+
+              {/* ── Row 3 : action buttons ── */}
+              <View style={dc.actions}>
                 <TouchableOpacity
                   style={[dc.btn, { backgroundColor: doc.url ? doc.iconBg : C.g300 }]}
                   onPress={() => {
@@ -1225,32 +1301,95 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
                   <FontAwesome5 name="download" size={10} color={doc.url ? doc.iconBg : C.g400} />
                   <Text style={[dc.btnTxt, { color: doc.url ? doc.iconBg : C.g400 }]}>Download</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[dc.btn, { backgroundColor: doc.isShared ? C.green600 : C.g400 }]}
-                  onPress={() => handleShareDoc(doc)}
-                >
-                  <FontAwesome5 name={doc.isShared ? 'check' : 'share-alt'} size={10} color={C.white} />
-                  <Text style={dc.btnTxt}>{doc.isShared ? 'Shared' : 'Share'}</Text>
-                </TouchableOpacity>
+                {doc.category !== 'CLIENT_DOC' && (
+                  <TouchableOpacity
+                    style={[dc.btn, { backgroundColor: doc.isShared ? C.green600 : C.g400 }]}
+                    onPress={() => handleShareDoc(doc)}
+                  >
+                    <FontAwesome5 name={doc.isShared ? 'check' : 'share-alt'} size={10} color={C.white} />
+                    <Text style={dc.btnTxt}>{doc.isShared ? 'Shared' : 'Share'}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
+
+              {/* ── Row 4 : approve / reject (client docs pending review only) ── */}
+              {doc.category === 'CLIENT_DOC' && doc.status === 'PENDING_REVIEW' && (
+                <>
+                  <View style={dc.divider} />
+                  <View style={dc.reviewRow}>
+                    {reviewing === doc.id
+                      ? <ActivityIndicator color={C.primary} style={{ flex: 1 }} />
+                      : <>
+                          <TouchableOpacity
+                            style={dc.approveBtn}
+                            onPress={() => handleReview(doc, 'APPROVED')}
+                          >
+                            <FontAwesome5 name="check" size={11} color={C.white} />
+                            <Text style={dc.approveBtnTxt}>Approve</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={dc.rejectBtn}
+                            onPress={() => handleReview(doc, 'REJECTED')}
+                          >
+                            <FontAwesome5 name="times" size={11} color={C.red600} />
+                            <Text style={dc.rejectBtnTxt}>Reject</Text>
+                          </TouchableOpacity>
+                        </>
+                    }
+                  </View>
+                </>
+              )}
+
             </View>
-            <TouchableOpacity style={{ padding: 6 }} onPress={() => handleDeleteDoc(doc)}>
-              <FontAwesome5 name="trash-alt" size={14} color={C.red500} />
-            </TouchableOpacity>
-          </View>
-        ))}
+          );
+        })}
       </Card>
     </View>
   );
 };
 
 const dc = StyleSheet.create({
-  row:              { flexDirection: 'row', backgroundColor: C.g50, borderRadius: 16, padding: 14, marginBottom: 10 },
-  iconBox:          { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  name:             { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 2 },
+  // Card container — vertical layout
+  card:             { backgroundColor: C.white, borderRadius: 16, marginBottom: 10, borderWidth: 1, borderColor: C.g100, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  cardRejected:     { backgroundColor: '#F8F8F8', borderColor: C.g200, opacity: 0.7 },
+  nameRejected:     { color: C.g400, textDecorationLine: 'line-through' },
+
+  // Row 1 — uploader
+  cardTop:          { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 0 },
+  avatar:           { width: 32, height: 32, borderRadius: 16 },
+  avatarFallback:   { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  avatarInitials:   { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+  uploaderName:     { fontSize: 13, fontWeight: '700', color: '#1E293B' },
+  clientBadge:      { alignSelf: 'flex-start', backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 2 },
+  clientBadgeTxt:   { fontSize: 10, fontWeight: '700', color: '#D97706' },
+  deleteBtn:        { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center' },
+  statusApproved:   { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 2 },
+  statusApprovedTxt:{ fontSize: 10, fontWeight: '700', color: '#16A34A' },
+  statusRejected:   { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 2 },
+  statusRejectedTxt:{ fontSize: 10, fontWeight: '700', color: '#DC2626' },
+  statusPending:    { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 2 },
+  statusPendingTxt: { fontSize: 10, fontWeight: '700', color: '#D97706' },
+
+  // Row 4 — approve / reject
+  reviewRow:        { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  approveBtn:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#16A34A', paddingVertical: 9, borderRadius: 10 },
+  approveBtnTxt:    { fontSize: 12, fontWeight: '700', color: C.white },
+  rejectBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#FEE2E2', paddingVertical: 9, borderRadius: 10 },
+  rejectBtnTxt:     { fontSize: 12, fontWeight: '700', color: '#DC2626' },
+
+  // Divider
+  divider:          { height: 1, backgroundColor: C.g100 },
+
+  // Row 2 — file
+  fileRow:          { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  iconBox:          { width: 48, height: 48, borderRadius: 13, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  name:             { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 3 },
   meta:             { fontSize: 11, color: C.g400 },
-  btn:              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  btnOutline:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, backgroundColor: C.white },
+
+  // Row 3 — actions
+  actions:          { flexDirection: 'row', gap: 8, padding: 12, paddingTop: 0 },
+  btn:              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
+  btnOutline:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, backgroundColor: C.white },
   uploadingRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.blue50, borderRadius: 12, padding: 12, marginBottom: 12 },
   uploadingTxt:     { fontSize: 13, fontWeight: '600', color: C.primary },
   emptyUpload:      { alignItems: 'center', paddingVertical: 28, gap: 8 },

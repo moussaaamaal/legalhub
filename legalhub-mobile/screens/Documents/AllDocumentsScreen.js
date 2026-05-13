@@ -390,24 +390,26 @@ export default function AllDocumentsScreen({ navigation }) {
                         {doc.case_file?.title || doc.case_file?.case_number || 'No case'}
                       </Text>
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 8, marginLeft: 8 }}>
+                    <View style={{ flexDirection: 'column', gap: 6, marginLeft: 8 }}>
                       {isProcessing ? (
                         <ActivityIndicator size="small" color={C.primary} />
                       ) : (
                         <>
                           <TouchableOpacity
-                            style={s.rejectBtn}
-                            onPress={() => handleReview(doc, 'REJECTED')}
-                            activeOpacity={0.8}
-                          >
-                            <FontAwesome5 name="times" size={12} color={C.red600} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
                             style={s.approveBtn}
                             onPress={() => handleReview(doc, 'APPROVED')}
                             activeOpacity={0.8}
                           >
-                            <FontAwesome5 name="check" size={12} color={C.green600} />
+                            <FontAwesome5 name="check" size={11} color={C.green600} />
+                            <Text style={s.approveBtnTxt}>Approve</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={s.rejectBtn}
+                            onPress={() => handleReview(doc, 'REJECTED')}
+                            activeOpacity={0.8}
+                          >
+                            <FontAwesome5 name="times" size={11} color={C.red600} />
+                            <Text style={s.rejectBtnTxt}>Reject</Text>
                           </TouchableOpacity>
                         </>
                       )}
@@ -760,8 +762,10 @@ const s = StyleSheet.create({
 
   reviewSection:  { backgroundColor: C.blue50, borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: C.blue100 },
   reviewCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderRadius: 12, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: C.blue100 },
-  approveBtn:     { width: 34, height: 34, borderRadius: 10, backgroundColor: C.green100, alignItems: 'center', justifyContent: 'center' },
-  rejectBtn:      { width: 34, height: 34, borderRadius: 10, backgroundColor: C.red100,   alignItems: 'center', justifyContent: 'center' },
+  approveBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.green100, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
+  approveBtnTxt:  { fontSize: 11, fontWeight: '700', color: C.green600 },
+  rejectBtn:      { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.red100,   paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
+  rejectBtnTxt:   { fontSize: 11, fontWeight: '700', color: C.red600 },
   storageCard:    { backgroundColor: C.white, marginHorizontal: 16, marginBottom: 8, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.g200, elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6 },
   storageCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
   storageCardTitle:  { fontSize: 13, fontWeight: '800', color: C.dark, flex: 1 },

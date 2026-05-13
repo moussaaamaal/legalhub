@@ -16,6 +16,7 @@ import ClientEditProfileScreen      from '../screens/Client/ClientEditProfileScr
 import ClientSettingsScreen         from '../screens/Client/ClientSettingsScreen';
 import ClientNotificationsScreen    from '../screens/Client/ClientNotificationsScreen';
 import ClientActivityScreen         from '../screens/Client/ClientActivityScreen';
+import ClientLawyersScreen          from '../screens/Client/ClientLawyersScreen';
 
 const Tab   = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -34,6 +35,7 @@ function HomeStack() {
       <Stack.Screen name="ClientNotifications"   component={ClientNotificationsScreen} />
       <Stack.Screen name="ClientActivity"        component={ClientActivityScreen} />
       <Stack.Screen name="ClientDocuments"       component={ClientDocumentsScreen} />
+      <Stack.Screen name="ClientLawyers"         component={ClientLawyersScreen} />
     </Stack.Navigator>
   );
 }

@@ -373,6 +373,7 @@ export const clientPortalAPI = {
     if (!res.ok) throw new Error(data.detail || 'Upload failed');
     return data;
   },
+  lawyers:        ()     => request('GET',  '/api/client/lawyers'),
   profile:        ()     => request('GET',  '/api/client/profile'),
   updateProfile:  (body) => request('PUT',  '/api/client/profile', body),
   activity:       ()     => request('GET',  '/api/client/activity'),

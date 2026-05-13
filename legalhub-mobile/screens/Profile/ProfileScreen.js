@@ -13,7 +13,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { supabase } from '../../supabase/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { useAppPrefs, LANGUAGES, THEME_OPTIONS, TIME_OPTIONS, CAL_OPTIONS as CALENDAR_OPTIONS } from '../../context/AppPrefsContext';
+import { useAppPrefs } from '../../context/AppPrefsContext';
 import { authAPI, firmAPI, dashboardAPI, clientsAPI, calendarAPI } from '../../services/api';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -139,7 +139,7 @@ const ChevronRow = ({ item }) => (
 // ─── ÉCRAN ─────────────────────────────────────────────────────────────────
 export default function ProfileScreen({ navigation }) {
   const { user, signOut, updateUser } = useAuth();
-  const { theme: T, strings: L, themeIdx, langIdx, timeIdx, calIdx, setThemeIdx, setLangIdx, setTimeIdx, setCalIdx } = useAppPrefs();
+  const { theme: T, strings: L } = useAppPrefs();
   const [profile, setProfile]             = useState(null);
   const [officeCode, setOfficeCode]       = useState(null);
   const [stats, setStats]                 = useState({ active_cases: 0, total_clients: 0 });
@@ -764,112 +764,6 @@ export default function ProfileScreen({ navigation }) {
             );
           })}
           {!notifPrefs && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
-        </View>
-
-        {/* ── APP PREFERENCES ── */}
-        <View style={[s.section, { backgroundColor: C.indigo50 }]}>
-          <Text style={[s.sectionTitle, { marginBottom: 14 }]}>App Preferences</Text>
-
-          {/* Theme */}
-          <View style={s.card}>
-            <View style={[s.row, { justifyContent: 'space-between' }]}>
-              <View style={s.row}>
-                <View style={[s.iconBtn40, { backgroundColor: C.indigo100 }]}>
-                  <Icon lib="FA5" name="palette" size={16} color={C.indigo600} />
-                </View>
-                <View style={{ marginLeft: 12 }}>
-                  <Text style={s.smBold}>{L.theme}</Text>
-                  <Text style={s.xs}>Choose app appearance</Text>
-                </View>
-              </View>
-            </View>
-            <View style={{ paddingLeft: 52, marginTop: 8 }}>
-              {THEME_OPTIONS.map((opt, i) => (
-                <TouchableOpacity key={i} style={[s.row, { marginBottom: 8 }]} onPress={() => setThemeIdx(i)}>
-                  <View style={[s.radioOuter, themeIdx === i && { borderColor: C.primary }]}>
-                    {themeIdx === i && <View style={s.radioInner} />}
-                  </View>
-                  <Text style={[s.sm, { marginLeft: 8 }]}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Language */}
-          <View style={s.card}>
-            <View style={[s.row, { justifyContent: 'space-between' }]}>
-              <View style={s.row}>
-                <View style={[s.iconBtn40, { backgroundColor: C.blue100 }]}>
-                  <Icon lib="FA5" name="language" size={16} color={C.primary} />
-                </View>
-                <View style={{ marginLeft: 12 }}>
-                  <Text style={s.smBold}>{L.language}</Text>
-                  <Text style={s.xs}>Select app language</Text>
-                </View>
-              </View>
-            </View>
-            <View style={{ paddingLeft: 52, marginTop: 8 }}>
-              {LANGUAGES.map((opt, i) => (
-                <TouchableOpacity key={i} style={[s.row, { marginBottom: 8 }]} onPress={() => setLangIdx(i)}>
-                  <View style={[s.radioOuter, langIdx === i && { borderColor: C.primary }]}>
-                    {langIdx === i && <View style={s.radioInner} />}
-                  </View>
-                  <Text style={[s.sm, { marginLeft: 8 }]}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Time Format */}
-          <View style={s.card}>
-            <View style={[s.row, { justifyContent: 'space-between' }]}>
-              <View style={s.row}>
-                <View style={[s.iconBtn40, { backgroundColor: C.purple100 }]}>
-                  <Icon lib="FA5" name="clock" size={16} color={C.purple600} />
-                </View>
-                <View style={{ marginLeft: 12 }}>
-                  <Text style={s.smBold}>{L.timeFormat}</Text>
-                  <Text style={s.xs}>12-hour or 24-hour</Text>
-                </View>
-              </View>
-            </View>
-            <View style={{ paddingLeft: 52, marginTop: 8 }}>
-              {TIME_OPTIONS.map((opt, i) => (
-                <TouchableOpacity key={i} style={[s.row, { marginBottom: 8 }]} onPress={() => setTimeIdx(i)}>
-                  <View style={[s.radioOuter, timeIdx === i && { borderColor: C.primary }]}>
-                    {timeIdx === i && <View style={s.radioInner} />}
-                  </View>
-                  <Text style={[s.sm, { marginLeft: 8 }]}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Calendar View */}
-          <View style={s.card}>
-            <View style={[s.row, { justifyContent: 'space-between' }]}>
-              <View style={s.row}>
-                <View style={[s.iconBtn40, { backgroundColor: C.green100 }]}>
-                  <Icon lib="FA5" name="calendar" size={16} color={C.green600} />
-                </View>
-                <View style={{ marginLeft: 12 }}>
-                  <Text style={s.smBold}>{L.calendarView}</Text>
-                  <Text style={s.xs}>Default calendar display</Text>
-                </View>
-              </View>
-            </View>
-            <View style={{ paddingLeft: 52, marginTop: 8 }}>
-              {CALENDAR_OPTIONS.map((opt, i) => (
-                <TouchableOpacity key={i} style={[s.row, { marginBottom: 8 }]} onPress={() => setCalIdx(i)}>
-                  <View style={[s.radioOuter, calIdx === i && { borderColor: C.primary }]}>
-                    {calIdx === i && <View style={s.radioInner} />}
-                  </View>
-                  <Text style={[s.sm, { marginLeft: 8 }]}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
         </View>
 
         {/* ── ABOUT ── */}

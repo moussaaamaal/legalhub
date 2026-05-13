@@ -109,7 +109,24 @@ async def list_documents(
     if status:
         query = query.eq("status", status)
     result = query.order("created_at", desc=True).execute()
-    return result.data
+    docs = result.data or []
+
+    # Attach uploader full name
+    uploader_ids = list({d["uploaded_by"] for d in docs if d.get("uploaded_by")})
+    if uploader_ids:
+        users_res = (
+            supabase.table("app_user")
+            .select("id, full_name, avatar_url")
+            .in_("id", uploader_ids)
+            .execute()
+        )
+        user_map = {u["id"]: u for u in (users_res.data or [])}
+        for d in docs:
+            u = user_map.get(d.get("uploaded_by")) or {}
+            d["uploader_name"]       = u.get("full_name")
+            d["uploader_avatar_url"] = u.get("avatar_url")
+
+    return docs
 
 # ─── POST /api/documents/upload ─────────────────────────
 
@@ -692,24 +709,44 @@ async def update_document_status(doc_id: str, status: DocumentStatus, current_us
     if not result.data:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    doc_data = result.data[0]
+
+    file_name = doc_data.get("file_name", "A document")
+    approved  = status == DocumentStatus.APPROVED
+
     if status in (DocumentStatus.APPROVED, DocumentStatus.REJECTED):
+        # ── timeline entry ──────────────────────────────────
         try:
-            doc_data = result.data[0]
+            action = (
+                f"Document approved: {file_name}"
+                if approved else
+                f"Document rejected: {file_name}"
+            )
+            supabase.table("case_timeline").insert({
+                "case_id":      doc_data["case_id"],
+                "firm_id":      current_user["firm_id"],
+                "action":       action,
+                "performed_by": current_user["id"],
+            }).execute()
+        except Exception as e:
+            logger.warning(f"[document review] timeline insert skipped: {e}")
+
+        # ── client notification ─────────────────────────────
+        try:
             case_res = supabase.table("case_file").select("client_id").eq("id", doc_data["case_id"]).maybe_single().execute()
             if case_res.data and case_res.data.get("client_id"):
                 cl_res = supabase.table("client").select("user_id").eq("id", case_res.data["client_id"]).maybe_single().execute()
                 if cl_res.data and cl_res.data.get("user_id"):
-                    approved = status == DocumentStatus.APPROVED
                     supabase_admin.table("notification").insert({
                         "user_id": cl_res.data["user_id"],
                         "type":    "DOCUMENT_SHARED",
                         "title":   "Document Approved" if approved else "Document Rejected",
-                        "message": f"'{doc_data.get('file_name', 'A document')}' has been {'approved' if approved else 'rejected'} by your attorney.",
+                        "message": f"'{file_name}' has been {'approved' if approved else 'rejected'} by your attorney.",
                     }).execute()
         except Exception as e:
             logger.warning(f"[document review] client notification skipped: {e}")
 
-    return result.data[0]
+    return doc_data
 
 # ─── POST /api/documents/:id/share ──────────────────────
 

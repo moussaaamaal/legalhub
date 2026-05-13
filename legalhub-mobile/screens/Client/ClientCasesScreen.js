@@ -53,6 +53,13 @@ function CaseCard({ c, onPress }) {
         </View>
       </View>
 
+      {!!c.lawyer_name && (
+        <View style={s.lawyerRow}>
+          <FontAwesome5 name="user-tie" size={10} color={C.primary} />
+          <Text style={s.lawyerTxt}>{c.lawyer_name}</Text>
+        </View>
+      )}
+
       <View style={s.caseCardBottom}>
         <View style={[s.priorityChip, { backgroundColor: pr.color + '18' }]}>
           <View style={[s.priorityDot, { backgroundColor: pr.color }]} />
@@ -237,6 +244,8 @@ const s = StyleSheet.create({
   caseCardTop:    { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
   caseNumber:     { fontSize: 11, color: C.g400, fontWeight: '600', marginBottom: 3 },
   caseTitle:      { fontSize: 15, fontWeight: '700', color: C.dark },
+  lawyerRow:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  lawyerTxt:      { fontSize: 12, fontWeight: '600', color: C.primary },
   badge:          { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginLeft: 8 },
   badgeTxt:       { fontSize: 11, fontWeight: '700' },
   caseCardBottom: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },

@@ -134,14 +134,33 @@ async def client_cases(ctx=Depends(_require_client)):
         .select(
             "id, case_number, title, status, priority, case_type, "
             "practice_area, progress_percent, created_at, updated_at, "
-            "first_hearing_date, court_name"
+            "first_hearing_date, court_name, lawyer_id"
         )
         .eq("client_id", client["id"])
         .eq("firm_id", client["firm_id"])
         .order("updated_at", desc=True)
         .execute()
     )
-    return result.data or []
+    cases = result.data or []
+
+    # Attach lawyer name to each case
+    lawyer_ids = list({c["lawyer_id"] for c in cases if c.get("lawyer_id")})
+    if lawyer_ids:
+        lawyers_res = (
+            supabase.table("lawyer")
+            .select("id, app_user(full_name)")
+            .in_("id", lawyer_ids)
+            .execute()
+        )
+        name_map = {}
+        for l in (lawyers_res.data or []):
+            u = l.get("app_user") or {}
+            name_map[l["id"]] = u.get("full_name")
+        for c in cases:
+            if c.get("lawyer_id"):
+                c["lawyer_name"] = name_map.get(c["lawyer_id"])
+
+    return cases
 
 
 # ─── GET /api/client/cases/:case_id ─────────────────────
@@ -163,25 +182,78 @@ async def client_case_detail(case_id: str, ctx=Depends(_require_client)):
     if not result or not result.data:
         raise HTTPException(status_code=404, detail="Case not found or access denied")
 
-    # Récupérer l'avocat principal
+    # Récupérer l'équipe complète du dossier
     case = result.data
+    team_result = (
+        supabase.table("case_team")
+        .select("user_id, app_user(full_name, email, avatar_url, role)")
+        .eq("case_id", case_id)
+        .execute()
+    )
+    team_members = team_result.data or []
+
+    # Enrichir avec les titres du tableau lawyer
+    user_ids = [m["user_id"] for m in team_members if m.get("user_id")]
+    lawyer_titles: dict = {}
+    if user_ids:
+        lw_res = (
+            supabase.table("lawyer")
+            .select("user_id, title, specializations")
+            .in_("user_id", user_ids)
+            .execute()
+        )
+        for lw in (lw_res.data or []):
+            lawyer_titles[lw["user_id"]] = {
+                "title":           lw.get("title"),
+                "specializations": lw.get("specializations") or [],
+            }
+
+    case["team"] = []
+    for m in team_members:
+        uid = m.get("user_id")
+        u   = m.get("app_user") or {}
+        lw  = lawyer_titles.get(uid, {})
+        case["team"].append({
+            "user_id":         uid,
+            "full_name":       u.get("full_name"),
+            "email":           u.get("email"),
+            "avatar_url":      u.get("avatar_url"),
+            "title":           lw.get("title"),
+            "specializations": lw.get("specializations", []),
+            "is_lead":         uid and case.get("lawyer_id") and
+                               # compare via lawyer table: find lawyer with this user_id
+                               any(
+                                   lw2.get("user_id") == uid
+                                   for lw2 in (lw_res.data if user_ids else [])
+                                   if lw2.get("id") == case.get("lawyer_id")
+                                   or lw2.get("user_id") == uid
+                               ),
+        })
+
+    # Marquer le lead attorney séparément (rétro-compatibilité)
     if case.get("lawyer_id"):
         lawyer_user = (
             supabase.table("lawyer")
-            .select("*, app_user(full_name, email, avatar_url, phone)")
+            .select("user_id, title, app_user(full_name, email, avatar_url, phone)")
             .eq("id", case["lawyer_id"])
             .maybe_single()
             .execute()
         )
         if lawyer_user and lawyer_user.data:
-            u = lawyer_user.data.get("app_user") or {}
+            u  = lawyer_user.data.get("app_user") or {}
+            lead_uid = lawyer_user.data.get("user_id")
             case["lead_attorney"] = {
-                "full_name": u.get("full_name"),
-                "email": u.get("email"),
-                "phone": u.get("phone"),
+                "full_name":  u.get("full_name"),
+                "email":      u.get("email"),
+                "phone":      u.get("phone"),
                 "avatar_url": u.get("avatar_url"),
-                "title": lawyer_user.data.get("title"),
+                "title":      lawyer_user.data.get("title"),
+                "user_id":    lead_uid,
             }
+            # Flag is_lead in team list
+            for member in case["team"]:
+                if member["user_id"] == lead_uid:
+                    member["is_lead"] = True
 
     # Timeline du dossier
     timeline = (
@@ -266,14 +338,26 @@ async def client_documents(case_id: Optional[str] = None, ctx=Depends(_require_c
 
     result = (
         supabase.table("document")
-        .select("id, file_name, file_type, file_size_mb, category, status, created_at, case_id, storage_url")
+        .select("id, file_name, file_type, file_size_mb, category, status, created_at, case_id, storage_url, uploaded_by")
         .eq("firm_id", client["firm_id"])
         .eq("is_shared_with_client", True)
         .in_("case_id", filter_ids)
         .order("created_at", desc=True)
         .execute()
     )
-    return result.data or []
+    docs = result.data or []
+
+    # Batch-fetch uploader names and avatars
+    uploader_ids = list({d["uploaded_by"] for d in docs if d.get("uploaded_by")})
+    if uploader_ids:
+        users_res = supabase.table("app_user").select("id, full_name, avatar_url").in_("id", uploader_ids).execute()
+        user_map = {u["id"]: u for u in (users_res.data or [])}
+        for d in docs:
+            u = user_map.get(d.get("uploaded_by"))
+            d["uploader_name"]       = u["full_name"]  if u else None
+            d["uploader_avatar_url"] = u["avatar_url"] if u else None
+
+    return docs
 
 
 # ─── GET /api/client/appointments ────────────────────────
@@ -613,6 +697,63 @@ async def client_activity(ctx=Depends(_require_client)):
     return result.data or []
 
 
+# ─── GET /api/client/lawyers ─────────────────────────────
+
+@router.get("/lawyers")
+async def client_lawyers(ctx=Depends(_require_client)):
+    """Tous les avocats assignés aux dossiers du client connecté."""
+    client = ctx["client"]
+
+    cases_result = (
+        supabase.table("case_file")
+        .select("id, title, case_number, lawyer_id")
+        .eq("client_id", client["id"])
+        .eq("firm_id", client["firm_id"])
+        .execute()
+    )
+    cases = cases_result.data or []
+
+    # Build map: lawyer_id → list of cases
+    lawyer_cases: dict = {}
+    for c in cases:
+        lid = c.get("lawyer_id")
+        if lid:
+            lawyer_cases.setdefault(lid, []).append({
+                "id":          c["id"],
+                "title":       c.get("title"),
+                "case_number": c.get("case_number"),
+            })
+
+    if not lawyer_cases:
+        # Fall back to assigned_lawyer if no cases have a lawyer_id
+        if client.get("assigned_lawyer_id"):
+            lawyer_cases[client["assigned_lawyer_id"]] = []
+        else:
+            return []
+
+    lawyers_result = (
+        supabase.table("lawyer")
+        .select("id, title, specializations, app_user(full_name, email, phone, avatar_url)")
+        .in_("id", list(lawyer_cases.keys()))
+        .execute()
+    )
+
+    result = []
+    for l in (lawyers_result.data or []):
+        u = l.get("app_user") or {}
+        result.append({
+            "lawyer_id":       l["id"],
+            "full_name":       u.get("full_name"),
+            "email":           u.get("email"),
+            "phone":           u.get("phone"),
+            "avatar_url":      u.get("avatar_url"),
+            "title":           l.get("title"),
+            "specializations": l.get("specializations") or [],
+            "cases":           lawyer_cases.get(l["id"], []),
+        })
+    return result
+
+
 # ─── GET /api/client/document-requests ───────────────────
 
 @router.get("/document-requests")
@@ -627,7 +768,27 @@ async def client_document_requests(ctx=Depends(_require_client)):
         .order("created_at", desc=True)
         .execute()
     )
-    return result.data or []
+    requests = result.data or []
+
+    # Attach the requesting lawyer's name to each request
+    user_ids = list({r["requested_by"] for r in requests if r.get("requested_by")})
+    if user_ids:
+        users_res = (
+            supabase.table("app_user")
+            .select("id, full_name, avatar_url")
+            .in_("id", user_ids)
+            .execute()
+        )
+        user_map = {u["id"]: u for u in (users_res.data or [])}
+        for r in requests:
+            uid = r.get("requested_by")
+            if uid and uid in user_map:
+                r["requested_by_user"] = {
+                    "full_name":  user_map[uid].get("full_name"),
+                    "avatar_url": user_map[uid].get("avatar_url"),
+                }
+
+    return requests
 
 
 # ─── POST /api/client/document-requests/:id/fulfill ──────

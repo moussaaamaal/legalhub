@@ -7,6 +7,9 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { clientPortalAPI, notificationsAPI } from '../../services/api';
 
+// Persist unread count across navigation re-mounts
+let _cachedUnreadCount = 0;
+
 const C = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B',
   white: '#FFFFFF', g50: '#F9FAFB', g100: '#F3F4F6', g200: '#E5E7EB',
@@ -61,7 +64,12 @@ function AppointmentCard({ event }) {
       </View>
       <View style={{ flex: 1, marginLeft: 14 }}>
         <Text style={s.apptTitle} numberOfLines={2}>{event.title}</Text>
-        <Text style={s.apptType}>{event.event_type?.replace(/_/g, ' ')}</Text>
+        <Text style={s.apptType}>{{
+          HEARING: 'Hearing', COURT_DATE: 'Court Date', MEETING: 'Meeting',
+          CONSULTATION: 'Consultation', DEADLINE: 'Deadline',
+          DEPOSITION: 'Deposition', MEDIATION: 'Mediation',
+          IN_PERSON: 'In Person', VIDEO: 'Video Call', PHONE: 'Phone Call',
+        }[event.event_type] || (event.event_type?.replace(/_/g, ' ')) || 'Appointment'}</Text>
         {event.location ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
             <FontAwesome5 name="map-marker-alt" size={10} color={C.g400} />
@@ -118,16 +126,22 @@ export default function ClientDashboard({ navigation }) {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]           = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(_cachedUnreadCount);
+
+  const applyCount = useCallback((n) => {
+    const val = n ?? 0;
+    _cachedUnreadCount = val;
+    setUnreadCount(val);
+  }, []);
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => {
       notificationsAPI.unreadCount()
-        .then(res => { if (res?.count != null) setUnreadCount(res.count); })
+        .then(res => { applyCount(res?.count); })
         .catch(() => {});
     });
     return unsub;
-  }, [navigation]);
+  }, [navigation, applyCount]);
 
   const load = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
@@ -144,7 +158,7 @@ export default function ClientDashboard({ navigation }) {
         const raw = act.value;
         setActivity(Array.isArray(raw) ? raw.slice(0, 4) : []);
       }
-      if (unread.status === 'fulfilled') setUnreadCount(unread.value?.count ?? 0);
+      if (unread.status === 'fulfilled') applyCount(unread.value?.count);
     } catch (e) {
       console.error(e);
       setError(e.message || 'Failed to load dashboard');
@@ -281,6 +295,7 @@ export default function ClientDashboard({ navigation }) {
             </View>
           </View>
 
+
           {/* Upcoming Appointments */}
           <View style={s.section}>
             <View style={s.sectionRow}>
@@ -388,6 +403,14 @@ const s = StyleSheet.create({
   quickCard:    { width: '47.5%', backgroundColor: C.g50, borderRadius: 18, padding: 18, alignItems: 'center', borderWidth: 1, borderColor: C.g100 },
   quickIconWrap:{ width: 54, height: 54, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   quickLabel:   { fontSize: 13, fontWeight: '700' },
+
+  lawyerCard:            { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g50, borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: C.g100 },
+  lawyerAvatar:          { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: C.blue100 },
+  lawyerAvatarFallback:  { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  lawyerAvatarInitials:  { color: C.white, fontSize: 18, fontWeight: '800' },
+  lawyerName:            { fontSize: 15, fontWeight: '700', color: C.dark },
+  lawyerTitle:           { fontSize: 11, color: C.primary, fontWeight: '600', marginTop: 2 },
+  lawyerCases:           { fontSize: 11, color: C.g400, marginTop: 3 },
 
   apptCard:     { backgroundColor: C.white, borderRadius: 18, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.g100, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
   apptDateBox:  { backgroundColor: C.blue50, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 10, alignItems: 'center', minWidth: 60 },

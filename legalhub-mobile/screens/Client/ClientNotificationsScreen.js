@@ -188,7 +188,12 @@ export default function ClientNotificationsScreen({ navigation }) {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load().then(() => {
+      notificationsAPI.markAllRead().catch(() => {});
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    });
+  }, [load]);
 
   const handleRead = async (id) => {
     try {
