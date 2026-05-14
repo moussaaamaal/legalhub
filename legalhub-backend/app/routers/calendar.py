@@ -369,9 +369,9 @@ async def get_available_participants(
     if case_id:
         participants: list[dict] = []
 
-        # ── Team members ──────────────────────────────────────────────────────
+        # ── Team members (excluding the current user) ─────────────────────────
         team_res = supabase.table("case_team").select("user_id").eq("case_id", case_id).execute()
-        team_ids = [r["user_id"] for r in (team_res.data or [])]
+        team_ids = [r["user_id"] for r in (team_res.data or []) if r["user_id"] != current_user["id"]]
         if team_ids:
             users_res = (
                 supabase.table("app_user")
@@ -432,24 +432,72 @@ async def get_available_participants(
 
         return participants
 
-    # ── All firm members (no case selected) ───────────────────────────────────
-    users_res = (
+    # ── No case selected: all firm lawyers + current user's clients ──────────
+    result = []
+
+    # All active lawyers/admins in the firm (excluding current user)
+    lawyers_res = (
         supabase.table("app_user")
         .select("id, full_name, email, role")
         .eq("firm_id", firm_id)
         .eq("is_active", True)
+        .in_("role", ["LAWYER", "FIRM_ADMIN", "SUPER_ADMIN"])
         .neq("id", current_user["id"])
         .execute()
     )
-    result = []
-    for u in (users_res.data or []):
+    for u in (lawyers_res.data or []):
         result.append({
             "user_id":          u["id"],
             "full_name":        u.get("full_name") or "",
             "email":            u.get("email") or "",
-            "role":             u.get("role") or "",
-            "participant_type": "CLIENT" if u.get("role") == "CLIENT" else "TEAM_MEMBER",
+            "role":             u.get("role") or "LAWYER",
+            "participant_type": "TEAM_MEMBER",
         })
+
+    # Only clients linked to cases where current user is a team member
+    team_res = (
+        supabase.table("case_team")
+        .select("case_id")
+        .eq("user_id", current_user["id"])
+        .execute()
+    )
+    my_case_ids = [r["case_id"] for r in (team_res.data or [])]
+    if my_case_ids:
+        cases_res = (
+            supabase.table("case_file")
+            .select("client_id")
+            .in_("id", my_case_ids)
+            .eq("firm_id", firm_id)
+            .execute()
+        )
+        client_ids = list({r["client_id"] for r in (cases_res.data or []) if r.get("client_id")})
+        if client_ids:
+            clients_res = (
+                supabase.table("client")
+                .select("user_id, first_name, last_name, email")
+                .in_("id", client_ids)
+                .execute()
+            )
+            client_user_ids = [r["user_id"] for r in (clients_res.data or []) if r.get("user_id")]
+            if client_user_ids:
+                cu_res = (
+                    supabase.table("app_user")
+                    .select("id, full_name, email")
+                    .in_("id", client_user_ids)
+                    .eq("is_active", True)
+                    .execute()
+                )
+                existing_ids = {p["user_id"] for p in result}
+                for u in (cu_res.data or []):
+                    if u["id"] not in existing_ids:
+                        result.append({
+                            "user_id":          u["id"],
+                            "full_name":        u.get("full_name") or "",
+                            "email":            u.get("email") or "",
+                            "role":             "CLIENT",
+                            "participant_type": "CLIENT",
+                        })
+
     return result
 
 
