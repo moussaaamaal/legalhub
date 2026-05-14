@@ -4,7 +4,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar, Switch,
   Modal, TextInput, Alert, ActivityIndicator,
-  KeyboardAvoidingView, Platform, Linking,
+  KeyboardAvoidingView, Platform, Linking, RefreshControl,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -127,7 +127,7 @@ const REMINDER_TIME_KEY    = 'lh_cal_reminder_time';
 const REMINDER_DEFAULTS    = { push: true, email: true };
 
 // ─── EVENT CARD ───────────────────────────────────────────────────────────
-const EventCard = ({ ev, onDelete, showDate = false }) => {
+const EventCard = ({ ev, onDelete, onEdit, currentUserId, showDate = false }) => {
   const meta    = getMeta(ev.event_type);
   const tf      = formatTime(ev.start_datetime);
   const d       = localD(parseDate(ev.start_datetime));
@@ -199,9 +199,18 @@ const EventCard = ({ ev, onDelete, showDate = false }) => {
               </View>
             ) : null}
           </View>
-          <TouchableOpacity onPress={() => onDelete(ev.id)}>
-            <Icon lib="FA5" name="trash-alt" size={14} color={C.gray400} />
-          </TouchableOpacity>
+          <View style={{ gap: 4 }}>
+            {ev.created_by === currentUserId && (
+              <TouchableOpacity style={s.iconActionBtn} onPress={() => onEdit && onEdit(ev)}>
+                <Icon lib="FA5" name="pen" size={13} color={C.primary} />
+              </TouchableOpacity>
+            )}
+            {ev.created_by === currentUserId && (
+              <TouchableOpacity style={s.iconActionBtn} onPress={() => onDelete(ev.id)}>
+                <Icon lib="FA5" name="trash-alt" size={14} color={C.red500} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {hasVideo && !isPast && (
@@ -273,6 +282,11 @@ function CalendarPicker({ selectedDate, onSelect, onClose }) {
 const EVENT_TYPES = ['HEARING', 'MEETING', 'DEADLINE', 'CONSULTATION', 'COURT_DATE'];
 const fmtDate = (d) => `${d.getDate()} / ${d.getMonth() + 1} / ${d.getFullYear()}`;
 
+const buildUtcISO = (calDate, hours, minutes) => {
+  const pad = n => String(n).padStart(2, '0');
+  return `${calDate.getFullYear()}-${pad(calDate.getMonth()+1)}-${pad(calDate.getDate())}T${pad(hours)}:${pad(minutes)}:00.000Z`;
+};
+
 const RECURRENCE_OPTS = [
   { val: 'none',     lab: 'None'     },
   { val: 'weekly',   lab: 'Weekly'   },
@@ -282,10 +296,9 @@ const RECURRENCE_OPTS = [
 const UNIT_LABEL = { weekly: 'week(s)', biweekly: 'bi-week(s)', monthly: 'month(s)' };
 
 function AddEventModal({ visible, onClose, onCreated }) {
-  const [title, setTitle]             = useState('');
-  const [type, setType]               = useState('MEETING');
-  const [description, setDescription] = useState('');
-  const [saving, setSaving]           = useState(false);
+  const [title, setTitle] = useState('');
+  const [type, setType]   = useState('MEETING');
+  const [saving, setSaving] = useState(false);
 
   const [selDate, setSelDate]         = useState(new Date());
   const [startH, setStartH]           = useState('09');
@@ -329,7 +342,7 @@ function AddEventModal({ visible, onClose, onCreated }) {
   }, [visible, caseId]);
 
   const reset = () => {
-    setTitle(''); setType('MEETING'); setDescription('');
+    setTitle(''); setType('MEETING');
     setSelDate(new Date()); setStartH('09'); setStartM('00');
     setEndH('10'); setEndM('00'); setShowCal(false);
     setCaseId(null);
@@ -338,18 +351,6 @@ function AddEventModal({ visible, onClose, onCreated }) {
     setIsVideoCall(false); setVideoCallUrl('');
     setRecurrence('none'); setLimitType('count'); setRecCount('4');
     setUntilDate(new Date()); setShowUntilCal(false);
-  };
-
-  // Build a UTC ISO string from the user-entered date/time components using pure
-  // string formatting — avoids Hermes bugs where Date.UTC() applies the local
-  // timezone offset instead of treating the arguments as UTC directly.
-  const buildUtcISO = (calDate, hours, minutes) => {
-    const pad = n => String(n).padStart(2, '0');
-    const y  = calDate.getFullYear();
-    const mo = calDate.getMonth() + 1;   // getMonth() is 0-indexed
-    const d  = calDate.getDate();         // local day — matches what user picked
-    return `${y}-${pad(mo)}-${pad(d)}T${pad(hours)}:${pad(minutes)}:00.000Z`;
-    // e.g. user enters 9h → "2026-04-27T09:00:00.000Z" → Supabase stores 9h
   };
 
   const handleCreate = async () => {
@@ -363,7 +364,6 @@ function AddEventModal({ visible, onClose, onCreated }) {
       event_type:     type,
       start_datetime: buildUtcISO(selDate, sh, sm),
       end_datetime:   (eh > sh || (eh === sh && em > sm)) ? buildUtcISO(selDate, eh, em) : null,
-      description:    description.trim() || null,
       recurrence,
     };
     if (caseId) payload.case_id = caseId;
@@ -461,10 +461,6 @@ function AddEventModal({ visible, onClose, onCreated }) {
               <Text style={m.timeSep}>:</Text>
               <TextInput style={[m.input, m.timeInput]} placeholder="00" value={endM} onChangeText={t => setEndM(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} />
             </View>
-
-            {/* Description */}
-            <Text style={m.label}>Description</Text>
-            <TextInput style={[m.input, { height: 80, textAlignVertical: 'top' }]} placeholder="Optional details..." value={description} onChangeText={setDescription} multiline />
 
             {/* Video Call */}
             <Text style={m.label}>Video Call</Text>
@@ -669,6 +665,176 @@ function AddEventModal({ visible, onClose, onCreated }) {
   );
 }
 
+// ─── EDIT EVENT MODAL ─────────────────────────────────────────────────────
+function EditEventModal({ visible, event, onClose, onUpdated }) {
+  const [title,  setTitle]  = useState('');
+  const [selDate, setSelDate] = useState(new Date());
+  const [startH, setStartH] = useState('09');
+  const [startM, setStartM] = useState('00');
+  const [endH,   setEndH]   = useState('10');
+  const [endM,   setEndM]   = useState('00');
+  const [showCal, setShowCal] = useState(false);
+  const [saving, setSaving]  = useState(false);
+
+  const [availableParticipants, setAvailableParticipants] = useState([]);
+  const [selectedParticipants,  setSelectedParticipants]  = useState(new Set());
+  const [loadingParticipants,   setLoadingParticipants]   = useState(false);
+
+  useEffect(() => {
+    if (!visible || !event) return;
+    setTitle(event.title || '');
+    const d = parseDate(event.start_datetime);
+    if (!isNaN(d)) {
+      setSelDate(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      setStartH(String(localH(d)).padStart(2, '0'));
+      setStartM(String(localM(d)).padStart(2, '0'));
+    }
+    if (event.end_datetime) {
+      const de = parseDate(event.end_datetime);
+      if (!isNaN(de)) {
+        setEndH(String(localH(de)).padStart(2, '0'));
+        setEndM(String(localM(de)).padStart(2, '0'));
+      }
+    }
+    setSelectedParticipants(new Set((event.participants || []).map(p => p.user_id)));
+    setShowCal(false);
+    setLoadingParticipants(true);
+    calendarAPI.getAvailableParticipants(event.case_id || null)
+      .then(data => setAvailableParticipants(Array.isArray(data) ? data : []))
+      .catch(() => setAvailableParticipants([]))
+      .finally(() => setLoadingParticipants(false));
+  }, [visible, event]);
+
+  const handleSave = async () => {
+    if (!title.trim()) { Alert.alert('Required', 'Please enter a title.'); return; }
+    const sh = parseInt(startH) || 0, sm = parseInt(startM) || 0;
+    const eh = parseInt(endH)   || 0, em = parseInt(endM)   || 0;
+    const payload = {
+      title:          title.trim(),
+      event_type:     event.event_type,
+      start_datetime: buildUtcISO(selDate, sh, sm),
+      recurrence:     'none',
+    };
+    if (eh > sh || (eh === sh && em > sm)) payload.end_datetime = buildUtcISO(selDate, eh, em);
+    if (selectedParticipants.size > 0) payload.participant_ids = [...selectedParticipants];
+    setSaving(true);
+    try {
+      await calendarAPI.updateEvent(event.id, payload);
+      onUpdated();
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not update event.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const meta = event ? getMeta(event.event_type) : getMeta('MEETING');
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={m.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={m.sheet}>
+          <View style={m.sheetHeader}>
+            <View style={s.row}>
+              <View style={[s.tag, { backgroundColor: meta.bg, marginRight: 8 }]}>
+                <Icon lib="FA5" name={meta.icon} size={11} color={meta.color} />
+                <Text style={[s.tagText, { color: meta.color, marginLeft: 4 }]}>{meta.label}</Text>
+              </View>
+              <Text style={m.sheetTitle}>Edit Event</Text>
+            </View>
+            <TouchableOpacity onPress={onClose}><Icon lib="FA5" name="times" size={18} color={C.gray600} /></TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {/* Title */}
+            <Text style={m.label}>Title *</Text>
+            <TextInput style={m.input} value={title} onChangeText={setTitle} placeholder="Event title" />
+
+            {/* Date */}
+            <Text style={m.label}>Date *</Text>
+            <TouchableOpacity style={m.pickerBtn} onPress={() => setShowCal(v => !v)}>
+              <Icon lib="FA5" name="calendar" size={14} color={C.primary} />
+              <Text style={m.pickerBtnText}>{fmtDate(selDate)}</Text>
+              <Icon lib="FA5" name={showCal ? 'chevron-up' : 'chevron-down'} size={11} color={C.gray500} style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
+            {showCal && <CalendarPicker selectedDate={selDate} onSelect={setSelDate} onClose={() => setShowCal(false)} />}
+
+            {/* Start time */}
+            <Text style={m.label}>Start Time *</Text>
+            <View style={m.timeRow}>
+              <TextInput style={[m.input, m.timeInput]} value={startH} onChangeText={t => setStartH(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} placeholder="09" />
+              <Text style={m.timeSep}>:</Text>
+              <TextInput style={[m.input, m.timeInput]} value={startM} onChangeText={t => setStartM(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} placeholder="00" />
+            </View>
+
+            {/* End time */}
+            <Text style={m.label}>End Time</Text>
+            <View style={m.timeRow}>
+              <TextInput style={[m.input, m.timeInput]} value={endH} onChangeText={t => setEndH(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} placeholder="10" />
+              <Text style={m.timeSep}>:</Text>
+              <TextInput style={[m.input, m.timeInput]} value={endM} onChangeText={t => setEndM(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} placeholder="00" />
+            </View>
+
+            {/* Participants */}
+            {(availableParticipants.length > 0 || loadingParticipants) && (
+              <>
+                <Text style={m.label}>Participants</Text>
+                {loadingParticipants ? (
+                  <ActivityIndicator color={C.primary} style={{ marginVertical: 8 }} />
+                ) : (
+                  <View style={m.participantList}>
+                    {availableParticipants.map(p => {
+                      const selected = selectedParticipants.has(p.user_id);
+                      const isClient = p.participant_type === 'CLIENT';
+                      const accent   = isClient ? C.green600 : C.primary;
+                      const accentBg = isClient ? C.green50  : C.blue50;
+                      return (
+                        <TouchableOpacity
+                          key={p.user_id}
+                          style={[m.participantRow, selected && { borderColor: accent, backgroundColor: accentBg }]}
+                          onPress={() => setSelectedParticipants(prev => {
+                            const next = new Set(prev);
+                            next.has(p.user_id) ? next.delete(p.user_id) : next.add(p.user_id);
+                            return next;
+                          })}
+                        >
+                          <View style={[m.participantAvatar, { backgroundColor: selected ? accent : C.gray200 }]}>
+                            <Text style={{ color: selected ? C.white : C.gray600, fontWeight: '700', fontSize: 13 }}>
+                              {(p.full_name || '?').charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <Text style={[m.participantName, selected && { color: accent }]}>{p.full_name || p.email}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                              <View style={[m.roleTag, { backgroundColor: isClient ? C.green100 : C.blue100 }]}>
+                                <Text style={{ fontSize: 10, fontWeight: '600', color: isClient ? C.green600 : C.primary }}>
+                                  {isClient ? 'Client' : (p.role === 'FIRM_ADMIN' ? 'Admin' : 'Lawyer')}
+                                </Text>
+                              </View>
+                              {p.email ? <Text style={m.participantEmail}>{p.email}</Text> : null}
+                            </View>
+                          </View>
+                          <View style={[m.checkbox, selected && { backgroundColor: accent, borderColor: accent }]}>
+                            {selected && <Icon lib="FA5" name="check" size={10} color={C.white} />}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </>
+            )}
+
+            <TouchableOpacity style={[m.createBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator color={C.white} /> : <Text style={m.createBtnText}>Save Changes</Text>}
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ─── ÉCRAN ─────────────────────────────────────────────────────────────────
 export default function CalendarScreen({ navigation }) {
   const now = new Date();
@@ -680,8 +846,12 @@ export default function CalendarScreen({ navigation }) {
   const [reminderToggles, setReminderToggles]   = useState(REMINDER_DEFAULTS);
   const [addModal, setAddModal] = useState(false);
 
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [events, setEvents]     = useState([]);
   const [loading, setLoading]   = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [editModal, setEditModal] = useState(false);
+  const [editEvent,  setEditEvent]  = useState(null);
 
   const intervalRef = useRef(null);
 
@@ -709,10 +879,11 @@ export default function CalendarScreen({ navigation }) {
     }, [loadEvents])
   );
 
-  // Load saved reminder prefs
+  // Load saved reminder prefs + current user ID
   useEffect(() => {
     AsyncStorage.getItem(REMINDER_STORAGE_KEY).then(v => { if (v) setReminderToggles(JSON.parse(v)); });
     AsyncStorage.getItem(REMINDER_TIME_KEY).then(v => { if (v) setSelectedReminder(v); });
+    AsyncStorage.getItem('lh_user').then(v => { if (v) { try { setCurrentUserId(JSON.parse(v).id); } catch {} } });
   }, []);
 
   const handleReminderToggle = (key, val) => {
@@ -778,10 +949,21 @@ export default function CalendarScreen({ navigation }) {
   const prevMonth = () => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); };
   const nextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); };
 
-  const handleEventCreated = () => {
-    setAddModal(false);
-    loadEvents();   // recharge tout — indispensable pour les récurrences (n occurrences créées)
-  };
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const data = await calendarAPI.listEvents();
+      setEvents(Array.isArray(data) ? data : []);
+    } catch {
+      setEvents([]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  const handleEventCreated = () => { setAddModal(false); loadEvents(); };
+  const handleEventUpdated = () => { setEditModal(false); setEditEvent(null); loadEvents(); };
+  const handleOpenEdit = (ev) => { setEditEvent(ev); setEditModal(true); };
 
   const handleDeleteEvent = (id) => {
     Alert.alert('Delete Event', 'Are you sure?', [
@@ -825,7 +1007,13 @@ export default function CalendarScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 90 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={{ paddingBottom: 90 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[C.primary]} tintColor={C.primary} />}
+      >
 
         {/* VIEW TOGGLE */}
         <View style={s.viewToggleWrap}>
@@ -914,7 +1102,7 @@ export default function CalendarScreen({ navigation }) {
               <Text style={[s.xs, { marginBottom: 12 }]}>{todayEvents.length} event{todayEvents.length !== 1 ? 's' : ''}</Text>
               {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 16 }} />}
               {!loading && todayEvents.length === 0 && <View style={s.emptyBox}><Icon lib="FA5" name="calendar-check" size={28} color={C.gray400} /><Text style={[s.xs, { marginTop: 8, color: C.gray500 }]}>No events today</Text></View>}
-              {todayEvents.map(ev => <EventCard key={ev.id} ev={ev} onDelete={handleDeleteEvent} />)}
+              {todayEvents.map(ev => <EventCard key={ev.id} ev={ev} onDelete={handleDeleteEvent} onEdit={handleOpenEdit} currentUserId={currentUserId} />)}
             </View>
             {/* Rest of week */}
             <View style={s.section}>
@@ -927,7 +1115,7 @@ export default function CalendarScreen({ navigation }) {
                       <Text style={[s.dayLabelText, day.toDateString() === now.toDateString() && { color: C.white }]}>{dayName} {day.getDate()}</Text>
                     </View>
                   </View>
-                  {dayEvs.map(ev => <EventCard key={ev.id} ev={ev} onDelete={handleDeleteEvent} />)}
+                  {dayEvs.map(ev => <EventCard key={ev.id} ev={ev} onDelete={handleDeleteEvent} onEdit={handleOpenEdit} currentUserId={currentUserId} />)}
                 </View>
               ))}
             </View>
@@ -940,7 +1128,7 @@ export default function CalendarScreen({ navigation }) {
             <Text style={[s.sectionTitle, { marginBottom: 12 }]}>{MONTH_NAMES[calMonth]} {calYear}</Text>
             {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 16 }} />}
             {!loading && monthEvents.length === 0 && <View style={s.emptyBox}><Icon lib="FA5" name="calendar" size={28} color={C.gray400} /><Text style={[s.xs, { marginTop: 8, color: C.gray500 }]}>No events this month</Text></View>}
-            {monthEvents.map(ev => <EventCard key={ev.id} ev={ev} onDelete={handleDeleteEvent} showDate />)}
+            {monthEvents.map(ev => <EventCard key={ev.id} ev={ev} onDelete={handleDeleteEvent} onEdit={handleOpenEdit} currentUserId={currentUserId} showDate />)}
           </View>
         )}
 
@@ -950,7 +1138,7 @@ export default function CalendarScreen({ navigation }) {
             <Text style={[s.sectionTitle, { marginBottom: 12 }]}>All Events</Text>
             {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 16 }} />}
             {!loading && listEvents.length === 0 && <View style={s.emptyBox}><Icon lib="FA5" name="list" size={28} color={C.gray400} /><Text style={[s.xs, { marginTop: 8, color: C.gray500 }]}>No events found</Text></View>}
-            {listEvents.map(ev => <EventCard key={ev.id} ev={ev} onDelete={handleDeleteEvent} showDate />)}
+            {listEvents.map(ev => <EventCard key={ev.id} ev={ev} onDelete={handleDeleteEvent} onEdit={handleOpenEdit} currentUserId={currentUserId} showDate />)}
           </View>
         )}
 
@@ -995,6 +1183,7 @@ export default function CalendarScreen({ navigation }) {
       </ScrollView>
 
       <AddEventModal visible={addModal} onClose={() => setAddModal(false)} onCreated={handleEventCreated} />
+      <EditEventModal visible={editModal} event={editEvent} onClose={() => { setEditModal(false); setEditEvent(null); }} onUpdated={handleEventUpdated} />
     </SafeAreaView>
   );
 }
@@ -1117,6 +1306,7 @@ const s = StyleSheet.create({
   reminderOption:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, marginBottom: 6 },
   joinBtn:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.green600, borderRadius: 10, paddingVertical: 10, marginTop: 12 },
   joinBtnTxt:         { color: C.white, fontWeight: '700', fontSize: 13 },
+  iconActionBtn:      { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.gray100 },
   emptyBox:           { alignItems: 'center', paddingVertical: 24 },
   dayLabelBadge:      { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: C.gray100 },
   dayLabelText:       { fontSize: 13, fontWeight: '700', color: C.gray700 },

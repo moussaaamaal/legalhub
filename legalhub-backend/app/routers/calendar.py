@@ -22,6 +22,36 @@ RecurrenceType = Literal["none", "weekly", "biweekly", "monthly"]
 
 MAX_OCCURRENCES = 104   # hard ceiling (2 years of weekly events)
 
+_EVENT_LABELS = {
+    "HEARING": "Court Hearing", "COURT_DATE": "Court Date",
+    "MEETING": "Meeting", "CONSULTATION": "Consultation",
+    "DEADLINE": "Deadline", "FILING": "Filing",
+    "DEPOSITION": "Deposition", "MEDIATION": "Mediation",
+    "ARBITRATION": "Arbitration",
+}
+
+def _ev_label(event_type) -> str:
+    raw = event_type.value if hasattr(event_type, "value") else str(event_type).split(".")[-1]
+    return _EVENT_LABELS.get(raw.upper(), raw.replace("_", " ").title())
+
+def _notify_participants(event_id: str, title: str, label: str, start: str,
+                         participant_ids: list[str], exclude_user_id: str,
+                         action: str = "New") -> None:
+    """Send a notification to each participant (excluding the actor)."""
+    msg = json.dumps({"event_id": event_id, "event_title": title,
+                      "event_type": label, "start_datetime": start})
+    notif_title = f"{action} event: {title}"
+    for uid in participant_ids:
+        if uid == exclude_user_id:
+            continue
+        try:
+            supabase_admin.table("notification").insert({
+                "user_id": uid, "type": "GENERAL",
+                "title": notif_title, "message": msg,
+            }).execute()
+        except Exception as e:
+            _log.warning(f"[notify_participants] skipped uid={uid}: {e}")
+
 
 class CreateEventRequest(BaseModel):
     title: str
@@ -189,34 +219,27 @@ async def list_events(
                 q = q.gte("start_datetime", from_date)
             return q
 
-        # 1. Events created by the user
-        q_created = _apply_filters(
-            supabase.table("calendar_event").select("*").eq("firm_id", firm_id).eq("created_by", user_id)
-        )
-        events_created = (q_created.execute()).data or []
+        # All case IDs where user is a team member
+        team = supabase.table("case_team").select("case_id").eq("user_id", user_id).execute()
+        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
 
-        # 2. Events where user is explicitly a participant (created by others)
+        # All event IDs where user is explicitly a participant
         part_res = (
             supabase.table("calendar_event_participant")
             .select("event_id")
             .eq("user_id", user_id)
             .execute()
         )
-        participated_ids = [r["event_id"] for r in (part_res.data or [])]
-        events_participated = []
-        if participated_ids:
-            q_part = _apply_filters(
-                supabase.table("calendar_event").select("*")
-                .eq("firm_id", firm_id)
-                .in_("id", participated_ids)
-                .neq("created_by", user_id)
-            )
-            events_participated = (q_part.execute()).data or []
+        participated_ids_set = {r["event_id"] for r in (part_res.data or [])}
 
-        # 3. Backward compat: events on user's cases that have NO participants at all
-        team = supabase.table("case_team").select("case_id").eq("user_id", user_id).execute()
-        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
-        events_noparts = []
+        # 1. Events created by the user
+        q_created = _apply_filters(
+            supabase.table("calendar_event").select("*").eq("firm_id", firm_id).eq("created_by", user_id)
+        )
+        events_created = (q_created.execute()).data or []
+
+        # 2. All events on user's cases (created by others) — regardless of participant status
+        events_cases = []
         if lawyer_case_ids:
             q_case = _apply_filters(
                 supabase.table("calendar_event").select("*")
@@ -224,27 +247,31 @@ async def list_events(
                 .in_("case_id", lawyer_case_ids)
                 .neq("created_by", user_id)
             )
-            case_events = (q_case.execute()).data or []
-            if case_events:
-                case_event_ids = [ev["id"] for ev in case_events]
-                parts_check = (
-                    supabase.table("calendar_event_participant")
-                    .select("event_id")
-                    .in_("event_id", case_event_ids)
-                    .execute()
-                )
-                ids_with_parts = {r["event_id"] for r in (parts_check.data or [])}
-                events_noparts = [ev for ev in case_events if ev["id"] not in ids_with_parts]
+            events_cases = (q_case.execute()).data or []
 
-        # Merge, deduplicate, sort — tag each event with is_participant
-        participated_id_set = set(participated_ids)
-        seen = set()
+        # 3. Events where user is participant but outside their cases (e.g. different case)
+        events_extra = []
+        if participated_ids_set:
+            already_seen = {ev["id"] for ev in events_created + events_cases}
+            extra_ids = [eid for eid in participated_ids_set if eid not in already_seen]
+            if extra_ids:
+                q_extra = _apply_filters(
+                    supabase.table("calendar_event").select("*")
+                    .eq("firm_id", firm_id)
+                    .in_("id", extra_ids)
+                )
+                events_extra = (q_extra.execute()).data or []
+
+        # Merge, deduplicate, sort
+        # Badge "Participant" = user created the event OR is explicitly a participant
+        seen: set = set()
         merged = []
-        for ev in events_created + events_participated + events_noparts:
+        for ev in events_created + events_cases + events_extra:
             if ev["id"] not in seen:
                 seen.add(ev["id"])
-                ev["is_participant"] = ev["id"] in participated_id_set
+                ev["is_participant"] = ev["id"] in participated_ids_set
                 merged.append(ev)
+
         merged.sort(key=lambda x: x.get("start_datetime") or "")
         return _enrich_events(merged, exclude_user_id=user_id)
 
@@ -291,8 +318,8 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
 
     # Insert participants for all created occurrences
     # Always include the creator + any explicitly chosen participants (deduplicated)
+    all_participant_ids = list({current_user["id"], *(body.participant_ids or [])})
     if created:
-        all_participant_ids = list({current_user["id"], *(body.participant_ids or [])})
         participant_rows = [
             {"event_id": ev["id"], "user_id": uid, "participant_type": "TEAM_MEMBER"}
             for ev in created
@@ -303,19 +330,20 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
         except Exception as e:
             _log.warning(f"[create_event] participant insert skipped: {e}")
 
-    if body.case_id:
-        _EVENT_LABELS = {
-            "HEARING": "Court Hearing", "COURT_DATE": "Court Date",
-            "MEETING": "Meeting", "CONSULTATION": "Consultation",
-            "DEADLINE": "Deadline", "FILING": "Filing",
-            "DEPOSITION": "Deposition", "MEDIATION": "Mediation",
-            "ARBITRATION": "Arbitration",
-        }
-        _raw_type = body.event_type.value if hasattr(body.event_type, "value") else str(body.event_type).split(".")[-1]
-        ev_label = _EVENT_LABELS.get(
-            _raw_type.upper(),
-            _raw_type.replace("_", " ").title(),
+    # Notify participants (excluding creator)
+    ev_label = _ev_label(body.event_type)
+    if created and len(all_participant_ids) > 1:
+        _notify_participants(
+            event_id=created[0]["id"],
+            title=body.title,
+            label=ev_label,
+            start=body.start_datetime,
+            participant_ids=all_participant_ids,
+            exclude_user_id=current_user["id"],
+            action="New",
         )
+
+    if body.case_id:
         recurrence_note = f" (repeats {body.recurrence})" if body.recurrence != "none" else ""
         supabase.table("case_timeline").insert({
             "case_id":      body.case_id,
@@ -391,8 +419,9 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
 @router.put("/events/{event_id}")
 async def update_event(event_id: str, body: CreateEventRequest, current_user=Depends(get_lawyer)):
     data = body.model_dump(exclude_none=True)
-    for field in ("recurrence_count", "recurrence_until"):
+    for field in ("recurrence_count", "recurrence_until", "recurrence", "participant_ids"):
         data.pop(field, None)
+
     result = (
         supabase.table("calendar_event")
         .update(data)
@@ -402,7 +431,43 @@ async def update_event(event_id: str, body: CreateEventRequest, current_user=Dep
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Event not found")
-    return result.data[0]
+    updated = result.data[0]
+
+    # Upsert any new participants
+    if body.participant_ids:
+        new_rows = [
+            {"event_id": event_id, "user_id": uid, "participant_type": "TEAM_MEMBER"}
+            for uid in body.participant_ids
+        ]
+        try:
+            supabase.table("calendar_event_participant").upsert(
+                new_rows, on_conflict="event_id,user_id"
+            ).execute()
+        except Exception as e:
+            _log.warning(f"[update_event] participant upsert skipped: {e}")
+
+    # Notify all current participants (excluding the updater)
+    try:
+        parts_res = (
+            supabase.table("calendar_event_participant")
+            .select("user_id")
+            .eq("event_id", event_id)
+            .execute()
+        )
+        all_ids = [r["user_id"] for r in (parts_res.data or [])]
+        _notify_participants(
+            event_id=event_id,
+            title=updated.get("title", ""),
+            label=_ev_label(body.event_type),
+            start=updated.get("start_datetime", ""),
+            participant_ids=all_ids,
+            exclude_user_id=current_user["id"],
+            action="Updated",
+        )
+    except Exception as e:
+        _log.warning(f"[update_event] notification skipped: {e}")
+
+    return updated
 
 
 @router.delete("/events/{event_id}")
@@ -737,34 +802,101 @@ def _get_valid_access_token(user_id: str, token_data: dict) -> str:
 
 # ─── POST /api/calendar/sync/google ──────────────────────────────────────────
 
+def _strip_utc_marker(dt_str: str) -> str:
+    """
+    The app stores local time with a Z suffix (e.g. '2026-05-10T09:00:00.000Z')
+    meaning the user entered 09:00 local time. To avoid a +1h shift in Google
+    Calendar we remove the UTC marker and declare the timezone explicitly.
+    """
+    if not dt_str:
+        return dt_str
+    import re
+    return re.sub(r"(Z|[+-]\d{2}:?\d{2})$", "", dt_str)
+
+
+APP_TIMEZONE = "Africa/Tunis"   # change here if the firm's timezone ever differs
+
+
 @router.post("/sync/google")
 async def sync_to_google(current_user=Depends(get_lawyer)):
-    token_res = supabase.table("user_oauth_token").select("*").eq("user_id", current_user["id"]).eq("provider", "google").maybe_single().execute()
+    token_res = (
+        supabase.table("user_oauth_token")
+        .select("*")
+        .eq("user_id", current_user["id"])
+        .eq("provider", "google")
+        .maybe_single()
+        .execute()
+    )
     if not token_res or not token_res.data:
-        raise HTTPException(status_code=400, detail="Google Calendar not connected. Call /api/calendar/sync/google/auth-url first.")
+        raise HTTPException(
+            status_code=400,
+            detail="Google Calendar not connected. Call /api/calendar/sync/google/auth-url first.",
+        )
 
     access_token = _get_valid_access_token(current_user["id"], token_res.data)
-    events_res   = supabase.table("calendar_event").select("*").eq("firm_id", current_user["firm_id"]).eq("created_by", current_user["id"]).execute()
-    events       = events_res.data or []
+    user_id      = current_user["id"]
+    firm_id      = current_user["firm_id"]
+
+    # 1. Events created by the user
+    created_res = (
+        supabase.table("calendar_event")
+        .select("*")
+        .eq("firm_id", firm_id)
+        .eq("created_by", user_id)
+        .execute()
+    )
+    created_events = created_res.data or []
+
+    # 2. Events where user is a participant but did not create
+    part_res = (
+        supabase.table("calendar_event_participant")
+        .select("event_id")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    participated_ids = [r["event_id"] for r in (part_res.data or [])]
+    participant_events = []
+    if participated_ids:
+        pe_res = (
+            supabase.table("calendar_event")
+            .select("*")
+            .eq("firm_id", firm_id)
+            .in_("id", participated_ids)
+            .neq("created_by", user_id)
+            .execute()
+        )
+        participant_events = pe_res.data or []
+
+    # Merge & deduplicate
+    seen: set = set()
+    events: list = []
+    for ev in created_events + participant_events:
+        if ev["id"] not in seen:
+            seen.add(ev["id"])
+            events.append(ev)
 
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
     synced, failed = 0, 0
     for ev in events:
-        start = ev.get("start_datetime")
-        end   = ev.get("end_datetime") or start
-        if not start:
+        raw_start = ev.get("start_datetime")
+        raw_end   = ev.get("end_datetime") or raw_start
+        if not raw_start:
             continue
+
+        # Strip the UTC marker — times are stored as local (Africa/Tunis) disguised as UTC
+        local_start = _strip_utc_marker(raw_start)
+        local_end   = _strip_utc_marker(raw_end)
+
         g_event = {
             "summary":     ev.get("title", "LegalHub Event"),
             "description": ev.get("event_type", ""),
-            "start":       {"dateTime": start, "timeZone": "UTC"},
-            "end":         {"dateTime": end,   "timeZone": "UTC"},
-            # Deterministic UID so repeated syncs update instead of duplicate
+            "start":       {"dateTime": local_start, "timeZone": APP_TIMEZONE},
+            "end":         {"dateTime": local_end,   "timeZone": APP_TIMEZONE},
             "iCalUID":     f"{ev['id']}@legalhub.app",
         }
         if ev.get("location"):
             g_event["location"] = ev["location"]
-        # /events/import upserts by iCalUID — idempotent across multiple syncs
+
         resp = _req.post(
             "https://www.googleapis.com/calendar/v3/calendars/primary/events/import",
             json=g_event, headers=headers, timeout=10,
