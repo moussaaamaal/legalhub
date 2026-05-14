@@ -94,23 +94,50 @@ async def client_dashboard(ctx=Depends(_require_client)):
     )
     pending_docs = len(docs.data or [])
 
-    # Prochain rendez-vous
-    appointments = (
-        supabase.table("calendar_event")
-        .select("id, title, start_datetime, event_type, location")
-        .eq("firm_id", firm_id)
-        .gte("start_datetime", today)
-        .order("start_datetime")
-        .limit(3)
-        .execute()
-    )
+    # Prochain rendez-vous — filtrés par participation du client
+    client_case_ids = [c["id"] for c in case_data]
+    upcoming_raw = []
+    if client_case_ids:
+        appt_res = (
+            supabase.table("calendar_event")
+            .select("id, title, start_datetime, event_type, location, case_id")
+            .eq("firm_id", firm_id)
+            .in_("case_id", client_case_ids)
+            .gte("start_datetime", today)
+            .order("start_datetime")
+            .limit(20)
+            .execute()
+        )
+        raw_events = appt_res.data or []
+        if raw_events:
+            raw_ids = [ev["id"] for ev in raw_events]
+            client_user_id = ctx["user"]["id"]
+            part_res = (
+                supabase.table("calendar_event_participant")
+                .select("event_id")
+                .eq("user_id", client_user_id)
+                .in_("event_id", raw_ids)
+                .execute()
+            )
+            client_part_ids = {r["event_id"] for r in (part_res.data or [])}
+            all_parts_res = (
+                supabase.table("calendar_event_participant")
+                .select("event_id")
+                .in_("event_id", raw_ids)
+                .execute()
+            )
+            ids_with_any_part = {r["event_id"] for r in (all_parts_res.data or [])}
+            upcoming_raw = [
+                ev for ev in raw_events
+                if ev["id"] in client_part_ids or ev["id"] not in ids_with_any_part
+            ][:3]
 
     return {
         "active_cases": active_cases,
         "pending_invoices_total": round(pending_invoices_total, 2),
         "pending_invoices_count": pending_invoices_count,
         "pending_documents": pending_docs,
-        "upcoming_appointments": appointments.data or [],
+        "upcoming_appointments": upcoming_raw,
         "client": {
             "id": client["id"],
             "first_name": client["first_name"],
@@ -400,6 +427,36 @@ async def client_appointments(case_id: Optional[str] = None, ctx=Depends(_requir
     )
 
     events = result.data or []
+
+    # Keep only events where client is a participant OR the event has no participants (backward compat)
+    client_user_id = ctx["user"]["id"]
+    if events:
+        event_ids = [ev["id"] for ev in events]
+
+        # Event IDs the client is explicitly invited to
+        part_res = (
+            supabase.table("calendar_event_participant")
+            .select("event_id")
+            .eq("user_id", client_user_id)
+            .in_("event_id", event_ids)
+            .execute()
+        )
+        client_participated = {r["event_id"] for r in (part_res.data or [])}
+
+        # Event IDs that have at least one participant defined
+        all_parts_res = (
+            supabase.table("calendar_event_participant")
+            .select("event_id")
+            .in_("event_id", event_ids)
+            .execute()
+        )
+        ids_with_any_part = {r["event_id"] for r in (all_parts_res.data or [])}
+
+        events = [
+            ev for ev in events
+            if ev["id"] in client_participated or ev["id"] not in ids_with_any_part
+        ]
+
     for ev in events:
         ev["start_time"]   = ev.pop("start_datetime", None)
         ev["meeting_type"] = ev.pop("event_type", "MEETING")

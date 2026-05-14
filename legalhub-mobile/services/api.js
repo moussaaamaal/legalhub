@@ -271,6 +271,10 @@ export const calendarAPI = {
   testReminder:  ()             => request('POST',   '/api/calendar/test-reminder'),
   syncGoogle:      (body) => request('POST', '/api/calendar/sync/google',            body),
   saveGoogleToken: (body) => request('POST', '/api/calendar/sync/google/save-token', body),
+  getAvailableParticipants: (case_id = null) => {
+    const qs = case_id ? `?case_id=${case_id}` : '';
+    return request('GET', `/api/calendar/available-participants${qs}`);
+  },
 };
 
 // ─── TASKS ────────────────────────────────────────────────────────────────

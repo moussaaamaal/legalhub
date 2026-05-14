@@ -37,6 +37,7 @@ class CreateEventRequest(BaseModel):
     # Limit: provide ONE of these when recurrence != "none"
     recurrence_count: Optional[int] = None   # number of occurrences  (e.g. 10)
     recurrence_until: Optional[str] = None   # ISO date string         (e.g. "2026-12-31")
+    participant_ids: Optional[List[str]] = None  # user IDs to invite
 
     @model_validator(mode="after")
     def check_recurrence_limit(self):
@@ -125,10 +126,6 @@ async def list_events(
     if not is_admin and current_user["role"] == "LAWYER":
         user_id = current_user["id"]
 
-        # Case IDs where the lawyer is a team member
-        team = supabase.table("case_team").select("case_id").eq("user_id", user_id).execute()
-        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
-
         def _apply_filters(q):
             if event_type:
                 q = q.eq("event_type", event_type)
@@ -138,24 +135,57 @@ async def list_events(
                 q = q.gte("start_datetime", from_date)
             return q
 
-        # Events created by the lawyer
+        # 1. Events created by the user
         q_created = _apply_filters(
             supabase.table("calendar_event").select("*").eq("firm_id", firm_id).eq("created_by", user_id)
         )
         events_created = (q_created.execute()).data or []
 
-        # Events linked to lawyer's cases (created by others)
-        events_case = []
+        # 2. Events where user is explicitly a participant (created by others)
+        part_res = (
+            supabase.table("calendar_event_participant")
+            .select("event_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        participated_ids = [r["event_id"] for r in (part_res.data or [])]
+        events_participated = []
+        if participated_ids:
+            q_part = _apply_filters(
+                supabase.table("calendar_event").select("*")
+                .eq("firm_id", firm_id)
+                .in_("id", participated_ids)
+                .neq("created_by", user_id)
+            )
+            events_participated = (q_part.execute()).data or []
+
+        # 3. Backward compat: events on user's cases that have NO participants at all
+        team = supabase.table("case_team").select("case_id").eq("user_id", user_id).execute()
+        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
+        events_noparts = []
         if lawyer_case_ids:
             q_case = _apply_filters(
-                supabase.table("calendar_event").select("*").eq("firm_id", firm_id).in_("case_id", lawyer_case_ids).neq("created_by", user_id)
+                supabase.table("calendar_event").select("*")
+                .eq("firm_id", firm_id)
+                .in_("case_id", lawyer_case_ids)
+                .neq("created_by", user_id)
             )
-            events_case = (q_case.execute()).data or []
+            case_events = (q_case.execute()).data or []
+            if case_events:
+                case_event_ids = [ev["id"] for ev in case_events]
+                parts_check = (
+                    supabase.table("calendar_event_participant")
+                    .select("event_id")
+                    .in_("event_id", case_event_ids)
+                    .execute()
+                )
+                ids_with_parts = {r["event_id"] for r in (parts_check.data or [])}
+                events_noparts = [ev for ev in case_events if ev["id"] not in ids_with_parts]
 
         # Merge, deduplicate, sort
         seen = set()
         merged = []
-        for ev in events_created + events_case:
+        for ev in events_created + events_participated + events_noparts:
             if ev["id"] not in seen:
                 seen.add(ev["id"])
                 merged.append(ev)
@@ -175,8 +205,8 @@ async def list_events(
 @router.post("/events", status_code=201)
 async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer)):
     base_data = body.model_dump(exclude_none=True)
-    # Remove recurrence meta-fields — not stored per row (except the label)
-    for field in ("recurrence_count", "recurrence_until", "recurrence"):
+    # Remove recurrence meta-fields and participant_ids — not stored in calendar_event row
+    for field in ("recurrence_count", "recurrence_until", "recurrence", "participant_ids"):
         base_data.pop(field, None)
     base_data["firm_id"]    = current_user["firm_id"]
     base_data["created_by"] = current_user["id"]
@@ -201,6 +231,18 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
 
         result  = supabase.table("calendar_event").insert(rows).execute()
         created = result.data
+
+    # Insert participants for all created occurrences
+    if body.participant_ids and created:
+        participant_rows = [
+            {"event_id": ev["id"], "user_id": uid, "participant_type": "TEAM_MEMBER"}
+            for ev in created
+            for uid in body.participant_ids
+        ]
+        try:
+            supabase.table("calendar_event_participant").insert(participant_rows).execute()
+        except Exception as e:
+            _log.warning(f"[create_event] participant insert skipped: {e}")
 
     if body.case_id:
         _EVENT_LABELS = {
@@ -308,6 +350,107 @@ async def update_event(event_id: str, body: CreateEventRequest, current_user=Dep
 async def delete_event(event_id: str, current_user=Depends(get_lawyer)):
     supabase.table("calendar_event").delete().eq("id", event_id).eq("firm_id", current_user["firm_id"]).execute()
     return {"message": "Event deleted"}
+
+
+# ─── GET /api/calendar/available-participants ────────────────────────────────
+
+@router.get("/available-participants")
+async def get_available_participants(
+    case_id: Optional[str] = None,
+    current_user=Depends(get_lawyer),
+):
+    """
+    Return users that can be added as participants to an event.
+    - If case_id is given: case team members + client (if they have an account).
+    - Otherwise: all active members of the firm (excluding the requester).
+    """
+    firm_id = current_user["firm_id"]
+
+    if case_id:
+        participants: list[dict] = []
+
+        # ── Team members ──────────────────────────────────────────────────────
+        team_res = supabase.table("case_team").select("user_id").eq("case_id", case_id).execute()
+        team_ids = [r["user_id"] for r in (team_res.data or [])]
+        if team_ids:
+            users_res = (
+                supabase.table("app_user")
+                .select("id, full_name, email, role")
+                .in_("id", team_ids)
+                .eq("is_active", True)
+                .execute()
+            )
+            for u in (users_res.data or []):
+                participants.append({
+                    "user_id":          u["id"],
+                    "full_name":        u.get("full_name") or "",
+                    "email":            u.get("email") or "",
+                    "role":             u.get("role") or "LAWYER",
+                    "participant_type": "TEAM_MEMBER",
+                })
+
+        # ── Client ────────────────────────────────────────────────────────────
+        case_res = (
+            supabase.table("case_file")
+            .select("client_id")
+            .eq("id", case_id)
+            .maybe_single()
+            .execute()
+        )
+        if case_res and case_res.data:
+            client_id = case_res.data.get("client_id")
+            if client_id:
+                client_res = (
+                    supabase.table("client")
+                    .select("user_id, first_name, last_name, email")
+                    .eq("id", client_id)
+                    .maybe_single()
+                    .execute()
+                )
+                if client_res and client_res.data:
+                    c = client_res.data
+                    client_user_id = c.get("user_id")
+                    if client_user_id:
+                        user_res = (
+                            supabase.table("app_user")
+                            .select("id, full_name, email")
+                            .eq("id", client_user_id)
+                            .maybe_single()
+                            .execute()
+                        )
+                        if user_res and user_res.data:
+                            u = user_res.data
+                            # avoid duplicate if client is also a team member
+                            if not any(p["user_id"] == u["id"] for p in participants):
+                                participants.append({
+                                    "user_id":          u["id"],
+                                    "full_name":        u.get("full_name") or f"{c.get('first_name','')} {c.get('last_name','')}".strip(),
+                                    "email":            u.get("email") or c.get("email") or "",
+                                    "role":             "CLIENT",
+                                    "participant_type": "CLIENT",
+                                })
+
+        return participants
+
+    # ── All firm members (no case selected) ───────────────────────────────────
+    users_res = (
+        supabase.table("app_user")
+        .select("id, full_name, email, role")
+        .eq("firm_id", firm_id)
+        .eq("is_active", True)
+        .neq("id", current_user["id"])
+        .execute()
+    )
+    result = []
+    for u in (users_res.data or []):
+        result.append({
+            "user_id":          u["id"],
+            "full_name":        u.get("full_name") or "",
+            "email":            u.get("email") or "",
+            "role":             u.get("role") or "",
+            "participant_type": "CLIENT" if u.get("role") == "CLIENT" else "TEAM_MEMBER",
+        })
+    return result
 
 
 # ─── POST /api/calendar/sync/google/save-token (mobile OAuth) ───────────────
@@ -425,6 +568,66 @@ async def google_callback(code: str, state: str):
     return {"message": "Google Calendar connected successfully", "user_id": user_id}
 
 
+# ─── Token refresh helper ────────────────────────────────────────────────────
+
+def _get_valid_access_token(user_id: str, token_data: dict) -> str:
+    """
+    Return a valid Google access token, refreshing it first if it has expired
+    (or will expire within the next 5 minutes).
+    Persists the new token to user_oauth_token when a refresh is performed.
+    """
+    import time
+    expires_at    = token_data.get("expires_at")
+    access_token  = token_data["access_token"]
+    refresh_token = token_data.get("refresh_token")
+
+    token_is_expired = expires_at is not None and int(time.time()) >= (expires_at - 300)
+
+    if not token_is_expired:
+        return access_token
+
+    if not refresh_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Google access token expired and no refresh token is stored. "
+                   "Please reconnect Google Calendar.",
+        )
+
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Google OAuth2 not configured on server")
+
+    resp = _req.post("https://oauth2.googleapis.com/token", data={
+        "grant_type":    "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id":     settings.GOOGLE_CLIENT_ID,
+        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+    }, timeout=15)
+
+    if not resp.ok:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Google token refresh failed: {resp.text}. "
+                   "Please reconnect Google Calendar.",
+        )
+
+    new_tokens   = resp.json()
+    new_access   = new_tokens["access_token"]
+    new_expires  = int(time.time()) + new_tokens.get("expires_in", 3600)
+    # Google only issues a new refresh_token occasionally; keep the old one if absent
+    new_refresh  = new_tokens.get("refresh_token") or refresh_token
+
+    supabase_admin.table("user_oauth_token").upsert({
+        "user_id":       user_id,
+        "provider":      "google",
+        "access_token":  new_access,
+        "refresh_token": new_refresh,
+        "expires_at":    new_expires,
+    }, on_conflict="user_id,provider").execute()
+
+    _log.info(f"[google-sync] refreshed access token for user {user_id}")
+    return new_access
+
+
 # ─── POST /api/calendar/sync/google ──────────────────────────────────────────
 
 @router.post("/sync/google")
@@ -433,7 +636,7 @@ async def sync_to_google(current_user=Depends(get_lawyer)):
     if not token_res or not token_res.data:
         raise HTTPException(status_code=400, detail="Google Calendar not connected. Call /api/calendar/sync/google/auth-url first.")
 
-    access_token = token_res.data["access_token"]
+    access_token = _get_valid_access_token(current_user["id"], token_res.data)
     events_res   = supabase.table("calendar_event").select("*").eq("firm_id", current_user["firm_id"]).eq("created_by", current_user["id"]).execute()
     events       = events_res.data or []
 

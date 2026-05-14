@@ -271,6 +271,11 @@ function AddEventModal({ visible, onClose, onCreated }) {
   const [cases,   setCases]   = useState([]);
   const [caseId,  setCaseId]  = useState(null);
 
+  // Participants
+  const [availableParticipants, setAvailableParticipants] = useState([]);
+  const [selectedParticipants,  setSelectedParticipants]  = useState(new Set());
+  const [loadingParticipants,   setLoadingParticipants]   = useState(false);
+
   // Video call
   const [isVideoCall,   setIsVideoCall]   = useState(false);
   const [videoCallUrl,  setVideoCallUrl]  = useState('');
@@ -286,11 +291,23 @@ function AddEventModal({ visible, onClose, onCreated }) {
     if (visible) casesAPI.list().then(data => setCases(Array.isArray(data) ? data : [])).catch(() => {});
   }, [visible]);
 
+  useEffect(() => {
+    if (!visible) return;
+    setLoadingParticipants(true);
+    setSelectedParticipants(new Set());
+    calendarAPI.getAvailableParticipants(caseId || null)
+      .then(data => setAvailableParticipants(Array.isArray(data) ? data : []))
+      .catch(() => setAvailableParticipants([]))
+      .finally(() => setLoadingParticipants(false));
+  }, [visible, caseId]);
+
   const reset = () => {
     setTitle(''); setType('MEETING'); setDescription('');
     setSelDate(new Date()); setStartH('09'); setStartM('00');
     setEndH('10'); setEndM('00'); setShowCal(false);
     setCaseId(null);
+    setSelectedParticipants(new Set());
+    setAvailableParticipants([]);
     setIsVideoCall(false); setVideoCallUrl('');
     setRecurrence('none'); setLimitType('count'); setRecCount('4');
     setUntilDate(new Date()); setShowUntilCal(false);
@@ -323,6 +340,7 @@ function AddEventModal({ visible, onClose, onCreated }) {
       recurrence,
     };
     if (caseId) payload.case_id = caseId;
+    if (selectedParticipants.size > 0) payload.participant_ids = [...selectedParticipants];
     if (isVideoCall) {
       payload.is_video_call = true;
       if (videoCallUrl.trim()) payload.video_call_url = videoCallUrl.trim();
@@ -485,6 +503,60 @@ function AddEventModal({ visible, onClose, onCreated }) {
                     );
                   })}
                 </View>
+              </>
+            )}
+
+            {/* ── Participants ─────────────────────────────────────────── */}
+            {(availableParticipants.length > 0 || loadingParticipants) && (
+              <>
+                <Text style={m.label}>
+                  Participants{caseId ? ' (case team + client)' : ' (firm members)'}
+                </Text>
+                {loadingParticipants ? (
+                  <ActivityIndicator color={C.primary} style={{ marginVertical: 8 }} />
+                ) : (
+                  <View style={m.participantList}>
+                    {availableParticipants.map(p => {
+                      const selected = selectedParticipants.has(p.user_id);
+                      const isClient = p.participant_type === 'CLIENT';
+                      const accentColor = isClient ? C.green600 : C.primary;
+                      const accentBg    = isClient ? C.green50  : C.blue50;
+                      return (
+                        <TouchableOpacity
+                          key={p.user_id}
+                          style={[m.participantRow, selected && { borderColor: accentColor, backgroundColor: accentBg }]}
+                          onPress={() => {
+                            setSelectedParticipants(prev => {
+                              const next = new Set(prev);
+                              next.has(p.user_id) ? next.delete(p.user_id) : next.add(p.user_id);
+                              return next;
+                            });
+                          }}
+                        >
+                          <View style={[m.participantAvatar, { backgroundColor: selected ? accentColor : C.gray200 }]}>
+                            <Text style={{ color: selected ? C.white : C.gray600, fontWeight: '700', fontSize: 13 }}>
+                              {(p.full_name || '?').charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <Text style={[m.participantName, selected && { color: accentColor }]}>{p.full_name || p.email}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                              <View style={[m.roleTag, { backgroundColor: isClient ? C.green100 : C.blue100 }]}>
+                                <Text style={{ fontSize: 10, fontWeight: '600', color: isClient ? C.green600 : C.primary }}>
+                                  {isClient ? 'Client' : (p.role === 'FIRM_ADMIN' ? 'Admin' : 'Lawyer')}
+                                </Text>
+                              </View>
+                              {p.email ? <Text style={[m.participantEmail]}>{p.email}</Text> : null}
+                            </View>
+                          </View>
+                          <View style={[m.checkbox, selected && { backgroundColor: accentColor, borderColor: accentColor }]}>
+                            {selected && <Icon lib="FA5" name="check" size={10} color={C.white} />}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
               </>
             )}
 
@@ -927,6 +999,14 @@ const m = StyleSheet.create({
   videoToggleSub:       { fontSize: 12, color: C.gray500, marginTop: 2 },
   videoUrlRow:          { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.gray200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: C.gray50, marginBottom: 4 },
   videoUrlInput:        { flex: 1, fontSize: 13, color: C.dark },
+  // Participants
+  participantList:   { gap: 8, marginBottom: 4 },
+  participantRow:    { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: C.gray200, borderRadius: 12, padding: 10, backgroundColor: C.white },
+  participantAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  participantName:   { fontSize: 13, fontWeight: '700', color: C.dark },
+  participantEmail:  { fontSize: 11, color: C.gray500, flexShrink: 1 },
+  roleTag:           { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
+  checkbox:          { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: C.gray300, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   // Recurrence
   recRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
   recBtn:          { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: C.gray200 },

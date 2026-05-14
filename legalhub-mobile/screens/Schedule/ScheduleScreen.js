@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  StyleSheet, SafeAreaView, StatusBar, Alert, ActivityIndicator,
+  StyleSheet, SafeAreaView, StatusBar, Alert, ActivityIndicator, Switch,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { calendarAPI, casesAPI } from '../../services/api';
@@ -138,6 +138,11 @@ export default function ScheduleScreen({ navigation }) {
   const [cases,        setCases]        = useState([]);
   const [loading,      setLoading]      = useState(false);
 
+  // Participants
+  const [availableParticipants, setAvailableParticipants] = useState([]);
+  const [selectedParticipants,  setSelectedParticipants]  = useState(new Set());
+  const [loadingParticipants,   setLoadingParticipants]   = useState(false);
+
   const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   // Generate a week starting from today
@@ -157,6 +162,16 @@ export default function ScheduleScreen({ navigation }) {
   useEffect(() => {
     casesAPI.list().then(data => setCases(data)).catch(() => {});
   }, []);
+
+  // Reload participants whenever the linked case changes
+  useEffect(() => {
+    setLoadingParticipants(true);
+    setSelectedParticipants(new Set());
+    calendarAPI.getAvailableParticipants(form.case_id || null)
+      .then(data => setAvailableParticipants(Array.isArray(data) ? data : []))
+      .catch(() => setAvailableParticipants([]))
+      .finally(() => setLoadingParticipants(false));
+  }, [form.case_id]);
 
   const buildPayload = () => {
     if (!form.title.trim()) throw new Error('Event title is required.');
@@ -199,6 +214,7 @@ export default function ScheduleScreen({ navigation }) {
     if (form.case_id)                                payload.case_id       = form.case_id;
     if (form.is_video_call && form.video_call_url.trim())
                                                      payload.video_call_url = form.video_call_url.trim();
+    if (selectedParticipants.size > 0)               payload.participant_ids = [...selectedParticipants];
 
     return payload;
   };
@@ -339,6 +355,61 @@ export default function ScheduleScreen({ navigation }) {
                   );
                 })}
               </View>
+            </>
+          )}
+
+          {/* Participants */}
+          {(availableParticipants.length > 0 || loadingParticipants) && (
+            <>
+              <Text style={[s.label, { marginTop: 14 }]}>
+                Participants{form.case_id ? ' (case team + client)' : ' (firm members)'}
+              </Text>
+              {loadingParticipants ? (
+                <ActivityIndicator color={COLORS.pink} style={{ marginVertical: 8 }} />
+              ) : (
+                <View style={s.participantList}>
+                  {availableParticipants.map(p => {
+                    const selected   = selectedParticipants.has(p.user_id);
+                    const isClient   = p.participant_type === 'CLIENT';
+                    const accent     = isClient ? '#16A34A' : COLORS.pink;
+                    const accentBg   = isClient ? '#F0FDF4'  : '#FDF2F8';
+                    const accentBg2  = isClient ? '#DCFCE7'  : '#FCE7F3';
+                    return (
+                      <TouchableOpacity
+                        key={p.user_id}
+                        style={[s.participantRow, selected && { borderColor: accent, backgroundColor: accentBg }]}
+                        onPress={() => {
+                          setSelectedParticipants(prev => {
+                            const next = new Set(prev);
+                            next.has(p.user_id) ? next.delete(p.user_id) : next.add(p.user_id);
+                            return next;
+                          });
+                        }}
+                      >
+                        <View style={[s.participantAvatar, { backgroundColor: selected ? accent : COLORS.gray200 }]}>
+                          <Text style={{ color: selected ? COLORS.white : COLORS.gray600, fontWeight: '700', fontSize: 13 }}>
+                            {(p.full_name || '?').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={[s.participantName, selected && { color: accent }]}>{p.full_name || p.email}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                            <View style={[s.roleTag, { backgroundColor: selected ? accentBg2 : COLORS.gray100 }]}>
+                              <Text style={{ fontSize: 10, fontWeight: '600', color: selected ? accent : COLORS.gray500 }}>
+                                {isClient ? 'Client' : (p.role === 'FIRM_ADMIN' ? 'Admin' : 'Lawyer')}
+                              </Text>
+                            </View>
+                            {p.email ? <Text style={s.participantEmail} numberOfLines={1}>{p.email}</Text> : null}
+                          </View>
+                        </View>
+                        <View style={[s.checkbox, selected && { backgroundColor: accent, borderColor: accent }]}>
+                          {selected && <FontAwesome5 name="check" size={10} color={COLORS.white} />}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </>
           )}
         </View>
@@ -622,6 +693,14 @@ const s = StyleSheet.create({
   countBtn:        { width: 36, height: 36, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.pink, alignItems: 'center', justifyContent: 'center' },
   countInput:      { width: 60, textAlign: 'center', fontSize: 20, fontWeight: '800', color: COLORS.dark, borderWidth: 1.5, borderColor: COLORS.gray200, borderRadius: 10, paddingVertical: 6 },
   countUnit:       { fontSize: 13, fontWeight: '600', color: COLORS.gray500 },
+  // Participants
+  participantList:   { gap: 8, marginTop: 4 },
+  participantRow:    { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: COLORS.gray200, borderRadius: 12, padding: 10, backgroundColor: COLORS.white },
+  participantAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  participantName:   { fontSize: 13, fontWeight: '700', color: COLORS.dark },
+  participantEmail:  { fontSize: 11, color: COLORS.gray500, flex: 1 },
+  roleTag:           { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
+  checkbox:          { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: COLORS.gray300, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   footer:          { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.gray100 },
   btnPrimary:      { flex: 1, flexDirection: 'row', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   btnPrimaryText:  { color: COLORS.white, fontWeight: '700', fontSize: 15 },
