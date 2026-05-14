@@ -113,6 +113,60 @@ def _generate_occurrences(
     return occurrences
 
 
+def _enrich_events(events: list, exclude_user_id: str | None = None) -> list:
+    """Attach case_title and participants list to each event."""
+    if not events:
+        return events
+
+    event_ids = [ev["id"] for ev in events]
+    case_ids  = list({ev["case_id"] for ev in events if ev.get("case_id")})
+
+    # Case info
+    case_map: dict = {}
+    if case_ids:
+        res = supabase.table("case_file").select("id, title, case_number").in_("id", case_ids).execute()
+        case_map = {c["id"]: c for c in (res.data or [])}
+
+    # Participants per event
+    parts_res = (
+        supabase.table("calendar_event_participant")
+        .select("event_id, user_id, participant_type")
+        .in_("event_id", event_ids)
+        .execute()
+    )
+    parts_by_event: dict = {}
+    all_user_ids: set = set()
+    for p in (parts_res.data or []):
+        parts_by_event.setdefault(p["event_id"], []).append(p)
+        all_user_ids.add(p["user_id"])
+
+    # User names
+    user_map: dict = {}
+    if all_user_ids:
+        users_res = (
+            supabase.table("app_user")
+            .select("id, full_name")
+            .in_("id", list(all_user_ids))
+            .execute()
+        )
+        user_map = {u["id"]: u.get("full_name") or "" for u in (users_res.data or [])}
+
+    for ev in events:
+        case = case_map.get(ev.get("case_id") or "")
+        ev["case_title"] = case.get("title", "") if case else None
+        ev["participants"] = [
+            {
+                "user_id":          p["user_id"],
+                "full_name":        user_map.get(p["user_id"], ""),
+                "participant_type": p["participant_type"],
+            }
+            for p in parts_by_event.get(ev["id"], [])
+            if p["user_id"] != exclude_user_id
+        ]
+
+    return events
+
+
 @router.get("/events")
 async def list_events(
     event_type: Optional[str] = None,
@@ -182,15 +236,17 @@ async def list_events(
                 ids_with_parts = {r["event_id"] for r in (parts_check.data or [])}
                 events_noparts = [ev for ev in case_events if ev["id"] not in ids_with_parts]
 
-        # Merge, deduplicate, sort
+        # Merge, deduplicate, sort — tag each event with is_participant
+        participated_id_set = set(participated_ids)
         seen = set()
         merged = []
         for ev in events_created + events_participated + events_noparts:
             if ev["id"] not in seen:
                 seen.add(ev["id"])
+                ev["is_participant"] = ev["id"] in participated_id_set
                 merged.append(ev)
         merged.sort(key=lambda x: x.get("start_datetime") or "")
-        return merged
+        return _enrich_events(merged, exclude_user_id=user_id)
 
     query = supabase.table("calendar_event").select("*").eq("firm_id", firm_id)
     if event_type:
@@ -199,7 +255,8 @@ async def list_events(
         query = query.eq("case_id", case_id)
     if from_date:
         query = query.gte("start_datetime", from_date)
-    return (query.order("start_datetime").execute()).data or []
+    events = (query.order("start_datetime").execute()).data or []
+    return _enrich_events(events, exclude_user_id=current_user["id"])
 
 
 @router.post("/events", status_code=201)
@@ -233,11 +290,13 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
         created = result.data
 
     # Insert participants for all created occurrences
-    if body.participant_ids and created:
+    # Always include the creator + any explicitly chosen participants (deduplicated)
+    if created:
+        all_participant_ids = list({current_user["id"], *(body.participant_ids or [])})
         participant_rows = [
             {"event_id": ev["id"], "user_id": uid, "participant_type": "TEAM_MEMBER"}
             for ev in created
-            for uid in body.participant_ids
+            for uid in all_participant_ids
         ]
         try:
             supabase.table("calendar_event_participant").insert(participant_rows).execute()

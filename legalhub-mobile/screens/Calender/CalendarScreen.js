@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar, Switch,
@@ -153,24 +154,50 @@ const EventCard = ({ ev, onDelete, showDate = false }) => {
                 {DAY_NAMES[d.getUTCDay()]} {d.getUTCDate()} {MONTH_NAMES[d.getUTCMonth()]}
               </Text>
             )}
-            <View style={[s.row, { marginBottom: 4, gap: 6, flexWrap: 'wrap' }]}>
-              <View style={[s.tag, { backgroundColor: meta.bg }]}>
-                <View style={s.row}>
-                  <Icon lib="FA5" name={meta.icon} size={10} color={meta.color} />
-                  <Text style={[s.tagText, { color: meta.color, marginLeft: 4 }]}>{meta.label}</Text>
-                </View>
-              </View>
-              {ev.is_video_call && (
-                <View style={[s.tag, { backgroundColor: C.green50 }]}>
+            <View style={[s.row, { marginBottom: 4, gap: 6, flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+              <View style={s.row}>
+                <View style={[s.tag, { backgroundColor: meta.bg, marginRight: 6 }]}>
                   <View style={s.row}>
-                    <Icon lib="FA5" name="video" size={10} color={C.green600} />
-                    <Text style={[s.tagText, { color: C.green600, marginLeft: 4 }]}>Video</Text>
+                    <Icon lib="FA5" name={meta.icon} size={10} color={meta.color} />
+                    <Text style={[s.tagText, { color: meta.color, marginLeft: 4 }]}>{meta.label}</Text>
+                  </View>
+                </View>
+                {ev.is_video_call && (
+                  <View style={[s.tag, { backgroundColor: C.green50 }]}>
+                    <View style={s.row}>
+                      <Icon lib="FA5" name="video" size={10} color={C.green600} />
+                      <Text style={[s.tagText, { color: C.green600, marginLeft: 4 }]}>Video</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+              {ev.is_participant && (
+                <View style={[s.tag, { backgroundColor: C.indigo100 }]}>
+                  <View style={s.row}>
+                    <Icon lib="FA5" name="user-check" size={10} color={C.indigo600} />
+                    <Text style={[s.tagText, { color: C.indigo600, marginLeft: 4 }]}>Participant</Text>
                   </View>
                 </View>
               )}
             </View>
             <Text style={s.cardTitle}>{ev.title}</Text>
             {ev.description ? <Text style={[s.xs, { marginTop: 2 }]}>{ev.description}</Text> : null}
+            {ev.case_title ? (
+              <View style={[s.row, { marginTop: 5, gap: 5 }]}>
+                <Icon lib="FA5" name="folder-open" size={10} color={C.indigo600} />
+                <Text style={[s.xs, { color: C.indigo600, fontWeight: '600' }]} numberOfLines={1}>
+                  {ev.case_title}
+                </Text>
+              </View>
+            ) : null}
+            {ev.participants && ev.participants.length > 0 ? (
+              <View style={[s.row, { marginTop: 5, gap: 4, flexWrap: 'wrap' }]}>
+                <Icon lib="FA5" name="users" size={10} color={C.gray500} />
+                <Text style={[s.xs, { color: C.gray600, flexShrink: 1 }]} numberOfLines={1}>
+                  {ev.participants.map(p => p.full_name).filter(Boolean).join(', ')}
+                </Text>
+              </View>
+            ) : null}
           </View>
           <TouchableOpacity onPress={() => onDelete(ev.id)}>
             <Icon lib="FA5" name="trash-alt" size={14} color={C.gray400} />
@@ -656,6 +683,8 @@ export default function CalendarScreen({ navigation }) {
   const [events, setEvents]     = useState([]);
   const [loading, setLoading]   = useState(true);
 
+  const intervalRef = useRef(null);
+
   // Load events
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -669,7 +698,16 @@ export default function CalendarScreen({ navigation }) {
     }
   }, []);
 
-  useEffect(() => { loadEvents(); }, [loadEvents]);
+  // Refresh on focus + polling every 60 s while screen is active
+  useFocusEffect(
+    useCallback(() => {
+      loadEvents();
+      intervalRef.current = setInterval(loadEvents, 60000);
+      return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      };
+    }, [loadEvents])
+  );
 
   // Load saved reminder prefs
   useEffect(() => {
