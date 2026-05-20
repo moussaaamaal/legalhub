@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/calendar/sync/google/callback"
 
+    # ─── Milvus / RAG ─────────────────────────────────
+    MILVUS_HOST: str = "localhost"
+    MILVUS_PORT: int = 19530
+    MILVUS_COLLECTION_NAME: str = "legalhub_case_chunks"
+    EMBEDDING_MODEL: str = "mistral-embed"
+    EMBEDDING_DIMENSION: int = 1024
+    RAG_CHAT_MODEL: str = "mistral-small-latest"
+    RAG_CHUNK_SIZE: int = 800
+    RAG_CHUNK_OVERLAP: int = 150
+    RAG_TOP_K: int = 10
+
     # ─── App ──────────────────────────────────────────
     APP_NAME: str = "LegalHub"
     DEBUG: bool = True

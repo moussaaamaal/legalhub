@@ -78,7 +78,14 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 class NotificationPreferencesRequest(BaseModel):
-    push_notifications: bool | None = None
+    hearing_reminders: bool | None = None
+    hearing_reminder_offset: str | None = None
+    task_reminders: bool | None = None
+    document_updates: bool | None = None
+    client_messages: bool | None = None
+    payment_notifications: bool | None = None
+    email_notifications: bool | None = None
+    whatsapp_updates: bool | None = None
 
 class OAuthLoginRequest(BaseModel):
     provider: str       # "google" | "microsoft" | "apple"
@@ -472,6 +479,22 @@ async def update_me(body: UpdateMeRequest, current_user=Depends(get_current_user
         "two_fa_enabled": updated["two_fa_enabled"],
     }
 
+# ─── DELETE /api/auth/me ───────────────────────────────
+
+@router.delete("/me", status_code=200)
+async def delete_account(current_user=Depends(get_current_user)):
+    """Permanently deactivate and anonymise the current user's account."""
+    user_id = current_user["id"]
+    supabase.table("app_user").update({
+        "is_active": False,
+        "full_name": "Deleted User",
+        "email": f"deleted_{user_id}@legalhub.invalid",
+        "phone": None,
+        "avatar_url": None,
+        "password_hash": "",
+    }).eq("id", user_id).execute()
+    return {"detail": "Account deleted"}
+
 # ─── PUT /api/auth/change-password ─────────────────────
 
 @router.put("/change-password")
@@ -533,7 +556,6 @@ async def get_login_history(current_user=Depends(get_current_user)):
             .select("id, logged_in_at")
             .eq("user_id", current_user["id"])
             .order("logged_in_at", desc=True)
-            .limit(10)
             .execute()
         )
         return result.data or []
@@ -557,7 +579,6 @@ async def get_login_history(current_user=Depends(get_current_user)):
 # );
 
 NOTIF_DEFAULTS = {
-    "push_notifications": True,
     "hearing_reminders": True,
     "hearing_reminder_offset": "1 hour before",
     "task_reminders": True,

@@ -28,11 +28,12 @@ const STATUS_META = {
 };
 
 const FILTER_TABS = [
-  { label: 'All',      key: 'ALL'      },
-  { label: 'Pending',  key: 'PENDING'  },
-  { label: 'Overdue',  key: 'OVERDUE'  },
-  { label: 'Paid',     key: 'PAID'     },
-  { label: 'Draft',    key: 'DRAFT'    },
+  { label: 'All',      key: 'ALL'       },
+  { label: 'Pending',  key: 'PENDING'   },
+  { label: 'Overdue',  key: 'OVERDUE'   },
+  { label: 'Paid',     key: 'PAID'      },
+  { label: 'Draft',    key: 'DRAFT'     },
+  { label: 'Canceled', key: 'CANCELLED' },
 ];
 
 function getInitials(name) {
@@ -66,7 +67,7 @@ function getDaysOverdue(dueDateStr) {
   return Math.max(0, Math.round((today - due) / 86400000));
 }
 
-function InvoiceCard({ inv, onRemind, onSend, onViewDetails }) {
+function InvoiceCard({ inv, onRemind, onSend, onCancel, onViewDetails }) {
   const status  = (inv.status || 'DRAFT').toUpperCase();
   const meta    = STATUS_META[status] || STATUS_META.DRAFT;
   const client  = inv.client;
@@ -196,6 +197,15 @@ function InvoiceCard({ inv, onRemind, onSend, onViewDetails }) {
             }
           </TouchableOpacity>
         )}
+        {status === 'DRAFT' && (
+          <TouchableOpacity
+            style={[s.iconBtn, { backgroundColor: C.red50 }]}
+            onPress={() => onCancel?.(inv.id)}
+            disabled={sending}
+          >
+            <FontAwesome5 name="ban" size={14} color={C.red600} />
+          </TouchableOpacity>
+        )}
         {(status === 'PENDING' || status === 'PAID') && (
           <TouchableOpacity
             style={[s.btnMain, { backgroundColor: C.primary, flex: 1 }]}
@@ -310,6 +320,28 @@ export default function InvoicesManagementScreen({ navigation }) {
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to send invoice');
     }
+  }, []);
+
+  const handleCancel = useCallback((id) => {
+    Alert.alert(
+      'Cancel Invoice',
+      'Are you sure you want to cancel this draft invoice? This action cannot be undone.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Cancel Invoice',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await billingAPI.cancelInvoice(id);
+              setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'CANCELLED' } : inv));
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Failed to cancel invoice');
+            }
+          },
+        },
+      ],
+    );
   }, []);
 
   const tabKey = FILTER_TABS[activeFilter].key;
@@ -547,6 +579,7 @@ export default function InvoicesManagementScreen({ navigation }) {
                 inv={inv}
                 onRemind={handleRemind}
                 onSend={handleSend}
+                onCancel={handleCancel}
                 onViewDetails={(i) => navigation?.navigate?.('InvoiceDetails', { invoice: i })}
               />
             ))

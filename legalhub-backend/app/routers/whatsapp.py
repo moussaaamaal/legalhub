@@ -228,7 +228,7 @@ async def send_invoice_whatsapp(body: SendInvoiceNotifRequest, current_user=Depe
         "type": "template",
         "template": {
             "name":     "legalhub_invoice",
-            "language": {"code": "en_US"},
+            "language": {"code": "en"},
             "components": [{
                 "type": "body",
                 "parameters": [
@@ -244,14 +244,21 @@ async def send_invoice_whatsapp(body: SendInvoiceNotifRequest, current_user=Depe
     }
 
     resp = _req.post(url, json=custom_payload, headers=headers, timeout=15)
-    _log.info(f"[send_invoice_notif] legalhub_invoice template → {resp.status_code}: {resp.text}")
+    resp_data = resp.json()
+    _log.info(f"[send_invoice_notif] legalhub_invoice → {resp.status_code}: {resp.text}")
 
-    if resp.ok and "error" not in resp.json():
+    if resp.ok and "error" not in resp_data:
         _log.info(f"[send_invoice_notif] ✅ Custom template sent to {phone}")
         return {"message": f"Invoice notification sent to {phone}", "template": "invoice_notification"}
 
-    # Repli hello_world si template non encore approuvé
-    _log.warning(f"[send_invoice_notif] legalhub_invoice not available, falling back to hello_world")
+    # Log exact Meta error so we can diagnose
+    meta_error = resp_data.get("error", {})
+    _log.warning(
+        f"[send_invoice_notif] legalhub_invoice failed — "
+        f"status={resp.status_code} code={meta_error.get('code')} "
+        f"subcode={meta_error.get('error_subcode')} msg={meta_error.get('message')} "
+        f"payload_sent={custom_payload['template']}"
+    )
     _send_whatsapp_template(phone, template_name="hello_world", lang="en_US")
 
     # Texte détaillé si fenêtre 24h ouverte

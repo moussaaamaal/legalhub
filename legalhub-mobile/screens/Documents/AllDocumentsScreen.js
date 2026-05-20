@@ -8,6 +8,7 @@ import {
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { documentsAPI, casesAPI } from '../../services/api';
+import MarkdownText from '../../components/MarkdownText';
 
 const C = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B', white: '#FFFFFF',
@@ -642,16 +643,56 @@ export default function AllDocumentsScreen({ navigation }) {
 }
 
 function DocCard({ doc, onView }) {
+  const [summarizing,  setSummarizing]  = useState(false);
+  const [summaryModal, setSummaryModal] = useState(null);
+
   const fs        = getFileStyle(doc.file_type);
   const caseName  = doc.case_file?.title || doc.case_file?.case_number || null;
-  const category  = CATEGORY_LABEL[doc.category] || doc.category || null;
   const size      = doc.file_size_mb ? `${Number(doc.file_size_mb).toFixed(1)} MB` : null;
   const dateLabel = doc.created_at
     ? new Date(doc.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : null;
 
+  const handleSummarize = async () => {
+    setSummarizing(true);
+    try {
+      const result = await documentsAPI.summarize(doc.id);
+      setSummaryModal({ docName: doc.file_name, summary: result.summary });
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not generate summary.');
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
   return (
     <View style={s.card}>
+      {/* Summary Modal */}
+      <Modal visible={!!summaryModal} transparent animationType="slide" onRequestClose={() => setSummaryModal(null)}>
+        <View style={s.modalOverlay}>
+          <View style={s.summarySheet}>
+            <View style={s.summaryHandle} />
+            <View style={s.summaryHeader}>
+              <View style={s.summaryIconWrap}>
+                <FontAwesome5 name="robot" size={18} color="#6366F1" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.summaryTitle}>AI Summary</Text>
+                {summaryModal?.docName ? (
+                  <Text style={s.summaryDocName} numberOfLines={1}>{summaryModal.docName}</Text>
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={() => setSummaryModal(null)} style={{ padding: 4 }}>
+                <FontAwesome5 name="times" size={16} color={C.g400} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <MarkdownText text={summaryModal?.summary || ''} style={s.summaryBody} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Top */}
       <View style={s.cardTop}>
         <View style={[s.docIconWrap, { backgroundColor: fs.bg }]}>
@@ -679,10 +720,25 @@ function DocCard({ doc, onView }) {
           <FontAwesome5 name={fs.icon} size={9} color={fs.color} />
           <Text style={[s.typePillTxt, { color: fs.color }]}>{(doc.file_type || 'File').toUpperCase()}</Text>
         </View>
-        <TouchableOpacity style={s.viewBtn} onPress={onView} activeOpacity={0.7}>
-          <FontAwesome5 name="eye" size={11} color={C.purple600} />
-          <Text style={s.viewBtnTxt}>View</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity style={s.viewBtn} onPress={onView} activeOpacity={0.7}>
+            <FontAwesome5 name="eye" size={11} color={C.purple600} />
+            <Text style={s.viewBtnTxt}>View</Text>
+          </TouchableOpacity>
+          {(doc.file_type || '').toUpperCase() !== 'IMAGE' && (
+            <TouchableOpacity
+              style={[s.summarizeBtn, summarizing && { opacity: 0.6 }]}
+              onPress={handleSummarize}
+              disabled={summarizing}
+              activeOpacity={0.7}
+            >
+              {summarizing
+                ? <ActivityIndicator size={11} color="#6366F1" />
+                : <FontAwesome5 name="robot" size={11} color="#6366F1" />}
+              <Text style={s.summarizeBtnTxt}>{summarizing ? '…' : 'Summarize'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -731,6 +787,15 @@ const s = StyleSheet.create({
   typePillTxt:       { fontSize: 10, fontWeight: '700' },
   viewBtn:           { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.purple50, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   viewBtnTxt:        { fontSize: 12, fontWeight: '700', color: C.purple600 },
+  summarizeBtn:      { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#EEF2FF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  summarizeBtnTxt:   { fontSize: 12, fontWeight: '700', color: '#6366F1' },
+  summarySheet:      { backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: '85%' },
+  summaryHandle:     { width: 40, height: 4, backgroundColor: C.g200, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  summaryHeader:     { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  summaryIconWrap:   { width: 44, height: 44, borderRadius: 14, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center' },
+  summaryTitle:      { fontSize: 16, fontWeight: '800', color: C.dark },
+  summaryDocName:    { fontSize: 11, color: C.g500, marginTop: 2 },
+  summaryBody:       { fontSize: 13, color: C.dark, lineHeight: 21, paddingBottom: 24 },
   fab:               { position: 'absolute', bottom: 28, right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', shadowColor: C.primary, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
   fabRequest:        { position: 'absolute', bottom: 92, right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: C.amber600, alignItems: 'center', justifyContent: 'center', shadowColor: C.amber600, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
   reqSection:        { backgroundColor: C.amber50, borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: C.amber100 },

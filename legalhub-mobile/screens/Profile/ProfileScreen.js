@@ -53,7 +53,6 @@ const SECURITY_ITEMS = [
 
 // Valeurs par défaut utilisées si la table n'existe pas encore
 const NOTIF_DEFAULTS = {
-  push_notifications:    true,
   hearing_reminders:     true,
   hearing_reminder_offset: '1 hour before',
   task_reminders:        true,
@@ -66,7 +65,6 @@ const NOTIF_DEFAULTS = {
 
 // pref key par item de notification
 const NOTIF_PREF_KEY = {
-  'Push Notifications':   'push_notifications',
   'Hearing Reminders':    'hearing_reminders',
   'Task Reminders':       'task_reminders',
   'Document Updates':     'document_updates',
@@ -77,8 +75,7 @@ const NOTIF_PREF_KEY = {
 };
 
 const NOTIF_ITEMS = [
-  { iconLib: 'FA5', iconName: 'bell',        iconColor: C.red600,    iconBg: C.red100,    title: 'Push Notifications',  sub: 'Receive app notifications',     toggleOn: true,  toggleColor: C.primary },
-  { iconLib: 'FA5', iconName: 'gavel',       iconColor: C.amber600,  iconBg: C.amber100,  title: 'Hearing Reminders',   sub: 'Get notified before hearings',  toggleOn: true,  toggleColor: C.primary, radioGroup: 'hearing', radioOptions: ['1 hour before', '2 hours before', '1 day before'], radioDefault: 0 },
+  { iconLib: 'FA5', iconName: 'gavel',       iconColor: C.amber600,  iconBg: C.amber100,  title: 'Hearing Reminders',   sub: 'Get notified before hearings',  toggleOn: true,  toggleColor: C.primary, radioGroup: 'hearing', radioOptions: ['1 hour before', '2 hours before', '1 day before'] },
   { iconLib: 'FA5', iconName: 'tasks',       iconColor: C.primary,   iconBg: C.blue100,   title: 'Task Reminders',      sub: 'Deadline notifications',        toggleOn: true,  toggleColor: C.primary },
   { iconLib: 'FA5', iconName: 'file-alt',    iconColor: C.green600,  iconBg: C.green100,  title: 'Document Updates',    sub: 'New document notifications',    toggleOn: true,  toggleColor: C.primary },
   { iconLib: 'FA5', iconName: 'comment',     iconColor: C.purple600, iconBg: C.purple100, title: 'Client Messages',     sub: 'New message alerts',            toggleOn: true,  toggleColor: C.primary },
@@ -103,21 +100,18 @@ const SectionHeader = ({ title, action, onAction, titleColor }) => (
 );
 
 
-const RadioGroup = ({ options, defaultIndex }) => {
-  const [selected, setSelected] = useState(defaultIndex);
-  return (
-    <View style={{ paddingLeft: 52, marginTop: 6 }}>
-      {options.map((opt, i) => (
-        <TouchableOpacity key={i} style={[s.row, { marginBottom: 8 }]} onPress={() => setSelected(i)}>
-          <View style={[s.radioOuter, selected === i && { borderColor: C.primary }]}>
-            {selected === i && <View style={s.radioInner} />}
-          </View>
-          <Text style={[s.sm, { marginLeft: 8 }]}>{opt}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-};
+const RadioGroup = ({ options, value, onChange }) => (
+  <View style={{ paddingLeft: 52, marginTop: 6 }}>
+    {options.map((opt, i) => (
+      <TouchableOpacity key={i} style={[s.row, { marginBottom: 8 }]} onPress={() => onChange(opt)}>
+        <View style={[s.radioOuter, value === opt && { borderColor: C.primary }]}>
+          {value === opt && <View style={s.radioInner} />}
+        </View>
+        <Text style={[s.sm, { marginLeft: 8 }]}>{opt}</Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+);
 
 const ChevronRow = ({ item }) => (
   <View style={s.card}>
@@ -466,6 +460,27 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account and all associated data. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            try {
+              await authAPI.deleteAccount();
+              await signOut();
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Could not delete account. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const personalFields = [
     { label: 'Full Name',     iconLib: 'FA5', iconName: 'user',     iconColor: C.primary,   iconBg: C.blue100,   value: editing ? editName  : fullName, editable: editing, onEdit: setEditName,  keyboardType: 'default'       },
     { label: 'Email Address', iconLib: 'FA5', iconName: 'envelope', iconColor: C.purple600, iconBg: C.purple100, value: email,                           editable: false,                          keyboardType: 'email-address' },
@@ -758,50 +773,16 @@ export default function ProfileScreen({ navigation }) {
                   />
                 </View>
                 {item.radioGroup && isOn && (
-                  <RadioGroup options={item.radioOptions} defaultIndex={item.radioDefault} />
+                  <RadioGroup
+                    options={item.radioOptions}
+                    value={notifPrefs.hearing_reminder_offset || '1 hour before'}
+                    onChange={val => handleNotifToggle('hearing_reminder_offset', val)}
+                  />
                 )}
               </View>
             );
           })}
           {!notifPrefs && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
-        </View>
-
-        {/* ── ABOUT ── */}
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { marginBottom: 14 }]}>About</Text>
-          <View style={s.aboutCard}>
-            <View style={s.appIconWrap}>
-              <Icon lib="FA5" name="gavel" size={32} color={C.white} />
-            </View>
-            <Text style={s.appName}>LegalHub</Text>
-            <Text style={[s.xs, { marginBottom: 16 }]}>Your Intelligent Legal Companion</Text>
-            <View style={[s.row, { marginBottom: 16, gap: 24 }]}>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={s.xs}>Version</Text>
-                <Text style={s.smBold}>2.4.1</Text>
-              </View>
-              <View style={{ width: 1, height: 32, backgroundColor: C.gray200 }} />
-              <View style={{ alignItems: 'center' }}>
-                <Text style={s.xs}>Build</Text>
-                <Text style={s.smBold}>20240315</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={s.updateBtn}>
-              <Text style={[s.smBold, { color: C.primary }]}>Check for Updates</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Social links */}
-          <View style={{ marginTop: 20, alignItems: 'center' }}>
-            <Text style={[s.xs, { marginBottom: 12 }]}>Follow us on social media</Text>
-            <View style={[s.row, { gap: 14 }]}>
-              {SOCIAL_LINKS.map((sl, i) => (
-                <TouchableOpacity key={i} style={[s.socialBtn, { backgroundColor: sl.bg }]}>
-                  <Icon lib={sl.lib} name={sl.name} size={18} color={sl.color} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
         </View>
 
         {/* ── DANGER ZONE ── */}
@@ -833,7 +814,7 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={s.xs}>Permanently remove your account</Text>
               </View>
             </View>
-            <TouchableOpacity style={s.deleteBtn}>
+            <TouchableOpacity style={s.deleteBtn} onPress={handleDeleteAccount}>
               <Text style={[s.smBold, { color: C.white }]}>Delete My Account</Text>
             </TouchableOpacity>
             <Text style={[s.xs, { color: C.red500, textAlign: 'center', marginTop: 8 }]}>

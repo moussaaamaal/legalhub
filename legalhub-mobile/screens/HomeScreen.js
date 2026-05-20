@@ -2,14 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   Image, StyleSheet, SafeAreaView, StatusBar, Dimensions,
-  Linking, Alert, ActivityIndicator, RefreshControl,
+  Linking, Alert, ActivityIndicator, RefreshControl, Modal,
 } from 'react-native';
 import { FontAwesome5, Ionicons, MaterialIcons, Feather, FontAwesome } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppPrefs } from '../context/AppPrefsContext';
+import MarkdownText from '../components/MarkdownText';
 import {
   dashboardAPI, notificationsAPI,
-  tasksAPI, documentsAPI, clientsAPI, casesAPI,
+  tasksAPI, documentsAPI, casesAPI,
 } from '../services/api';
 
 import AddCaseScreen              from './Cases/AddCaseScreen';
@@ -429,13 +430,56 @@ const TaskCard = ({ item, onDone }) => (
 );
 
 const DocumentCard = ({ item }) => {
+  const [summarizing,  setSummarizing]  = React.useState(false);
+  const [summaryModal, setSummaryModal] = React.useState(null);
+
   if (!item.action) return null;
+
   const handleView = () => {
     if (!item.fileUrl) { Alert.alert('Unavailable', 'No file URL for this document.'); return; }
     Linking.openURL(item.fileUrl).catch(() => Alert.alert('Error', 'Could not open the document.'));
   };
+
+  const handleSummarize = async () => {
+    setSummarizing(true);
+    try {
+      const result = await documentsAPI.summarize(item.id);
+      setSummaryModal({ docName: item.name, summary: result.summary });
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not generate summary.');
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
   return (
     <View style={styles.card}>
+      {/* Summary Modal */}
+      <Modal visible={!!summaryModal} transparent animationType="slide" onRequestClose={() => setSummaryModal(null)}>
+        <View style={dcs.modalOverlay}>
+          <View style={dcs.summarySheet}>
+            <View style={dcs.summaryHandle} />
+            <View style={dcs.summaryHeader}>
+              <View style={dcs.summaryIconWrap}>
+                <Icon lib="FA5" name="robot" size={18} color="#6366F1" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={dcs.summaryTitle}>AI Summary</Text>
+                {summaryModal?.docName ? (
+                  <Text style={dcs.summaryDocName} numberOfLines={1}>{summaryModal.docName}</Text>
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={() => setSummaryModal(null)} style={{ padding: 4 }}>
+                <Icon lib="FA5" name="times" size={16} color={COLORS.gray400} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <MarkdownText text={summaryModal?.summary || ''} style={dcs.summaryBody} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.row}>
         <View style={[styles.docIcon, { backgroundColor: item.iconBg }]}>
           <Icon lib={item.iconLib} name={item.iconName} size={22} color={item.iconColor} />
@@ -447,16 +491,35 @@ const DocumentCard = ({ item }) => {
             {item.size ? <Text style={styles.gray500Sm}>{item.size}</Text> : null}
             {item.size && item.date ? <Text style={[styles.gray500Sm, { marginHorizontal: 6 }]}>•</Text> : null}
             {item.date ? <Text style={styles.gray500Sm}>{item.date}</Text> : null}
-            <TouchableOpacity
-              style={[styles.tagBtn, { backgroundColor: item.action.bg, marginLeft: 'auto' }]}
-              onPress={handleView}
-              activeOpacity={0.7}
-            >
-              <View style={styles.row}>
-                <Icon lib={item.action.iconLib} name={item.action.iconName} size={11} color={item.action.color} />
-                <Text style={[styles.tagText, { color: item.action.color, marginLeft: 4 }]}>{item.action.label}</Text>
-              </View>
-            </TouchableOpacity>
+            <View style={[styles.row, { marginLeft: 'auto', gap: 6 }]}>
+              {!item.isImage && (
+                <TouchableOpacity
+                  style={[styles.tagBtn, { backgroundColor: '#EEF2FF' }, summarizing && { opacity: 0.6 }]}
+                  onPress={handleSummarize}
+                  disabled={summarizing}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.row}>
+                    {summarizing
+                      ? <ActivityIndicator size={11} color="#6366F1" />
+                      : <Icon lib="FA5" name="robot" size={11} color="#6366F1" />}
+                    <Text style={[styles.tagText, { color: '#6366F1', marginLeft: 4 }]}>
+                      {summarizing ? '…' : 'Summarize'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.tagBtn, { backgroundColor: item.action.bg }]}
+                onPress={handleView}
+                activeOpacity={0.7}
+              >
+                <View style={styles.row}>
+                  <Icon lib={item.action.iconLib} name={item.action.iconName} size={11} color={item.action.color} />
+                  <Text style={[styles.tagText, { color: item.action.color, marginLeft: 4 }]}>{item.action.label}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
@@ -488,18 +551,18 @@ export default function HomeScreen() {
   // ── Chargement dashboard ─────────────────────────────────────────────────
   const loadDashboard = useCallback(async () => {
     setError(null);
-    const [sRes, tRes, rRes, nRes, taskRes, docRes, cliRes] = await Promise.allSettled([
+    const [sRes, tRes, rRes, nRes, taskRes, docRes] = await Promise.allSettled([
       dashboardAPI.stats(),
       dashboardAPI.today(),
       dashboardAPI.recentCases(),
-      notificationsAPI.list(),
-      tasksAPI.list(),
-      documentsAPI.list(),
-      clientsAPI.list(),
+      notificationsAPI.unreadCount(),
+      tasksAPI.list({ status: 'PENDING', limit: 5 }),
+      documentsAPI.list({ limit: 5 }),
     ]);
 
     if (sRes.status === 'fulfilled') {
       setStats(sRes.value);
+      if (sRes.value?.client_count != null) setClientCount(sRes.value.client_count);
     } else {
       console.warn('Stats failed:', sRes.reason?.message);
       setError('Could not load dashboard stats');
@@ -509,21 +572,15 @@ export default function HomeScreen() {
     if (rRes.status === 'fulfilled') setRecentCases(rRes.value || []);
 
     if (nRes.status === 'fulfilled') {
-      const unread = (nRes.value || []).filter(n => !n.is_read).length;
-      setNotifCount(unread);
+      setNotifCount(nRes.value?.count ?? 0);
     }
 
     if (taskRes.status === 'fulfilled') {
-      const pending = (taskRes.value || []).filter(t => ['PENDING', 'IN_PROGRESS'].includes(t.status));
-      setPendingTasks(pending.slice(0, 5));
+      setPendingTasks(taskRes.value || []);
     }
 
     if (docRes.status === 'fulfilled') {
-      setRecentDocs((docRes.value || []).slice(0, 5));
-    }
-
-    if (cliRes.status === 'fulfilled') {
-      setClientCount((cliRes.value || []).length);
+      setRecentDocs(docRes.value || []);
     }
   }, []);
 
@@ -751,8 +808,10 @@ export default function HomeScreen() {
   });
 
   // ── Conversion documents ──────────────────────────────────────────────────
+  const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
   const docsDisplay = recentDocs.map((doc) => {
     const { iconName, iconColor, iconBg } = getDocIconStyle(doc.file_type);
+    const ext = (doc.file_name || '').split('.').pop().toLowerCase();
     return {
       id:      doc.id,
       iconLib: 'FA5',
@@ -762,6 +821,7 @@ export default function HomeScreen() {
       size:    doc.file_size_mb ? `${Number(doc.file_size_mb).toFixed(1)} MB` : '',
       date:    formatRelativeDate(doc.created_at),
       fileUrl: doc.storage_url || null,
+      isImage: IMAGE_EXTS.has(ext),
       action:  { iconLib: 'FA5', iconName: 'eye', label: 'View', color: COLORS.purple600, bg: COLORS.purple50 },
     };
   });
@@ -1057,6 +1117,18 @@ const cc = StyleSheet.create({
   statusChip:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   statusText:    { fontSize: 11, fontWeight: '700' },
   updatedText:   { fontSize: 11, color: COLORS.gray400 },
+});
+
+// ─── STYLES DOCUMENT SUMMARY MODAL ──────────────────────────────────────────
+const dcs = StyleSheet.create({
+  modalOverlay:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  summarySheet:  { backgroundColor: COLORS.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: '85%' },
+  summaryHandle: { width: 40, height: 4, backgroundColor: COLORS.gray200, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  summaryHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  summaryIconWrap:{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center' },
+  summaryTitle:  { fontSize: 16, fontWeight: '800', color: COLORS.dark },
+  summaryDocName:{ fontSize: 11, color: COLORS.gray500, marginTop: 2 },
+  summaryBody:   { fontSize: 13, color: COLORS.dark, lineHeight: 21, paddingBottom: 24 },
 });
 
 // ─── STYLES PRINCIPAUX ────────────────────────────────────────────────────────

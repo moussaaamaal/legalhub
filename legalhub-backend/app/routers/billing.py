@@ -1,7 +1,8 @@
 import io
 import logging
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from app.services.case_ingestion import ingest_case
 from fastapi.responses import StreamingResponse
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
@@ -302,7 +303,7 @@ async def list_invoices(
 # ─── POST /api/invoices ─────────────────────────────────
 
 @router.post("", status_code=201)
-async def create_invoice(body: CreateInvoiceRequest, current_user=Depends(get_lawyer)):
+async def create_invoice(body: CreateInvoiceRequest, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
     subtotal   = sum(item.quantity * item.unit_price for item in body.items)
     tax_amount = subtotal * (body.tax_rate / 100)
     total      = subtotal + tax_amount
@@ -345,6 +346,14 @@ async def create_invoice(body: CreateInvoiceRequest, current_user=Depends(get_la
         "message": f"{invoice_number} — {body.currency} {total:,.2f} due {body.due_date}.",
     }).execute()
 
+    if body.case_id:
+        background_tasks.add_task(ingest_case, body.case_id, current_user["firm_id"])
+        supabase.table("case_timeline").insert({
+            "case_id":      body.case_id,
+            "firm_id":      current_user["firm_id"],
+            "action":       f"Invoice created: {invoice_number} — {body.currency} {total:,.2f} due {body.due_date}",
+            "performed_by": current_user["id"],
+        }).execute()
     return invoice.data[0]
 
 # ─── GET /api/invoices/:id ──────────────────────────────
@@ -366,11 +375,11 @@ async def get_invoice(invoice_id: str, current_user=Depends(get_current_user)):
 # ─── PUT /api/invoices/:id ──────────────────────────────
 
 @router.put("/{invoice_id}")
-async def update_invoice(invoice_id: str, body: UpdateInvoiceRequest, current_user=Depends(get_lawyer)):
+async def update_invoice(invoice_id: str, body: UpdateInvoiceRequest, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
     # Fetch current invoice to verify ownership
     existing = (
         supabase.table("invoice")
-        .select("id, status")
+        .select("id, status, case_id")
         .eq("id", invoice_id)
         .eq("firm_id", current_user["firm_id"])
         .single()
@@ -411,6 +420,7 @@ async def update_invoice(invoice_id: str, body: UpdateInvoiceRequest, current_us
     if body.due_date is not None:
         update_data["due_date"] = body.due_date.isoformat()
 
+    case_id = existing.data.get("case_id") or (update_data.get("case_id") if update_data else None)
     if update_data:
         result = (
             supabase.table("invoice")
@@ -418,6 +428,8 @@ async def update_invoice(invoice_id: str, body: UpdateInvoiceRequest, current_us
             .eq("id", invoice_id)
             .execute()
         )
+        if case_id:
+            background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
         return result.data[0]
 
     return existing.data
@@ -428,7 +440,7 @@ async def update_invoice(invoice_id: str, body: UpdateInvoiceRequest, current_us
 async def delete_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
     existing = (
         supabase.table("invoice")
-        .select("id, status")
+        .select("id, status, invoice_number, case_id, total_amount, currency")
         .eq("id", invoice_id)
         .eq("firm_id", current_user["firm_id"])
         .single()
@@ -438,8 +450,16 @@ async def delete_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
         raise HTTPException(status_code=404, detail="Invoice not found")
     if existing.data["status"] == "PAID":
         raise HTTPException(status_code=400, detail="Cannot delete a paid invoice")
+    inv = existing.data
     supabase.table("invoice_item").delete().eq("invoice_id", invoice_id).execute()
     supabase.table("invoice").delete().eq("id", invoice_id).execute()
+    if inv.get("case_id"):
+        supabase.table("case_timeline").insert({
+            "case_id":      inv["case_id"],
+            "firm_id":      current_user["firm_id"],
+            "action":       f"Invoice deleted: {inv.get('invoice_number', invoice_id)} ({inv.get('currency', '')} {float(inv.get('total_amount', 0)):,.2f})",
+            "performed_by": current_user["id"],
+        }).execute()
     return {"message": "Invoice deleted"}
 
 # ─── POST /api/invoices/:id/send ────────────────────────
@@ -532,7 +552,34 @@ async def send_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
         except Exception as e:
             _log.error(f"[send_invoice] ❌ Client notification failed: {e}")
 
+    if inv.get("case_id"):
+        supabase.table("case_timeline").insert({
+            "case_id":      inv["case_id"],
+            "firm_id":      current_user["firm_id"],
+            "action":       f"Invoice sent: {inv['invoice_number']} to {client_name} — {inv.get('currency', 'USD')} {float(inv.get('total_amount', 0)):,.2f} due {inv.get('due_date', '')}",
+            "performed_by": current_user["id"],
+        }).execute()
+
     return {"message": f"Invoice sent to {client_email}"}
+
+# ─── POST /api/invoices/:id/cancel ─────────────────────
+
+@router.post("/{invoice_id}/cancel")
+async def cancel_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
+    existing = (
+        supabase.table("invoice")
+        .select("id, status")
+        .eq("id", invoice_id)
+        .eq("firm_id", current_user["firm_id"])
+        .single()
+        .execute()
+    )
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if existing.data["status"] != "DRAFT":
+        raise HTTPException(status_code=400, detail="Only DRAFT invoices can be cancelled")
+    supabase.table("invoice").update({"status": InvoiceStatus.CANCELLED}).eq("id", invoice_id).execute()
+    return {"message": "Invoice cancelled"}
 
 # ─── POST /api/invoices/:id/reminder ────────────────────
 
@@ -576,5 +623,13 @@ async def send_reminder(invoice_id: str, current_user=Depends(get_lawyer)):
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Email delivery failed: {e}")
+
+    if inv.get("case_id"):
+        supabase.table("case_timeline").insert({
+            "case_id":      inv["case_id"],
+            "firm_id":      current_user["firm_id"],
+            "action":       f"Payment reminder sent to {client_name}: {inv['invoice_number']} — {inv.get('currency', 'USD')} {float(inv.get('total_amount', 0)):,.2f} due {inv.get('due_date', '')}",
+            "performed_by": current_user["id"],
+        }).execute()
 
     return {"message": f"Payment reminder sent to {client_email}"}

@@ -2,9 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   Image, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Modal,
+  TextInput, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
-import { notificationsAPI, billingAPI, documentsAPI } from '../../services/api';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { notificationsAPI, billingAPI, documentsAPI, calendarAPI } from '../../services/api';
 
 // ─── COULEURS ─────────────────────────────────────────────────────────────────
 const C = {
@@ -181,17 +183,37 @@ function apiNotifToCard(n) {
   let desc = n.message || '';
   let parsedDetails = null;
 
-  if (n.type === 'MEETING_REQUEST' && n.message) {
-    try {
-      parsedDetails = JSON.parse(n.message);
-      const mtLabel = (MEETING_TYPE_LABELS[parsedDetails.meeting_type] || {}).label || parsedDetails.meeting_type;
-      desc = `${parsedDetails.client_name} · ${mtLabel}`;
-      if (parsedDetails.case_title) desc += ` · ${parsedDetails.case_title}`;
-    } catch (_) {}
+  // Parse JSON message once
+  let parsed = null;
+  if (n.message) { try { parsed = JSON.parse(n.message); } catch (_) {} }
+
+  const CAL_BADGE_MAP = {
+    MEETING_REQUEST:  'MEETING',
+    TASK_ASSIGNED:    'DEADLINE',
+    HEARING_REMINDER: 'HEARING / COURT DATE',
+  };
+
+  if (parsed && parsed.event_title) {
+    // Calendar event notification — detected by content, not by type
+    // (type can be MEETING_REQUEST, TASK_ASSIGNED, HEARING_REMINDER, or GENERAL)
+    parsedDetails = parsed;
+    const lines = [];
+    if (parsed.event_type)   lines.push(parsed.event_type);
+    if (parsed.date_display) lines.push(parsed.date_display);
+    if (parsed.case_title)   lines.push(`Case: ${parsed.case_title}`);
+    desc = lines.join('  ·  ');
+  } else if (n.type === 'MEETING_REQUEST' && parsed) {
+    // Client meeting request (has client_name / meeting_type fields)
+    parsedDetails = parsed;
+    const mtLabel = (MEETING_TYPE_LABELS[parsed.meeting_type] || {}).label || parsed.meeting_type;
+    desc = `${parsed.client_name} · ${mtLabel}`;
+    if (parsed.case_title) desc += ` · ${parsed.case_title}`;
   }
 
+  const isCalNotif = !!(parsed && parsed.event_title);
   return {
     ...cfg,
+    badge:       isCalNotif && CAL_BADGE_MAP[n.type] ? CAL_BADGE_MAP[n.type] : cfg.badge,
     id:          n.id,
     type:        n.type || 'GENERAL',
     time:        formatRelativeTime(date),
@@ -259,9 +281,12 @@ function formatFullDate(d) {
     '  ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-const NotifDetailModal = ({ visible, notif, onClose }) => {
+const NotifDetailModal = ({ visible, notif, onClose, onAccept, onReject }) => {
   if (!notif) return null;
-  const isMeeting = notif.type === 'MEETING_REQUEST' && notif._details;
+  const isMeeting  = notif.type === 'MEETING_REQUEST' && notif._details;
+  const isCalEvent = notif._details && !!notif._details.event_title;
+  const isPendingRequest = isMeeting && !isCalEvent && notif._details?.request_id &&
+    !notif._details?.status;
   const d = notif._details || {};
   const mt = isMeeting ? (MEETING_TYPE_LABELS[d.meeting_type] || { label: d.meeting_type, icon: 'calendar', color: C.g500 }) : null;
 
@@ -300,9 +325,42 @@ const NotifDetailModal = ({ visible, notif, onClose }) => {
               </View>
             </View>
 
-            {isMeeting ? (
+            {isCalEvent ? (
+              <>
+                <View style={sd.row}>
+                  <View style={[sd.rowIcon, { backgroundColor: C.indigo100 }]}>
+                    <FontAwesome5 name="tag" size={14} color={C.indigo600} />
+                  </View>
+                  <View style={sd.rowBody}>
+                    <Text style={sd.rowLabel}>Event Type</Text>
+                    <Text style={sd.rowValue}>{d.event_type || '—'}</Text>
+                  </View>
+                </View>
+                <View style={sd.row}>
+                  <View style={[sd.rowIcon, { backgroundColor: C.purple100 }]}>
+                    <FontAwesome5 name="calendar-alt" size={14} color={C.purple600} />
+                  </View>
+                  <View style={sd.rowBody}>
+                    <Text style={sd.rowLabel}>Date & Time</Text>
+                    <Text style={sd.rowValue}>{d.date_display || d.start_datetime || '—'}</Text>
+                  </View>
+                </View>
+                {!!d.case_title && (
+                  <View style={sd.row}>
+                    <View style={[sd.rowIcon, { backgroundColor: C.blue100 }]}>
+                      <FontAwesome5 name="briefcase" size={14} color={C.primary} />
+                    </View>
+                    <View style={sd.rowBody}>
+                      <Text style={sd.rowLabel}>Related Case</Text>
+                      <Text style={sd.rowValue}>{d.case_title}</Text>
+                    </View>
+                  </View>
+                )}
+              </>
+            ) : isMeeting ? (
               <>
                 {/* Client */}
+
                 <View style={sd.row}>
                   <View style={[sd.rowIcon, { backgroundColor: C.blue100 }]}>
                     <FontAwesome5 name="user-tie" size={14} color={C.primary} />
@@ -371,6 +429,28 @@ const NotifDetailModal = ({ visible, notif, onClose }) => {
                     </View>
                   </View>
                 )}
+
+                {/* Accept / Reject actions — only for pending requests */}
+                {isPendingRequest && (
+                  <View style={sd.actionRow}>
+                    <TouchableOpacity
+                      style={sd.rejectBtn}
+                      onPress={() => { onClose(); onReject?.(notif); }}
+                      activeOpacity={0.8}
+                    >
+                      <FontAwesome5 name="times" size={13} color={C.red600} style={{ marginRight: 7 }} />
+                      <Text style={sd.rejectBtnTxt}>Decline</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={sd.acceptBtn}
+                      onPress={() => { onClose(); onAccept?.(notif); }}
+                      activeOpacity={0.8}
+                    >
+                      <FontAwesome5 name="check" size={13} color={C.white} style={{ marginRight: 7 }} />
+                      <Text style={sd.acceptBtnTxt}>Schedule</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </>
             ) : (
               /* Contenu générique pour tous les autres types */
@@ -392,6 +472,193 @@ const NotifDetailModal = ({ visible, notif, onClose }) => {
     </Modal>
   );
 };
+
+// ─── ACCEPT MEETING MODAL ────────────────────────────────────────────────────
+function AcceptMeetingModal({ visible, notif, onClose, onDone }) {
+  const d            = notif?._details || {};
+  const meetingType  = d.meeting_type || 'IN_PERSON';
+  const isVideo      = meetingType === 'VIDEO';
+  const isInPerson   = meetingType === 'IN_PERSON';
+
+  const [meetingTitle,  setMeetingTitle]  = useState('');
+  const [startDate,     setStartDate]     = useState(new Date());
+  const [showDatePick,  setShowDatePick]  = useState(false);
+  const [showTimePick,  setShowTimePick]  = useState(false);
+  const [videoLink,     setVideoLink]     = useState('');
+  const [location,      setLocation]      = useState('');
+  const [notesTxt,      setNotesTxt]      = useState('');
+  const [submitting,    setSubmitting]    = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setMeetingTitle(d.request_title || '');
+      if (d.preferred_date) {
+        try { setStartDate(new Date(d.preferred_date)); } catch (_) {}
+      }
+    }
+  }, [visible]);
+
+  const formatDt = (dt) =>
+    dt.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) +
+    '  ' + dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const handleAccept = async () => {
+    if (!meetingTitle.trim()) {
+      Alert.alert('Required', 'Please enter a meeting title.');
+      return;
+    }
+    if (isVideo && !videoLink.trim()) {
+      Alert.alert('Required', 'Please provide the video call link.');
+      return;
+    }
+    const requestId = d.request_id;
+    if (!requestId) { Alert.alert('Error', 'Request ID missing.'); return; }
+
+    setSubmitting(true);
+    try {
+      await calendarAPI.acceptMeetingRequest(requestId, {
+        title:           meetingTitle.trim(),
+        start_datetime:  startDate.toISOString(),
+        video_call_url:  isVideo ? videoLink.trim() : undefined,
+        location:        isInPerson ? location.trim() || undefined : undefined,
+        notes:           notesTxt.trim() || undefined,
+      });
+      onDone?.();
+      onClose();
+      Alert.alert('Meeting Scheduled', 'The meeting has been scheduled and the client has been notified.');
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to confirm meeting.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const mt = MEETING_TYPE_LABELS[meetingType] || { label: meetingType, icon: 'calendar', color: C.g500 };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={am.overlay}>
+          <View style={am.sheet}>
+            <View style={am.handle} />
+
+            <View style={am.header}>
+              <View style={[am.iconWrap, { backgroundColor: C.teal100 }]}>
+                <FontAwesome5 name="calendar-check" size={18} color={C.teal600} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={am.title}>Schedule Meeting</Text>
+                <Text style={am.sub}>{d.client_name} · {mt.label}</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={am.closeBtn}>
+                <FontAwesome5 name="times" size={15} color={C.g500} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+              {/* Meeting Title */}
+              <Text style={am.label}>Meeting Title <Text style={{ color: C.red600 }}>*</Text></Text>
+              <TextInput
+                style={am.input}
+                placeholder="e.g. Case review, Contract discussion..."
+                placeholderTextColor={C.g400}
+                value={meetingTitle}
+                onChangeText={setMeetingTitle}
+              />
+
+              {/* Date & Time */}
+              <Text style={am.label}>Date & Time</Text>
+              <TouchableOpacity style={am.picker} onPress={() => setShowDatePick(true)} activeOpacity={0.8}>
+                <FontAwesome5 name="calendar-alt" size={13} color={C.primary} style={{ marginRight: 10 }} />
+                <Text style={am.pickerTxt}>{formatDt(startDate)}</Text>
+              </TouchableOpacity>
+              {showDatePick && (
+                <DateTimePicker
+                  value={startDate} mode="date" minimumDate={new Date()}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_, d2) => {
+                    setShowDatePick(false);
+                    if (d2) {
+                      const upd = new Date(d2);
+                      upd.setHours(startDate.getHours(), startDate.getMinutes());
+                      setStartDate(upd);
+                      if (Platform.OS === 'android') setShowTimePick(true);
+                    }
+                  }}
+                />
+              )}
+              {showTimePick && (
+                <DateTimePicker
+                  value={startDate} mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_, d2) => { setShowTimePick(false); if (d2) setStartDate(d2); }}
+                />
+              )}
+
+              {/* Video Link — shown only for VIDEO type */}
+              {isVideo && (
+                <>
+                  <Text style={am.label}>Video Call Link <Text style={{ color: C.red600 }}>*</Text></Text>
+                  <TextInput
+                    style={am.input}
+                    placeholder="https://meet.google.com/..."
+                    placeholderTextColor={C.g400}
+                    value={videoLink}
+                    onChangeText={setVideoLink}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                </>
+              )}
+
+              {/* Location — shown for IN_PERSON */}
+              {isInPerson && (
+                <>
+                  <Text style={am.label}>Location <Text style={{ color: C.g400, fontWeight: '400' }}>(optional)</Text></Text>
+                  <TextInput
+                    style={am.input}
+                    placeholder="Office address or room..."
+                    placeholderTextColor={C.g400}
+                    value={location}
+                    onChangeText={setLocation}
+                  />
+                </>
+              )}
+
+              {/* Notes */}
+              <Text style={am.label}>Message to Client <Text style={{ color: C.g400, fontWeight: '400' }}>(optional)</Text></Text>
+              <TextInput
+                style={[am.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
+                placeholder="Any details or instructions..."
+                placeholderTextColor={C.g400}
+                value={notesTxt}
+                onChangeText={setNotesTxt}
+                multiline
+              />
+
+              <TouchableOpacity
+                style={[am.confirmBtn, submitting && { opacity: 0.7 }]}
+                onPress={handleAccept}
+                disabled={submitting}
+                activeOpacity={0.85}
+              >
+                {submitting
+                  ? <ActivityIndicator size="small" color={C.white} />
+                  : <>
+                      <FontAwesome5 name="check" size={14} color={C.white} style={{ marginRight: 8 }} />
+                      <Text style={am.confirmBtnTxt}>Schedule Meeting</Text>
+                    </>
+                }
+              </TouchableOpacity>
+              <View style={{ height: 24 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
 
 // ─── COMPOSANT NOTIFICATION CARD ─────────────────────────────────────────────
 const NotifCard = ({ n, onMarkRead, onView }) => (
@@ -469,7 +736,11 @@ export default function NotificationsScreen({ navigation }) {
   const [invoices, setInvoices]           = useState([]);
   const [analytics, setAnalytics]         = useState(null);
   const [recentDocs, setRecentDocs]       = useState([]);
-  const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [selectedMeeting, setSelectedMeeting]     = useState(null);
+  const [acceptTarget,    setAcceptTarget]         = useState(null);
+  const [rejectTarget,    setRejectTarget]          = useState(null);
+  const [rejectReason,    setRejectReason]          = useState('');
+  const [submittingReject, setSubmittingReject]     = useState(false);
 
   // Chargement notifications + marquage auto comme lues
   const loadNotifications = useCallback(() => {
@@ -513,6 +784,24 @@ export default function NotificationsScreen({ navigation }) {
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     } catch (_) {}
   }, []);
+
+  const handleRejectConfirm = useCallback(async () => {
+    if (!rejectTarget) return;
+    const requestId = rejectTarget._details?.request_id;
+    if (!requestId) return;
+    setSubmittingReject(true);
+    try {
+      await calendarAPI.rejectMeetingRequest(requestId, { reason: rejectReason.trim() });
+      setRejectTarget(null);
+      setRejectReason('');
+      Alert.alert('Request Declined', 'The client has been notified.');
+      loadNotifications();
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to decline request.');
+    } finally {
+      setSubmittingReject(false);
+    }
+  }, [rejectTarget, rejectReason, loadNotifications]);
 
   // Dates dynamiques
   const today     = new Date();
@@ -772,7 +1061,68 @@ export default function NotificationsScreen({ navigation }) {
         visible={!!selectedMeeting}
         notif={selectedMeeting}
         onClose={() => setSelectedMeeting(null)}
+        onAccept={(n) => setAcceptTarget(n)}
+        onReject={(n) => { setRejectTarget(n); setRejectReason(''); }}
       />
+
+      {/* Accept meeting form modal */}
+      <AcceptMeetingModal
+        visible={!!acceptTarget}
+        notif={acceptTarget}
+        onClose={() => setAcceptTarget(null)}
+        onDone={loadNotifications}
+      />
+
+      {/* Reject confirmation modal */}
+      <Modal
+        visible={!!rejectTarget}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setRejectTarget(null)}
+      >
+        <View style={rj.overlay}>
+          <View style={rj.card}>
+            <View style={rj.iconWrap}>
+              <FontAwesome5 name="times-circle" size={24} color={C.red600} />
+            </View>
+            <Text style={rj.title}>Decline Request</Text>
+            <Text style={rj.sub}>
+              {rejectTarget?._details?.client_name
+                ? `Declining request from ${rejectTarget._details.client_name}`
+                : 'Declining meeting request'}
+            </Text>
+            <TextInput
+              style={rj.input}
+              placeholder="Reason (optional)..."
+              placeholderTextColor={C.g400}
+              value={rejectReason}
+              onChangeText={setRejectReason}
+              multiline
+            />
+            <View style={rj.btns}>
+              <TouchableOpacity
+                style={rj.cancelBtn}
+                onPress={() => setRejectTarget(null)}
+                activeOpacity={0.8}
+              >
+                <Text style={rj.cancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[rj.confirmBtn, submittingReject && { opacity: 0.7 }]}
+                onPress={handleRejectConfirm}
+                disabled={submittingReject}
+                activeOpacity={0.8}
+              >
+                {submittingReject
+                  ? <ActivityIndicator size="small" color={C.white} />
+                  : <Text style={rj.confirmTxt}>Decline</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -863,4 +1213,43 @@ const sd = StyleSheet.create({
   rowBody:      { flex: 1 },
   rowLabel:     { fontSize: 11, fontWeight: '700', color: C.g400, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   rowValue:     { fontSize: 14, fontWeight: '600', color: C.dark },
+  // Accept / Reject action row
+  actionRow:    { flexDirection: 'row', gap: 12, marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: C.g100 },
+  rejectBtn:    { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: C.red600, borderRadius: 14, paddingVertical: 13 },
+  rejectBtnTxt: { color: C.red600, fontWeight: '700', fontSize: 14 },
+  acceptBtn:    { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: C.teal600, borderRadius: 14, paddingVertical: 13 },
+  acceptBtnTxt: { color: C.white, fontWeight: '700', fontSize: 14 },
+});
+
+// ─── ACCEPT MEETING MODAL STYLES ─────────────────────────────────────────────
+const am = StyleSheet.create({
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet:      { backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: '92%' },
+  handle:     { width: 40, height: 4, borderRadius: 2, backgroundColor: C.g200, alignSelf: 'center', marginBottom: 20 },
+  header:     { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  iconWrap:   { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  title:      { fontSize: 17, fontWeight: '800', color: C.dark },
+  sub:        { fontSize: 12, color: C.g500, marginTop: 1 },
+  closeBtn:   { width: 34, height: 34, borderRadius: 17, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center' },
+  label:      { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 8 },
+  picker:     { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g50, borderWidth: 1.5, borderColor: C.g200, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 18 },
+  pickerTxt:  { fontSize: 14, color: C.dark, fontWeight: '500', flex: 1 },
+  input:      { backgroundColor: C.g50, borderWidth: 1.5, borderColor: C.g200, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, fontSize: 14, color: C.dark, marginBottom: 18 },
+  confirmBtn: { backgroundColor: C.teal600, borderRadius: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  confirmBtnTxt: { color: C.white, fontSize: 16, fontWeight: '800' },
+});
+
+// ─── REJECT MODAL STYLES ─────────────────────────────────────────────────────
+const rj = StyleSheet.create({
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  card:       { backgroundColor: C.white, borderRadius: 24, padding: 24, width: '100%' },
+  iconWrap:   { width: 56, height: 56, borderRadius: 28, backgroundColor: C.red50, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12 },
+  title:      { fontSize: 17, fontWeight: '800', color: C.dark, textAlign: 'center', marginBottom: 4 },
+  sub:        { fontSize: 13, color: C.g500, textAlign: 'center', marginBottom: 16 },
+  input:      { backgroundColor: C.g50, borderWidth: 1.5, borderColor: C.g200, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: C.dark, marginBottom: 20, minHeight: 80, textAlignVertical: 'top' },
+  btns:       { flexDirection: 'row', gap: 12 },
+  cancelBtn:  { flex: 1, alignItems: 'center', paddingVertical: 14, borderRadius: 14, backgroundColor: C.g100 },
+  cancelTxt:  { fontWeight: '700', fontSize: 14, color: C.g600 },
+  confirmBtn: { flex: 1, alignItems: 'center', paddingVertical: 14, borderRadius: 14, backgroundColor: C.red600 },
+  confirmTxt: { fontWeight: '700', fontSize: 14, color: C.white },
 });

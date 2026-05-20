@@ -94,12 +94,18 @@ async def get_dashboard_stats(current_user=Depends(get_lawyer)):
         created_ids  = {t["id"] for t in (base_task_q().eq("created_by",  user_id).execute()).data or []}
         active_reminders = len(assigned_ids | created_ids)
 
+    # Client count
+    client_count = len(
+        (supabase.table("client").select("id").eq("firm_id", firm_id).execute()).data or []
+    )
+
     return {
         "active_cases":      active_cases,
         "closed_cases":      closed_cases,
         "upcoming_hearings": upcoming_hearings,
         "pending_payments":  round(pending_payments, 2),
         "active_reminders":  active_reminders,
+        "client_count":      client_count,
     }
 
 # ─── GET /api/dashboard/today ───────────────────────────

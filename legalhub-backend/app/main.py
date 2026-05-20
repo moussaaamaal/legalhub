@@ -7,7 +7,7 @@ from app.core.database import supabase_admin
 from app.routers import (
     auth, cases, clients, documents, billing,
     calendar, ai, notifications, tasks, firm, payments, dashboard,
-    client_portal, whatsapp,
+    client_portal, whatsapp, rag,
 )
 import logging
 
@@ -79,6 +79,7 @@ app.include_router(firm.router)
 app.include_router(payments.router)
 app.include_router(client_portal.router)
 app.include_router(whatsapp.router)
+app.include_router(rag.router)
 
 # ─── Health ────────────────────────────────────────────
 @app.get("/", tags=["Health"])

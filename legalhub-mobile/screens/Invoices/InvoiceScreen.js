@@ -110,10 +110,13 @@ const cp = StyleSheet.create({
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────
-export default function InvoiceScreen({ navigation }) {
+export default function InvoiceScreen({ navigation, route }) {
+  const preCase   = route?.params?.case_id   ?? null;
+  const preClient = route?.params?.client_id ?? null;
+
   const [form, setForm] = useState({
-    client_id: null,
-    case_id:   null,
+    client_id: preClient,
+    case_id:   preCase,
     taxRate:   0,
     notes:     '',
     currency:  'USD',

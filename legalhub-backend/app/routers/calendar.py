@@ -2,7 +2,7 @@ import json
 import base64
 import logging
 import requests as _req
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
@@ -11,6 +11,7 @@ from app.core.config import settings
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
 from app.models.enums import EventType
+from app.services.case_ingestion import ingest_case, ingest_standalone_events
 from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -34,19 +35,47 @@ def _ev_label(event_type) -> str:
     raw = event_type.value if hasattr(event_type, "value") else str(event_type).split(".")[-1]
     return _EVENT_LABELS.get(raw.upper(), raw.replace("_", " ").title())
 
+def _fmt_event_dt(dt_str: str) -> str:
+    """Return a human-readable date+time string from an event datetime."""
+    try:
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        return dt.strftime("%A %d %B at %H:%M")
+    except Exception:
+        return dt_str
+
+
+_NOTIF_TYPE_MAP = {
+    "MEETING":    "MEETING_REQUEST",
+    "DEADLINE":   "TASK_ASSIGNED",
+    "COURT_DATE": "HEARING_REMINDER",
+    "HEARING":    "HEARING_REMINDER",
+}
+
+
 def _notify_participants(event_id: str, title: str, label: str, start: str,
                          participant_ids: list[str], exclude_user_id: str,
-                         action: str = "New") -> None:
+                         action: str = "New", event_type: str = "") -> None:
     """Send a notification to each participant (excluding the actor)."""
-    msg = json.dumps({"event_id": event_id, "event_title": title,
-                      "event_type": label, "start_datetime": start})
-    notif_title = f"{action} event: {title}"
+    date_display = _fmt_event_dt(start)
+    raw = str(getattr(event_type, "value", event_type)).upper().split(".")[-1]
+    notif_type = _NOTIF_TYPE_MAP.get(raw, "GENERAL")
+
+    notif_title = f"You've been added to: {title}" if action == "New" else f"Event updated: {title}"
+
+    msg = json.dumps({
+        "event_id":       event_id,
+        "event_title":    title,
+        "event_type":     label,
+        "start_datetime": start,
+        "date_display":   date_display,
+        "action":         action,
+    })
     for uid in participant_ids:
         if uid == exclude_user_id:
             continue
         try:
             supabase_admin.table("notification").insert({
-                "user_id": uid, "type": "GENERAL",
+                "user_id": uid, "type": notif_type,
                 "title": notif_title, "message": msg,
             }).execute()
         except Exception as e:
@@ -287,7 +316,7 @@ async def list_events(
 
 
 @router.post("/events", status_code=201)
-async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer)):
+async def create_event(body: CreateEventRequest, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
     base_data = body.model_dump(exclude_none=True)
     # Remove recurrence meta-fields and participant_ids — not stored in calendar_event row
     for field in ("recurrence_count", "recurrence_until", "recurrence", "participant_ids"):
@@ -341,6 +370,7 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
             participant_ids=all_participant_ids,
             exclude_user_id=current_user["id"],
             action="New",
+            event_type=body.event_type,
         )
 
     if body.case_id:
@@ -405,19 +435,26 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
             supabase_admin.table("notification").insert({
                 "user_id": client_user_id,
                 "type":    "GENERAL",
-                "title":   f"New {ev_label} Scheduled",
-                "message": json.dumps(msg_data),
+                "title":   f"New {ev_label}: {body.title}",
+                "message": json.dumps({**msg_data, "date_display": _fmt_event_dt(body.start_datetime), "action": "New"}),
             }).execute()
 
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"[create_event] client notification skipped: {e}")
 
+    firm_id = current_user["firm_id"]
+    if body.case_id:
+        background_tasks.add_task(ingest_case, body.case_id, firm_id)
+    else:
+        background_tasks.add_task(ingest_standalone_events, firm_id)
+        if current_user["role"] not in ("FIRM_ADMIN", "SUPER_ADMIN"):
+            background_tasks.add_task(ingest_standalone_events, firm_id, current_user["id"])
     return created[0]
 
 
 @router.put("/events/{event_id}")
-async def update_event(event_id: str, body: CreateEventRequest, current_user=Depends(get_lawyer)):
+async def update_event(event_id: str, body: CreateEventRequest, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
     data = body.model_dump(exclude_none=True)
     for field in ("recurrence_count", "recurrence_until", "recurrence", "participant_ids"):
         data.pop(field, None)
@@ -463,16 +500,49 @@ async def update_event(event_id: str, body: CreateEventRequest, current_user=Dep
             participant_ids=all_ids,
             exclude_user_id=current_user["id"],
             action="Updated",
+            event_type=body.event_type,
         )
     except Exception as e:
         _log.warning(f"[update_event] notification skipped: {e}")
 
+    firm_id = current_user["firm_id"]
+    if case_id := updated.get("case_id"):
+        background_tasks.add_task(ingest_case, case_id, firm_id)
+    else:
+        background_tasks.add_task(ingest_standalone_events, firm_id)
+        if current_user["role"] not in ("FIRM_ADMIN", "SUPER_ADMIN"):
+            background_tasks.add_task(ingest_standalone_events, firm_id, current_user["id"])
     return updated
 
 
 @router.delete("/events/{event_id}")
-async def delete_event(event_id: str, current_user=Depends(get_lawyer)):
-    supabase.table("calendar_event").delete().eq("id", event_id).eq("firm_id", current_user["firm_id"]).execute()
+async def delete_event(event_id: str, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
+    ev = supabase.table("calendar_event").select("title, case_id, event_type, created_by") \
+        .eq("id", event_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute()
+    ev_data    = ev.data or {}
+    case_id    = ev_data.get("case_id")
+    title      = ev_data.get("title") or ev_data.get("event_type") or "Event"
+    created_by = ev_data.get("created_by")
+    firm_id    = current_user["firm_id"]
+
+    supabase.table("calendar_event").delete().eq("id", event_id).eq("firm_id", firm_id).execute()
+
+    if case_id:
+        try:
+            supabase.table("case_timeline").insert({
+                "case_id":      case_id,
+                "firm_id":      firm_id,
+                "action":       f'Event deleted: "{title}"',
+                "performed_by": current_user["id"],
+            }).execute()
+        except Exception:
+            pass
+        background_tasks.add_task(ingest_case, case_id, firm_id)
+    else:
+        background_tasks.add_task(ingest_standalone_events, firm_id)
+        lawyer_to_update = created_by if created_by else current_user["id"]
+        background_tasks.add_task(ingest_standalone_events, firm_id, lawyer_to_update)
+
     return {"message": "Event deleted"}
 
 
@@ -908,6 +978,219 @@ async def sync_to_google(current_user=Depends(get_lawyer)):
             _log.warning(f"[google-sync] event {ev.get('id')} failed: {resp.text}")
 
     return {"synced": synced, "failed": failed, "total": len(events)}
+
+
+# ─── GET /api/calendar/meeting-requests ────────────────────────────────────
+@router.get("/meeting-requests")
+async def list_meeting_requests(current_user=Depends(get_current_user)):
+    """Demandes de rendez-vous en attente pour l'avocat connecté."""
+    if current_user["role"] not in ("LAWYER", "FIRM_ADMIN"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    result = (
+        supabase.table("appointment_request")
+        .select("*, client(id, first_name, last_name, email), case_file(id, title, case_number)")
+        .eq("lawyer_user_id", current_user["id"])
+        .eq("status", "PENDING")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data or []
+
+
+# ─── POST /api/calendar/meeting-requests/:id/accept ────────────────────────
+@router.post("/meeting-requests/{request_id}/accept")
+async def accept_meeting_request(request_id: str, body: dict, current_user=Depends(get_current_user)):
+    """L'avocat accepte une demande de rendez-vous et crée l'événement calendrier."""
+    if current_user["role"] not in ("LAWYER", "FIRM_ADMIN"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    req = (
+        supabase.table("appointment_request")
+        .select("*")
+        .eq("id", request_id)
+        .eq("lawyer_user_id", current_user["id"])
+        .eq("status", "PENDING")
+        .maybe_single()
+        .execute()
+    )
+    if not req or not req.data:
+        raise HTTPException(status_code=404, detail="Meeting request not found or already handled")
+
+    req_data = req.data
+    meeting_type = req_data.get("meeting_type", "IN_PERSON")
+    is_video     = meeting_type == "VIDEO"
+
+    # Determine start/end datetimes
+    start_dt = body.get("start_datetime") or req_data.get("preferred_date")
+    end_dt   = body.get("end_datetime")
+    if not end_dt and start_dt:
+        try:
+            start_obj = datetime.fromisoformat(start_dt.replace("Z", "+00:00"))
+            end_dt    = (start_obj + timedelta(hours=1)).isoformat()
+        except Exception:
+            end_dt = start_dt
+
+    # Create calendar event
+    event_data = {
+        "firm_id":        req_data["firm_id"],
+        "case_id":        req_data.get("case_id"),
+        "title":          body.get("title") or req_data.get("title", "Meeting"),
+        "event_type":     "MEETING",
+        "start_datetime": start_dt,
+        "end_datetime":   end_dt,
+        "location":       body.get("location"),
+        "is_video_call":  is_video,
+        "video_call_url": body.get("video_call_url") if is_video else None,
+        "created_by":     current_user["id"],
+    }
+    event_result = supabase.table("calendar_event").insert(event_data).execute()
+    event        = event_result.data[0] if event_result.data else None
+    event_id     = event["id"] if event else None
+
+    if event_id:
+        # Lawyer as HOST
+        supabase.table("calendar_event_participant").insert({
+            "event_id":         event_id,
+            "user_id":          current_user["id"],
+            "participant_type": "HOST",
+        }).execute()
+
+        # Client as ATTENDEE — look up client's user_id
+        client_res = (
+            supabase.table("client")
+            .select("user_id")
+            .eq("id", req_data["client_id"])
+            .maybe_single()
+            .execute()
+        )
+        client_user_id = (client_res.data or {}).get("user_id") if client_res else None
+        if client_user_id:
+            supabase.table("calendar_event_participant").insert({
+                "event_id":         event_id,
+                "user_id":          client_user_id,
+                "participant_type": "ATTENDEE",
+            }).execute()
+
+        # Update request status
+        supabase.table("appointment_request").update({
+            "status":   "ACCEPTED",
+            "event_id": event_id,
+        }).eq("id", request_id).execute()
+
+        # Add timeline entry if the meeting is linked to a case
+        if req_data.get("case_id"):
+            meeting_title = body.get("title") or req_data.get("title", "Meeting")
+            date_display  = _fmt_event_dt(start_dt) if start_dt else ""
+            supabase.table("case_timeline").insert({
+                "case_id":      req_data["case_id"],
+                "firm_id":      req_data["firm_id"],
+                "action":       f"Meeting scheduled: {meeting_title} — {date_display}",
+                "performed_by": current_user["id"],
+            }).execute()
+
+        # Notify client
+        if client_user_id:
+            lawyer_user = (
+                supabase.table("app_user")
+                .select("full_name")
+                .eq("id", current_user["id"])
+                .maybe_single()
+                .execute()
+            )
+            lawyer_name = (lawyer_user.data or {}).get("full_name", "Your lawyer") if lawyer_user else "Your lawyer"
+            date_display = _fmt_event_dt(start_dt) if start_dt else "—"
+
+            notif_msg = json.dumps({
+                "event_title":    body.get("title") or req_data.get("title", "Meeting"),
+                "event_type":     "MEETING",
+                "date_display":   date_display,
+                "case_title":     "",
+                "lawyer_name":    lawyer_name,
+                "is_video":       is_video,
+                "video_call_url": body.get("video_call_url") if is_video else None,
+                "location":       body.get("location"),
+                "status":         "ACCEPTED",
+            }, ensure_ascii=False)
+
+            supabase_admin.table("notification").insert({
+                "user_id": client_user_id,
+                "type":    "MEETING_REQUEST",
+                "title":   f"Meeting Confirmed — {lawyer_name}",
+                "message": notif_msg,
+            }).execute()
+
+    return event or {"status": "accepted"}
+
+
+# ─── POST /api/calendar/meeting-requests/:id/reject ────────────────────────
+@router.post("/meeting-requests/{request_id}/reject")
+async def reject_meeting_request(request_id: str, body: dict, current_user=Depends(get_current_user)):
+    """L'avocat refuse une demande de rendez-vous."""
+    if current_user["role"] not in ("LAWYER", "FIRM_ADMIN"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    req = (
+        supabase.table("appointment_request")
+        .select("*")
+        .eq("id", request_id)
+        .eq("lawyer_user_id", current_user["id"])
+        .eq("status", "PENDING")
+        .maybe_single()
+        .execute()
+    )
+    if not req or not req.data:
+        raise HTTPException(status_code=404, detail="Meeting request not found or already handled")
+
+    req_data = req.data
+    reason   = body.get("reason", "")
+
+    supabase.table("appointment_request").update({
+        "status":           "REJECTED",
+        "rejection_reason": reason,
+    }).eq("id", request_id).execute()
+
+    # Add timeline entry if linked to a case
+    if req_data.get("case_id"):
+        supabase.table("case_timeline").insert({
+            "case_id":      req_data["case_id"],
+            "firm_id":      req_data["firm_id"],
+            "action":       f"Meeting request declined: {req_data.get('title', 'Meeting')}" + (f" — {reason}" if reason else ""),
+            "performed_by": current_user["id"],
+        }).execute()
+
+    # Notify client
+    client_res = (
+        supabase.table("client")
+        .select("user_id")
+        .eq("id", req_data["client_id"])
+        .maybe_single()
+        .execute()
+    )
+    client_user_id = (client_res.data or {}).get("user_id") if client_res else None
+    if client_user_id:
+        lawyer_user = (
+            supabase.table("app_user")
+            .select("full_name")
+            .eq("id", current_user["id"])
+            .maybe_single()
+            .execute()
+        )
+        lawyer_name = (lawyer_user.data or {}).get("full_name", "Your lawyer") if lawyer_user else "Your lawyer"
+
+        supabase_admin.table("notification").insert({
+            "user_id": client_user_id,
+            "type":    "MEETING_REQUEST",
+            "title":   "Meeting Request Declined",
+            "message": json.dumps({
+                "status":        "REJECTED",
+                "request_title": req_data.get("title"),
+                "lawyer_name":   lawyer_name,
+                "reason":        reason,
+            }, ensure_ascii=False),
+        }).execute()
+
+    return {"status": "rejected"}
 
 
 # ─── POST /api/calendar/test-reminder ──────────────────────────────────────

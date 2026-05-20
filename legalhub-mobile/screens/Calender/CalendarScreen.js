@@ -154,28 +154,18 @@ const EventCard = ({ ev, onDelete, onEdit, currentUserId, showDate = false }) =>
                 {DAY_NAMES[d.getUTCDay()]} {d.getUTCDate()} {MONTH_NAMES[d.getUTCMonth()]}
               </Text>
             )}
-            <View style={[s.row, { marginBottom: 4, gap: 6, flexWrap: 'wrap', justifyContent: 'space-between' }]}>
-              <View style={s.row}>
-                <View style={[s.tag, { backgroundColor: meta.bg, marginRight: 6 }]}>
-                  <View style={s.row}>
-                    <Icon lib="FA5" name={meta.icon} size={10} color={meta.color} />
-                    <Text style={[s.tagText, { color: meta.color, marginLeft: 4 }]}>{meta.label}</Text>
-                  </View>
+            <View style={[s.row, { marginBottom: 4, gap: 6 }]}>
+              <View style={[s.tag, { backgroundColor: meta.bg, marginRight: 6 }]}>
+                <View style={s.row}>
+                  <Icon lib="FA5" name={meta.icon} size={10} color={meta.color} />
+                  <Text style={[s.tagText, { color: meta.color, marginLeft: 4 }]}>{meta.label}</Text>
                 </View>
-                {ev.is_video_call && (
-                  <View style={[s.tag, { backgroundColor: C.green50 }]}>
-                    <View style={s.row}>
-                      <Icon lib="FA5" name="video" size={10} color={C.green600} />
-                      <Text style={[s.tagText, { color: C.green600, marginLeft: 4 }]}>Video</Text>
-                    </View>
-                  </View>
-                )}
               </View>
-              {ev.is_participant && (
-                <View style={[s.tag, { backgroundColor: C.indigo100 }]}>
+              {ev.is_video_call && (
+                <View style={[s.tag, { backgroundColor: C.green50 }]}>
                   <View style={s.row}>
-                    <Icon lib="FA5" name="user-check" size={10} color={C.indigo600} />
-                    <Text style={[s.tagText, { color: C.indigo600, marginLeft: 4 }]}>Participant</Text>
+                    <Icon lib="FA5" name="video" size={10} color={C.green600} />
+                    <Text style={[s.tagText, { color: C.green600, marginLeft: 4 }]}>Video</Text>
                   </View>
                 </View>
               )}
@@ -191,25 +181,36 @@ const EventCard = ({ ev, onDelete, onEdit, currentUserId, showDate = false }) =>
               </View>
             ) : null}
             {ev.participants && ev.participants.length > 0 ? (
-              <View style={[s.row, { marginTop: 5, gap: 4, flexWrap: 'wrap' }]}>
+              <View style={[s.row, { marginTop: 5, gap: 4, flexWrap: 'wrap', alignItems: 'center' }]}>
                 <Icon lib="FA5" name="users" size={10} color={C.gray500} />
-                <Text style={[s.xs, { color: C.gray600, flexShrink: 1 }]} numberOfLines={1}>
-                  {ev.participants.map(p => p.full_name).filter(Boolean).join(', ')}
-                </Text>
+                {ev.participants.map((p, i) => p.full_name ? (
+                  <Text key={i} style={[s.xs, { color: C.gray600 }]}>
+                    {p.full_name}{i < ev.participants.length - 1 ? ',' : ''}
+                  </Text>
+                ) : null)}
               </View>
             ) : null}
           </View>
-          <View style={{ gap: 4 }}>
-            {ev.created_by === currentUserId && (
-              <TouchableOpacity style={s.iconActionBtn} onPress={() => onEdit && onEdit(ev)}>
-                <Icon lib="FA5" name="pen" size={13} color={C.primary} />
-              </TouchableOpacity>
+          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch' }}>
+            {ev.is_participant && (
+              <View style={[s.tag, { backgroundColor: C.indigo100 }]}>
+                <Icon lib="FA5" name="user-check" size={9} color={C.indigo600} />
+                <Text style={[s.tagText, { color: C.indigo600, marginLeft: 3 }]}>Participant</Text>
+              </View>
             )}
-            {ev.created_by === currentUserId && (
-              <TouchableOpacity style={s.iconActionBtn} onPress={() => onDelete(ev.id)}>
-                <Icon lib="FA5" name="trash-alt" size={14} color={C.red500} />
-              </TouchableOpacity>
-            )}
+            {!ev.is_participant && <View />}
+            <View style={{ gap: 6 }}>
+              {ev.created_by === currentUserId && (
+                <TouchableOpacity style={s.iconActionBtn} onPress={() => onEdit && onEdit(ev)}>
+                  <Icon lib="FA5" name="pen" size={13} color={C.primary} />
+                </TouchableOpacity>
+              )}
+              {ev.created_by === currentUserId && (
+                <TouchableOpacity style={s.iconActionBtn} onPress={() => onDelete(ev.id)}>
+                  <Icon lib="FA5" name="trash-alt" size={14} color={C.red500} />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
-  Alert, Image,
+  Alert, Image, Modal, TextInput, Linking, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { clientsAPI } from '../../services/api';
@@ -95,6 +95,9 @@ export default function ClientDetailsScreen({ navigation, route }) {
   const [invoices, setInvoices] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [updatingVip, setUpdatingVip] = useState(false);
+  const [emailModal,   setEmailModal]   = useState(false);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody,    setEmailBody]    = useState('');
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -153,27 +156,26 @@ export default function ClientDetailsScreen({ navigation, route }) {
     );
   }, [client, clientId]);
 
-  const handleInvite = useCallback(async () => {
-    if (!client) return;
-    Alert.alert(
-      'Send Invitation',
-      `Send a portal invitation to ${client.email}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Send',
-          onPress: async () => {
-            try {
-              await clientsAPI.invite(clientId);
-              Alert.alert('Sent', `Invitation sent to ${client.email}`);
-            } catch (e) {
-              Alert.alert('Error', e.message || 'Failed to send invitation');
-            }
-          },
-        },
-      ]
-    );
-  }, [client, clientId]);
+  const openEmailCompose = useCallback(() => {
+    if (!client?.email) return;
+    setEmailSubject('');
+    setEmailBody('');
+    setEmailModal(true);
+  }, [client]);
+
+  const sendEmail = useCallback(async () => {
+    const to      = encodeURIComponent(client.email);
+    const subject = encodeURIComponent(emailSubject.trim());
+    const body    = encodeURIComponent(emailBody.trim());
+    const url     = `mailto:${to}?subject=${subject}&body=${body}`;
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      Alert.alert('Error', 'No email app found on this device.');
+      return;
+    }
+    setEmailModal(false);
+    await Linking.openURL(url);
+  }, [client, emailSubject, emailBody]);
 
   if (loading) {
     return (
@@ -273,10 +275,10 @@ export default function ClientDetailsScreen({ navigation, route }) {
             )}
           </TouchableOpacity>
 
-          {/* INVITE BUTTON */}
-          <TouchableOpacity style={s.inviteBtn} onPress={handleInvite}>
-            <FontAwesome5 name="paper-plane" size={13} color={C.primary} style={{ marginRight: 8 }} />
-            <Text style={s.inviteBtnTxt}>Send Portal Invitation</Text>
+          {/* SEND EMAIL BUTTON */}
+          <TouchableOpacity style={s.inviteBtn} onPress={openEmailCompose} disabled={!client?.email}>
+            <FontAwesome5 name="envelope" size={13} color={C.primary} style={{ marginRight: 8 }} />
+            <Text style={s.inviteBtnTxt}>Send Email</Text>
           </TouchableOpacity>
         </View>
 
@@ -338,6 +340,61 @@ export default function ClientDetailsScreen({ navigation, route }) {
         </View>
 
       </ScrollView>
+
+      {/* EMAIL COMPOSE MODAL */}
+      <Modal visible={emailModal} transparent animationType="slide" onRequestClose={() => setEmailModal(false)}>
+        <KeyboardAvoidingView style={em.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={em.sheet}>
+            <View style={em.sheetHeader}>
+              <Text style={em.sheetTitle}>New Email</Text>
+              <TouchableOpacity onPress={() => setEmailModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <FontAwesome5 name="times" size={16} color={C.g500} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={em.field}>
+              <Text style={em.fieldLabel}>To</Text>
+              <Text style={em.fieldValueStatic}>{client?.email}</Text>
+            </View>
+
+            <View style={em.divider} />
+
+            <View style={em.field}>
+              <Text style={em.fieldLabel}>Subject</Text>
+              <TextInput
+                style={em.fieldInput}
+                placeholder="Enter subject"
+                placeholderTextColor={C.g400}
+                value={emailSubject}
+                onChangeText={setEmailSubject}
+                returnKeyType="next"
+              />
+            </View>
+
+            <View style={em.divider} />
+
+            <TextInput
+              style={em.bodyInput}
+              placeholder="Write your message…"
+              placeholderTextColor={C.g400}
+              value={emailBody}
+              onChangeText={setEmailBody}
+              multiline
+              textAlignVertical="top"
+            />
+
+            <TouchableOpacity
+              style={[em.sendBtn, !emailSubject.trim() && em.sendBtnDisabled]}
+              onPress={sendEmail}
+              disabled={!emailSubject.trim()}
+            >
+              <FontAwesome5 name="paper-plane" size={14} color={C.white} style={{ marginRight: 8 }} />
+              <Text style={em.sendBtnTxt}>Send</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -387,4 +444,20 @@ const s = StyleSheet.create({
   statusPillTxt: { fontSize: 11, fontWeight: '600' },
 
   emptyTxt:   { fontSize: 13, color: C.g400, textAlign: 'center', paddingVertical: 12 },
+});
+
+const em = StyleSheet.create({
+  overlay:         { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet:           { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, gap: 12, maxHeight: '85%' },
+  sheetHeader:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  sheetTitle:      { fontSize: 17, fontWeight: '800', color: C.dark },
+  field:           { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  fieldLabel:      { fontSize: 13, color: C.g500, width: 56 },
+  fieldValueStatic:{ fontSize: 14, color: C.dark, flex: 1 },
+  fieldInput:      { fontSize: 14, color: C.dark, flex: 1, paddingVertical: 4 },
+  divider:         { height: 1, backgroundColor: C.g100 },
+  bodyInput:       { fontSize: 14, color: C.dark, minHeight: 140, paddingTop: 4 },
+  sendBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, marginTop: 8 },
+  sendBtnDisabled: { opacity: 0.45 },
+  sendBtnTxt:      { color: C.white, fontWeight: '700', fontSize: 15 },
 });

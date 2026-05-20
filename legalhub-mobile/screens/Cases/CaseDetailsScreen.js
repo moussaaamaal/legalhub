@@ -4,7 +4,9 @@ import {
   StyleSheet, SafeAreaView, StatusBar, Image, Dimensions, ActivityIndicator, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { casesAPI, tasksAPI, documentsAPI, notesAPI, calendarAPI, billingAPI, firmAPI } from '../../services/api';
+import { casesAPI, tasksAPI, documentsAPI, notesAPI, calendarAPI, billingAPI, firmAPI, authAPI } from '../../services/api';
+import MarkdownText from '../../components/MarkdownText';
+import CaseAIAssistantTab from './CaseAIAssistantTab';
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { Linking } from 'react-native';
@@ -104,13 +106,13 @@ const PRIORITY = {
 };
 
 const TABS = [
-  { key: 'overview',  icon: 'layer-group',  label: 'Overview'  },
-  { key: 'documents', icon: 'file-alt',     label: 'Documents' },
-  { key: 'tasks',     icon: 'check-square', label: 'Tasks'     },
-  { key: 'invoices',  icon: 'file-invoice-dollar', label: 'Invoices' },
-  { key: 'notes',     icon: 'sticky-note',  label: 'Notes'     },
-  { key: 'team',      icon: 'users',        label: 'Team'      },
-  { key: 'timeline',  icon: 'stream',       label: 'Timeline'  },
+  { key: 'overview',  icon: 'layer-group',        label: 'Overview'   },
+  { key: 'documents', icon: 'file-alt',            label: 'Documents'  },
+  { key: 'tasks',     icon: 'check-square',        label: 'Tasks'      },
+  { key: 'invoices',  icon: 'file-invoice-dollar', label: 'Invoices'   },
+  { key: 'notes',     icon: 'sticky-note',         label: 'Notes'      },
+  { key: 'team',      icon: 'users',               label: 'Team'       },
+  { key: 'timeline',  icon: 'stream',              label: 'Timeline'   },
 ];
 
 // ─── RICH TEXT (markdown inline renderer) ─────────────────────────────────────
@@ -291,7 +293,8 @@ const toDocDisplay = (doc) => {
   const dateLabel = doc.created_at
     ? new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : '—';
-  return { id: doc.id, icon, iconBg: bg, name, size: sizeLabel, date: dateLabel, url: doc.storage_url || null, isShared: !!doc.is_shared_with_client, uploaderName: doc.uploader_name || null, uploaderAvatar: doc.uploader_avatar_url || null, category: doc.category || null, status: doc.status || null };
+  const imageExts = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
+  return { id: doc.id, icon, iconBg: bg, name, size: sizeLabel, date: dateLabel, url: doc.storage_url || null, isShared: !!doc.is_shared_with_client, uploaderName: doc.uploader_name || null, uploaderAvatar: doc.uploader_avatar_url || null, uploaderId: doc.uploaded_by || null, category: doc.category || null, status: doc.status || null, isImage: imageExts.has(ext) };
 };
 
 // ─── TASK ADAPTER ─────────────────────────────────────────────────────────────
@@ -347,8 +350,10 @@ const toNoteDisplay = (note, idx) => {
     ? new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : '—';
   return {
-    id: note.id, author: note.app_user?.full_name || note.author_name || 'Team Member',
-    avatar: note.author_avatar || null,
+    id: note.id,
+    author:   note.app_user?.full_name || note.author_name || 'Team Member',
+    avatar:   note.app_user?.avatar_url || null,
+    authorId: note.lawyer_id || note.app_user?.id || null,
     content,
     time: dateLabel, borderColor: style.border, bg: style.bg,
   };
@@ -631,8 +636,9 @@ const tm = StyleSheet.create({
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: OVERVIEW
 // ═════════════════════════════════════════════════════════════════════════════
-const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode, form, setForm }) => {
+const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode, form, setForm, onScrollToBottom, initialAIOpen = false }) => {
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const [aiModalOpen, setAiModalOpen] = useState(initialAIOpen);
 
   return (
     <View style={{ paddingTop: 4 }}>
@@ -889,35 +895,45 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
       </Card>
 
 
-      {/* AI Card */}
-      <View style={ov.aiCard}>
-        <View style={ov.aiHeader}>
-          <View style={ov.aiIconBox}>
-            <FontAwesome5 name="robot" size={22} color={C.white} />
+      {/* AI Assistant card — opens full-screen modal */}
+      <TouchableOpacity style={ov.aiCard} onPress={() => setAiModalOpen(true)} activeOpacity={0.85}>
+        <View style={ov.aiCardHeader}>
+          <View style={ov.aiCardIcon}>
+            <FontAwesome5 name="robot" size={20} color={C.white} />
           </View>
-          <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={ov.aiTitle}>AI Case Assistant</Text>
-            <Text style={ov.aiSub}>Advanced Legal AI · Ready to help</Text>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={ov.aiCardTitle}>AI Case Assistant</Text>
+            <Text style={ov.aiCardSub}>Ask a question about this case</Text>
           </View>
-          <View style={ov.aiOnlinePill}>
-            <View style={ov.aiOnlineDot} />
-            <Text style={ov.aiOnlineTxt}>Live</Text>
+          <FontAwesome5 name="chevron-right" size={13} color="rgba(255,255,255,0.45)" />
+        </View>
+        <View style={ov.aiFakeInput}>
+          <Text style={ov.aiFakeInputTxt}>Summarize the case, legal risks, urgent tasks…</Text>
+          <View style={ov.aiFakeSend}>
+            <FontAwesome5 name="paper-plane" size={12} color={C.white} />
           </View>
         </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {[
-            { icon: 'file-alt',            label: 'Summarize Case'    },
-            { icon: 'exclamation-triangle', label: 'Legal Risks'      },
-            { icon: 'calendar-check',      label: 'Key Deadlines'     },
-            { icon: 'search',              label: 'Case Law Research' },
-          ].map(a => (
-            <TouchableOpacity key={a.label} style={ov.aiAction}>
-              <FontAwesome5 name={a.icon} size={12} color={C.white} />
-              <Text style={ov.aiActionTxt}>{a.label}</Text>
+      </TouchableOpacity>
+
+      {/* Full-screen AI chat modal */}
+      <Modal visible={aiModalOpen} animationType="slide" onRequestClose={() => setAiModalOpen(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: C.g50 }}>
+          <View style={ov.aiModalHeader}>
+            <TouchableOpacity onPress={() => setAiModalOpen(false)} style={ov.aiModalClose}>
+              <FontAwesome5 name="chevron-down" size={16} color={C.g500} />
             </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+            <Text style={ov.aiModalTitle}>AI Assistant</Text>
+            <View style={{ width: 36 }} />
+          </View>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={0}
+          >
+            <CaseAIAssistantTab caseId={caseData._id} caseTitle={caseData.title} caseNumber={caseData.case_number} />
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
 
     </View>
   );
@@ -993,29 +1009,34 @@ const ov = StyleSheet.create({
   timeBarBg:     { height: 6, backgroundColor: C.g200, borderRadius: 3, marginTop: 10, overflow: 'hidden' },
   timeBarFill:   { height: 6, borderRadius: 3 },
 
-  // AI
-  aiCard:       { backgroundColor: C.slate900, marginHorizontal: 16, marginBottom: 16, borderRadius: 22, padding: 20 },
-  aiHeader:     { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  aiIconBox:    { width: 50, height: 50, borderRadius: 16, backgroundColor: C.glass, alignItems: 'center', justifyContent: 'center' },
-  aiTitle:      { fontSize: 15, fontWeight: '800', color: C.white },
-  aiSub:        { fontSize: 11, color: C.onDarkSub, marginTop: 2 },
-  aiOnlinePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.glassB, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  aiOnlineDot:  { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ADE80' },
-  aiOnlineTxt:  { fontSize: 11, color: C.white, fontWeight: '700' },
-  aiAction:     { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.glass, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 },
-  aiActionTxt:  { fontSize: 12, fontWeight: '700', color: C.white },
+  // AI card (tap to open modal)
+  aiCard:        { marginHorizontal: 16, marginBottom: 16, borderRadius: 20, padding: 18, backgroundColor: C.slate900 || '#0F172A' },
+  aiCardHeader:  { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  aiCardIcon:    { width: 44, height: 44, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  aiCardTitle:   { fontSize: 14, fontWeight: '800', color: C.white },
+  aiCardSub:     { fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  aiFakeInput:   { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, gap: 10 },
+  aiFakeInputTxt:{ flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.4)' },
+  aiFakeSend:    { width: 30, height: 30, borderRadius: 15, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+
+  // AI modal header
+  aiModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.g200 },
+  aiModalClose:  { width: 36, height: 36, borderRadius: 18, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center' },
+  aiModalTitle:  { fontSize: 16, fontWeight: '800', color: C.dark },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: DOCUMENTS
 // ═════════════════════════════════════════════════════════════════════════════
-const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onUploaded }) => {
+const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, currentUserId, onUploaded }) => {
   const [uploading,    setUploading]    = useState(false);
   const [localDocs,    setLocalDocs]    = useState(documents);
   const [reqModal,     setReqModal]     = useState(false);
   const [reqDesc,      setReqDesc]      = useState('');
   const [sendingReq,   setSendingReq]   = useState(false);
   const [reviewing,    setReviewing]    = useState(null);
+  const [summarizing,  setSummarizing]  = useState(null);
+  const [summaryModal, setSummaryModal] = useState(null);
 
   useEffect(() => { setLocalDocs(documents); }, [documents]);
 
@@ -1088,6 +1109,18 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
         }},
       ]
     );
+  };
+
+  const handleSummarize = async (doc) => {
+    setSummarizing(doc.id);
+    try {
+      const result = await documentsAPI.summarize(doc.id);
+      setSummaryModal({ docName: doc.name, summary: result.summary });
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not generate summary.');
+    } finally {
+      setSummarizing(null);
+    }
   };
 
   const items = localDocs
@@ -1216,6 +1249,32 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
           </TouchableOpacity>
         )}
 
+        {/* Summary Modal */}
+        <Modal visible={!!summaryModal} transparent animationType="slide" onRequestClose={() => setSummaryModal(null)}>
+          <View style={dc.modalOverlay}>
+            <View style={[dc.modalBox, { maxHeight: '85%' }]}>
+              <View style={dc.modalHandle} />
+              <View style={dc.modalTitleRow}>
+                <View style={[dc.modalIcon, { backgroundColor: '#EEF2FF' }]}>
+                  <FontAwesome5 name="robot" size={18} color="#6366F1" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={dc.modalTitle}>AI Summary</Text>
+                  {summaryModal?.docName ? (
+                    <Text style={{ fontSize: 11, color: C.g500, marginTop: 2 }} numberOfLines={1}>{summaryModal.docName}</Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity onPress={() => setSummaryModal(null)} style={{ padding: 4 }}>
+                  <FontAwesome5 name="times" size={16} color={C.g400} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 4 }}>
+                <MarkdownText text={summaryModal?.summary || ''} style={dc.summaryTxt} />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
         {items.map(doc => {
           const initials  = (doc.uploaderName || '?')
             .split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
@@ -1256,9 +1315,11 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
                     </View>
                   )}
                 </View>
-                <TouchableOpacity style={dc.deleteBtn} onPress={() => handleDeleteDoc(doc)}>
-                  <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
-                </TouchableOpacity>
+                {doc.uploaderId === currentUserId && (
+                  <TouchableOpacity style={dc.deleteBtn} onPress={() => handleDeleteDoc(doc)}>
+                    <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* ── Divider ── */}
@@ -1280,17 +1341,16 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
               {/* ── Row 3 : action buttons ── */}
               <View style={dc.actions}>
                 <TouchableOpacity
-                  style={[dc.btn, { backgroundColor: doc.url ? doc.iconBg : C.g300 }]}
+                  style={[dc.iconBtn, { backgroundColor: doc.url ? doc.iconBg : C.g300 }]}
                   onPress={() => {
                     if (!doc.url) { Alert.alert('Unavailable', 'No URL for this document.'); return; }
                     WebBrowser.openBrowserAsync(doc.url);
                   }}
                 >
-                  <FontAwesome5 name="eye" size={10} color={C.white} />
-                  <Text style={dc.btnTxt}>View</Text>
+                  <FontAwesome5 name="eye" size={13} color={C.white} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[dc.btnOutline, { borderColor: doc.url ? doc.iconBg : C.g300 }]}
+                  style={[dc.iconBtnOutline, { borderColor: doc.url ? doc.iconBg : C.g300 }]}
                   onPress={() => {
                     if (!doc.url) { Alert.alert('Unavailable', 'No URL for this document.'); return; }
                     WebBrowser.openBrowserAsync(doc.url).catch(() =>
@@ -1298,16 +1358,25 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onU
                     );
                   }}
                 >
-                  <FontAwesome5 name="download" size={10} color={doc.url ? doc.iconBg : C.g400} />
-                  <Text style={[dc.btnTxt, { color: doc.url ? doc.iconBg : C.g400 }]}>Download</Text>
+                  <FontAwesome5 name="download" size={13} color={doc.url ? doc.iconBg : C.g400} />
                 </TouchableOpacity>
                 {doc.category !== 'CLIENT_DOC' && (
                   <TouchableOpacity
-                    style={[dc.btn, { backgroundColor: doc.isShared ? C.green600 : C.g400 }]}
+                    style={[dc.iconBtn, { backgroundColor: doc.isShared ? C.green600 : C.g400 }]}
                     onPress={() => handleShareDoc(doc)}
                   >
-                    <FontAwesome5 name={doc.isShared ? 'check' : 'share-alt'} size={10} color={C.white} />
-                    <Text style={dc.btnTxt}>{doc.isShared ? 'Shared' : 'Share'}</Text>
+                    <FontAwesome5 name={doc.isShared ? 'check' : 'share-alt'} size={13} color={C.white} />
+                  </TouchableOpacity>
+                )}
+                {!doc.isImage && (
+                  <TouchableOpacity
+                    style={[dc.iconBtn, { backgroundColor: summarizing === doc.id ? C.g400 : '#6366F1' }]}
+                    onPress={() => handleSummarize(doc)}
+                    disabled={summarizing === doc.id}
+                  >
+                    {summarizing === doc.id
+                      ? <ActivityIndicator size={13} color={C.white} />
+                      : <FontAwesome5 name="robot" size={13} color={C.white} />}
                   </TouchableOpacity>
                 )}
               </View>
@@ -1387,9 +1456,11 @@ const dc = StyleSheet.create({
   meta:             { fontSize: 11, color: C.g400 },
 
   // Row 3 — actions
-  actions:          { flexDirection: 'row', gap: 8, padding: 12, paddingTop: 0 },
+  actions:          { flexDirection: 'row', gap: 8, padding: 12, paddingTop: 0, justifyContent: 'flex-end' },
   btn:              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
   btnOutline:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, backgroundColor: C.white },
+  iconBtn:          { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  iconBtnOutline:   { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, backgroundColor: C.white },
   uploadingRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.blue50, borderRadius: 12, padding: 12, marginBottom: 12 },
   uploadingTxt:     { fontSize: 13, fontWeight: '600', color: C.primary },
   emptyUpload:      { alignItems: 'center', paddingVertical: 28, gap: 8 },
@@ -1397,6 +1468,7 @@ const dc = StyleSheet.create({
   emptyUploadTitle: { fontSize: 14, fontWeight: '700', color: C.dark },
   emptyUploadSub:   { fontSize: 12, color: C.g400 },
   btnTxt:           { fontSize: 11, fontWeight: '700', color: C.white },
+  summaryTxt:       { fontSize: 13, color: C.dark, lineHeight: 21, paddingBottom: 24 },
   modalOverlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalBox:         { backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36 },
   modalHandle:      { width: 40, height: 4, backgroundColor: C.g200, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
@@ -1965,10 +2037,9 @@ const TeamTab = ({ team = [], caseId, lawyerId, onTeamChange, loading = false })
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: NOTES
 // ═════════════════════════════════════════════════════════════════════════════
-const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, navigation, caseData }) => {
+const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, navigation, caseData, currentUserId, currentUserAvatar }) => {
   const [notes,         setNotes]         = useState(propNotes);
   const [showAdd,       setShowAdd]       = useState(false);
-  const [expanded,      setExpanded]      = useState({});
 
   // form state
   const [title,         setTitle]         = useState('');
@@ -2076,12 +2147,13 @@ const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, 
           </View>
         )}
         {!loading && items.map(note => {
-          const isExpanded = !!expanded[note.id];
+          const isOwner    = note.authorId === currentUserId;
+          const avatarUri  = note.authorId === currentUserId ? currentUserAvatar : note.avatar;
           return (
             <View key={note.id} style={[nt.card, { backgroundColor: note.bg, borderLeftColor: note.borderColor }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                {note.avatar
-                  ? <Image source={{ uri: note.avatar }} style={nt.avatar} />
+                {avatarUri
+                  ? <Image source={{ uri: avatarUri }} style={nt.avatar} />
                   : <View style={[nt.avatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
                       <FontAwesome5 name="user" size={14} color={C.primary} />
                     </View>
@@ -2090,22 +2162,16 @@ const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId, 
                   <Text style={nt.author}>{note.author}</Text>
                   <Text style={nt.time}>{note.time}</Text>
                 </View>
-                <TouchableOpacity style={{ padding: 4 }} onPress={() => handleDeleteNote(note.id)}>
-                  <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
-                </TouchableOpacity>
+                {isOwner && (
+                  <TouchableOpacity style={{ padding: 4 }} onPress={() => handleDeleteNote(note.id)}>
+                    <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
+                  </TouchableOpacity>
+                )}
               </View>
               <RichText
                 text={note.content}
                 style={{ fontSize: 13, color: C.g600, lineHeight: 20 }}
-                numberOfLines={isExpanded ? undefined : 4}
               />
-              <TouchableOpacity
-                style={[nt.readMore, { borderTopColor: note.borderColor + '40' }]}
-                onPress={() => setExpanded(prev => ({ ...prev, [note.id]: !prev[note.id] }))}
-              >
-                <Text style={[nt.readMoreTxt, { color: note.borderColor }]}>{isExpanded ? 'Show less' : 'Read more'}</Text>
-                <FontAwesome5 name={isExpanded ? 'chevron-up' : 'chevron-right'} size={10} color={note.borderColor} />
-              </TouchableOpacity>
             </View>
           );
         })}
@@ -2258,8 +2324,6 @@ const nt = StyleSheet.create({
   avatar:       { width: 36, height: 36, borderRadius: 10 },
   author:       { fontSize: 13, fontWeight: '700', color: C.dark },
   time:         { fontSize: 10, color: C.g400, marginTop: 1 },
-  readMore:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, paddingTop: 8, borderTopWidth: 1 },
-  readMoreTxt:  { fontSize: 12, fontWeight: '700' },
   // modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalSheet:   { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8, maxHeight: '92%' },
@@ -2299,14 +2363,31 @@ const STATUS_META = {
   CANCELLED: { label: 'Cancelled', color: C.g400,      bg: C.g100      },
 };
 
-const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
+const InvoicesTab = ({ invoices: propInvoices = [], loading = false, currentUserId, currentUserAvatar, team = [], navigation, caseId, clientId }) => {
   const [localInvoices, setLocalInvoices] = useState(propInvoices);
   const [actionLoading, setActionLoading] = useState({});
   const [viewInvoice,   setViewInvoice]   = useState(null);
 
   useEffect(() => { setLocalInvoices(propInvoices); }, [propInvoices]);
 
-  const invoices = localInvoices;
+  const invoices = localInvoices.filter(inv => {
+    if (inv.status === 'DRAFT' || inv.status === 'CANCELLED') {
+      return inv.lawyer_id === currentUserId;
+    }
+    return true;
+  });
+
+  const getCreatorInfo = (lawyerId) => {
+    if (!lawyerId) return { name: 'Unknown', avatar: null };
+    if (lawyerId === currentUserId) return { name: 'You', avatar: currentUserAvatar };
+    const member = team.find(m => (m.user_id || m.id) === lawyerId);
+    const name   = member?.app_user?.full_name || member?.full_name || 'Unknown';
+    const avatar = member?.app_user?.avatar_url || member?.avatar_url || null;
+    return { name, avatar };
+  };
+
+  const getInitials = (name) =>
+    (name || '?').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
 
   const totalAmount  = invoices.reduce((s, inv) => s + (inv.total_amount || 0), 0);
   const paidAmount   = invoices.filter(i => i.status === 'PAID').reduce((s, i) => s + (i.total_amount || 0), 0);
@@ -2344,6 +2425,7 @@ const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
             setLoading(inv.id, 'send', true);
             try {
               await billingAPI.sendInvoice(inv.id);
+              setLocalInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, status: 'PENDING' } : i));
               Alert.alert('Sent', `Invoice ${inv.invoice_number} has been sent.`);
             } catch (err) {
               Alert.alert('Error', err.message || 'Could not send invoice.');
@@ -2403,7 +2485,13 @@ const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
       )}
 
       <Card accent={C.green600}>
-        <SectionHead icon="file-invoice-dollar" iconColor={C.green600} title={`Invoices (${invoices.length})`} />
+        <SectionHead
+          icon="file-invoice-dollar"
+          iconColor={C.green600}
+          title={`Invoices (${invoices.length})`}
+          action="+ Add"
+          onAction={() => navigation?.navigate?.('Invoice', { case_id: caseId, client_id: clientId })}
+        />
 
         {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
 
@@ -2424,6 +2512,10 @@ const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
             ? `${inv.client.first_name || ''} ${inv.client.last_name || ''}`.trim()
             : '—';
 
+          const { name: creatorName, avatar: creatorAvatar } = getCreatorInfo(inv.lawyer_id);
+          const creatorInitials = getInitials(creatorName);
+          const isOwner = inv.lawyer_id === currentUserId;
+
           return (
             <View key={inv.id} style={[inv_s.card, isOverdue && { borderLeftColor: C.red600, borderLeftWidth: 3 }]}>
               {/* Top row */}
@@ -2438,6 +2530,19 @@ const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
                 <View style={[inv_s.statusBadge, { backgroundColor: meta.bg }]}>
                   <Text style={[inv_s.statusTxt, { color: meta.color }]}>{meta.label}</Text>
                 </View>
+              </View>
+
+              {/* Creator row */}
+              <View style={inv_s.creatorRow}>
+                {creatorAvatar
+                  ? <Image source={{ uri: creatorAvatar }} style={inv_s.creatorAvatarImg} />
+                  : <View style={[inv_s.creatorAvatar, { backgroundColor: inv.lawyer_id === currentUserId ? C.primary : C.purple600 }]}>
+                      <Text style={inv_s.creatorInitials}>{creatorInitials}</Text>
+                    </View>
+                }
+                <Text style={inv_s.creatorName}>
+                  {inv.lawyer_id === currentUserId ? 'Created by You' : `Created by ${creatorName}`}
+                </Text>
               </View>
 
               {/* Amount + due date */}
@@ -2476,7 +2581,7 @@ const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
                   <FontAwesome5 name="eye" size={11} color={C.primary} />
                   <Text style={[inv_s.actionTxt, { color: C.primary }]}>View</Text>
                 </TouchableOpacity>
-                {inv.status !== 'PAID' && (
+                {isOwner && inv.status !== 'PAID' && (
                   <TouchableOpacity
                     style={[inv_s.actionBtn, { backgroundColor: C.red50 }]}
                     onPress={() => handleDeleteInvoice(inv)}
@@ -2485,7 +2590,7 @@ const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
                     <Text style={[inv_s.actionTxt, { color: C.red600 }]}>Delete</Text>
                   </TouchableOpacity>
                 )}
-                {inv.status === 'DRAFT' && (
+                {isOwner && inv.status === 'DRAFT' && (
                   <TouchableOpacity
                     style={[inv_s.actionBtn, { backgroundColor: C.green50 }, isLoading(inv.id, 'send') && { opacity: 0.5 }]}
                     onPress={() => handleSend(inv)}
@@ -2498,7 +2603,7 @@ const InvoicesTab = ({ invoices: propInvoices = [], loading = false }) => {
                     <Text style={[inv_s.actionTxt, { color: C.green600 }]}>Send</Text>
                   </TouchableOpacity>
                 )}
-                {(inv.status === 'PENDING' || inv.status === 'OVERDUE') && (
+                {isOwner && (inv.status === 'PENDING' || inv.status === 'OVERDUE') && (
                   <TouchableOpacity
                     style={[inv_s.actionBtn, { backgroundColor: C.amber50 }, isLoading(inv.id, 'remind') && { opacity: 0.5 }]}
                     onPress={() => handleRemind(inv)}
@@ -2608,6 +2713,13 @@ const inv_s = StyleSheet.create({
   clientName:   { fontSize: 12, color: C.g500, marginTop: 2 },
   statusBadge:  { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   statusTxt:    { fontSize: 11, fontWeight: '800' },
+
+  // Creator row
+  creatorRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.g200, marginBottom: 10 },
+  creatorAvatar:    { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  creatorAvatarImg: { width: 26, height: 26, borderRadius: 8 },
+  creatorInitials:  { fontSize: 10, fontWeight: '800', color: C.white },
+  creatorName:      { fontSize: 12, color: C.g500, fontWeight: '600' },
 
   // Amount row
   amountRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 10 },
@@ -2763,7 +2875,7 @@ const tl = StyleSheet.create({
 // ═════════════════════════════════════════════════════════════════════════════
 //  MAIN SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
-export default function CaseDetailsScreen({ navigation, route }) {
+export default function CaseDetailsScreen({ navigation, route, initialAIOpen = false }) {
   const rawCase  = route?.params?.caseData || CASE;
   // Supabase returns `id`; some navigation paths pass `_id` — normalise to `_id`
   const caseData = rawCase._id ? rawCase : { ...rawCase, _id: rawCase.id };
@@ -2777,14 +2889,18 @@ export default function CaseDetailsScreen({ navigation, route }) {
   const [timeline,   setTimeline]   = useState([]);
   const [events,     setEvents]     = useState([]);
   const [invoices,   setInvoices]   = useState([]);
-  const [team,       setTeam]       = useState([]);
-  const [lawyerId,   setLawyerId]   = useState(caseData.lawyer_id ?? null);
+  const [team,          setTeam]          = useState([]);
+  const [currentUserId,     setCurrentUserId]     = useState(null);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState(null);
+  const [lawyerId,      setLawyerId]      = useState(caseData.lawyer_id ?? null);
   const [stats,      setStats]      = useState(caseData.stats || { docs: 0, tasks: 0, events: 0, notes: 0 });
   const [tabLoading, setTabLoading] = useState(false);
   const [saving,       setSaving]       = useState(false);
   const [statusModal,  setStatusModal]  = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [caseStatus,   setCaseStatus]   = useState((caseData.status || 'NEW').toUpperCase());
+
+  const mainScrollRef = React.useRef(null);
 
   const initialFormRef = React.useRef({
     title:       caseData.title       ?? '',
@@ -2867,7 +2983,7 @@ export default function CaseDetailsScreen({ navigation, route }) {
       setTabLoading(true);
       try {
         const today = new Date().toISOString().split('T')[0];
-        const [tl, tk, docs, nts, evts, invs, tm, fullCase] = await Promise.all([
+        const [tl, tk, docs, nts, evts, invs, tm, fullCase, me] = await Promise.all([
           casesAPI.getTimeline(caseId).catch(() => []),
           tasksAPI.list({ case_id: caseId }).catch(() => []),
           documentsAPI.list({ case_id: caseId }).catch(() => []),
@@ -2876,6 +2992,7 @@ export default function CaseDetailsScreen({ navigation, route }) {
           billingAPI.listInvoices({ case_id: caseId }).catch(() => []),
           casesAPI.getTeam(caseId).catch(() => []),
           casesAPI.getById(caseId).catch(() => null),
+          authAPI.me().catch(() => null),
         ]);
         if (cancelled) return;
         const safeArr = (v) => (Array.isArray(v) ? v : []);
@@ -2886,6 +3003,7 @@ export default function CaseDetailsScreen({ navigation, route }) {
         const evtsArr = safeArr(evts);
         const invsArr = safeArr(invs);
         if (fullCase?.lawyer_id) setLawyerId(fullCase.lawyer_id);
+        if (me?.id) { setCurrentUserId(me.id); setCurrentUserAvatar(me.avatar_url || null); }
         setTimeline(tlArr);
         setTasks(tkArr);
         setDocuments(docsArr);
@@ -2904,24 +3022,30 @@ export default function CaseDetailsScreen({ navigation, route }) {
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} />;
-      case 'documents': return <DocumentsTab documents={documents} stats={stats} loading={tabLoading} caseId={caseData._id} onUploaded={(n) => setStats(s => ({ ...s, docs: n }))} />;
+      case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} initialAIOpen={initialAIOpen} />;
+      case 'documents': return <DocumentsTab documents={documents} stats={stats} loading={tabLoading} caseId={caseData._id} currentUserId={currentUserId} onUploaded={(n) => setStats(s => ({ ...s, docs: n }))} />;
       case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} caseId={caseData._id} team={team} />;
-      case 'invoices':  return <InvoicesTab  invoices={invoices}            loading={tabLoading} />;
-      case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} caseId={caseData._id} navigation={navigation} caseData={caseData} />;
+      case 'invoices':  return <InvoicesTab  invoices={invoices} loading={tabLoading} currentUserId={currentUserId} currentUserAvatar={currentUserAvatar} team={team} navigation={navigation} caseId={caseData._id} clientId={caseData.client_id || caseData.client?.id} />;
+      case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} caseId={caseData._id} navigation={navigation} caseData={caseData} currentUserId={currentUserId} currentUserAvatar={currentUserAvatar} />;
       case 'team':      return <TeamTab      team={team}                    loading={tabLoading} caseId={caseData._id} lawyerId={lawyerId} onTeamChange={loadTeam} />;
       case 'timeline':  return <TimelineTab  timeline={timeline}            loading={tabLoading} />;
     }
   };
 
+  const visibleInvoiceCount = invoices.filter(inv => {
+    if (inv.status === 'DRAFT' || inv.status === 'CANCELLED') return inv.lawyer_id === currentUserId;
+    return true;
+  }).length;
+
   const tabCounts = {
     overview:  null,
     documents: stats.docs,
     tasks:     stats.tasks,
-    invoices:  invoices.length || null,
+    invoices:  visibleInvoiceCount || null,
     notes:     stats.notes,
     team:      team.length || null,
     timeline:  null,
+    ai:        null,
   };
 
   return (
@@ -3095,8 +3219,13 @@ export default function CaseDetailsScreen({ navigation, route }) {
       </View>
 
       {/* ── SCROLLABLE CONTENT ────────────────────────────────────── */}
-      <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
         <ScrollView
+          ref={mainScrollRef}
           style={sc.scroll}
           contentContainerStyle={{ paddingTop: 8, paddingBottom: editMode ? 100 : 50 }}
           showsVerticalScrollIndicator={false}
@@ -3122,7 +3251,7 @@ export default function CaseDetailsScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
         )}
-      </View>
+      </KeyboardAvoidingView>
 
       {/* ── STATUS CHANGE MODAL ──────────────────────────────────── */}
       <Modal

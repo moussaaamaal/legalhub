@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
+  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Linking, Alert,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { notificationsAPI } from '../../services/api';
@@ -11,26 +11,32 @@ const C = {
   white: '#FFFFFF', g50: '#F9FAFB', g100: '#F3F4F6', g200: '#E5E7EB',
   g400: '#9CA3AF', g500: '#6B7280', g600: '#4B5563',
   blue50: '#EFF6FF', blue100: '#DBEAFE',
-  green50: '#F0FDF4', green100: '#DCFCE7', green600: '#16A34A',
+  green50: '#F0FDF4', green100: '#DCFCE7', green500: '#22C55E', green600: '#16A34A',
   amber50: '#FFFBEB', amber100: '#FEF3C7', amber600: '#D97706',
   purple50: '#FAF5FF', purple100: '#F3E8FF', purple600: '#9333EA',
   red50: '#FEF2F2', red100: '#FEE2E2', red600: '#DC2626',
+  teal50: '#F0FDFA', teal100: '#CCFBF1', teal600: '#0D9488',
 };
 
-// Gère les types en majuscules (DOCUMENT_SHARED) et minuscules (document_shared)
 const TYPE_META = {
-  case_update:           { icon: 'briefcase',         color: C.primary,   bg: C.blue50,    label: 'Case Update'   },
-  new_invoice:           { icon: 'file-invoice',      color: C.amber600,  bg: C.amber50,   label: 'Invoice'       },
-  document_approval:     { icon: 'check-circle',      color: C.green600,  bg: C.green50,   label: 'Document'      },
-  document_shared:       { icon: 'file-alt',          color: C.primary,   bg: C.blue50,    label: 'Document'      },
-  document_request:      { icon: 'inbox',             color: C.amber600,  bg: C.amber50,   label: 'Request'       },
-  appointment_confirmed: { icon: 'calendar-check',    color: C.purple600, bg: C.purple50,  label: 'Appointment'   },
-  appointment_reminder:  { icon: 'clock',             color: C.amber600,  bg: C.amber50,   label: 'Reminder'      },
-  payment_received:      { icon: 'money-bill-wave',   color: C.green600,  bg: C.green50,   label: 'Payment'       },
-  invoice_overdue:       { icon: 'exclamation-circle',color: C.red600,    bg: C.red50,     label: 'Overdue'       },
-  invoice_due:           { icon: 'file-invoice-dollar',color: C.amber600, bg: C.amber50,   label: 'Invoice'       },
-  general:               { icon: 'calendar-check',    color: C.purple600, bg: C.purple50,  label: 'Event'         },
-  DEFAULT:               { icon: 'bell',              color: C.secondary, bg: C.blue50,    label: 'Notification'  },
+  case_update:           { icon: 'briefcase',          color: C.primary,   bg: C.blue50,    label: 'Case Update'   },
+  new_invoice:           { icon: 'file-invoice',       color: C.amber600,  bg: C.amber50,   label: 'Invoice'       },
+  document_approval:     { icon: 'check-circle',       color: C.green600,  bg: C.green50,   label: 'Document'      },
+  document_shared:       { icon: 'file-alt',           color: C.primary,   bg: C.blue50,    label: 'Document'      },
+  document_request:      { icon: 'inbox',              color: C.amber600,  bg: C.amber50,   label: 'Request'       },
+  appointment_confirmed: { icon: 'calendar-check',     color: C.purple600, bg: C.purple50,  label: 'Appointment'   },
+  appointment_reminder:  { icon: 'clock',              color: C.amber600,  bg: C.amber50,   label: 'Reminder'      },
+  payment_received:      { icon: 'money-bill-wave',    color: C.green600,  bg: C.green50,   label: 'Payment'       },
+  invoice_overdue:       { icon: 'exclamation-circle', color: C.red600,    bg: C.red50,     label: 'Overdue'       },
+  invoice_due:           { icon: 'file-invoice-dollar',color: C.amber600,  bg: C.amber50,   label: 'Invoice'       },
+  general:               { icon: 'calendar-check',     color: C.purple600, bg: C.purple50,  label: 'Event'         },
+  DEFAULT:               { icon: 'bell',               color: C.secondary, bg: C.blue50,    label: 'Notification'  },
+};
+
+const MEETING_TYPE_CFG = {
+  VIDEO:     { icon: 'video',    color: C.teal600,   bg: C.teal50,    label: 'Video Call'  },
+  IN_PERSON: { icon: 'building', color: C.primary,   bg: C.blue50,    label: 'In Person'   },
+  PHONE:     { icon: 'phone',    color: C.amber600,  bg: C.amber50,   label: 'Phone Call'  },
 };
 
 function getMeta(type) {
@@ -65,6 +71,11 @@ function groupByDate(notifications) {
   return groups;
 }
 
+function parseMeetingData(notif) {
+  if (notif.type?.toUpperCase() !== 'MEETING_REQUEST') return null;
+  try { return JSON.parse(notif.message); } catch { return null; }
+}
+
 function parseEventData(notif) {
   if (notif.type?.toLowerCase() !== 'general') return null;
   try { return JSON.parse(notif.message); } catch { return null; }
@@ -79,6 +90,128 @@ function fmtEventDate(isoStr) {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }) + ' · ' + time;
 }
 
+// ─── MEETING CONFIRMED / DECLINED CARD ──────────────────────────────────────
+function MeetingNotifCard({ notif, data, onRead, onNavigate }) {
+  const unread     = !notif.is_read;
+  const time       = timeAgo(notif.created_at);
+  const isAccepted = data?.status === 'ACCEPTED' || !!data?.date_display || !!data?.event_title;
+  const isRejected = data?.status === 'REJECTED';
+  const isVideo    = data?.is_video || data?.meeting_type === 'VIDEO';
+  const mtCfg      = MEETING_TYPE_CFG[data?.meeting_type] || (isVideo ? MEETING_TYPE_CFG.VIDEO : null);
+
+  const accentColor = isRejected ? C.red600 : C.teal600;
+  const accentBg    = isRejected ? C.red50   : C.teal50;
+  const accentLight = isRejected ? C.red100  : C.teal100;
+
+  const handleJoin = () => {
+    const link = data?.video_call_url;
+    if (!link) return;
+    Linking.openURL(link).catch(() =>
+      Alert.alert('Cannot Open Link', 'The meeting link could not be opened.')
+    );
+  };
+
+  const handlePress = () => {
+    if (unread) onRead(notif.id);
+    if (isAccepted) onNavigate(notif, null);
+  };
+
+  return (
+    <TouchableOpacity
+      style={[mc.card, { borderColor: unread ? accentColor + '40' : C.g100 }]}
+      onPress={handlePress}
+      activeOpacity={0.85}
+    >
+      {/* Accent bar */}
+      <View style={[mc.accentBar, { backgroundColor: accentColor }]} />
+
+      <View style={{ flex: 1, paddingLeft: 4 }}>
+        {/* Header row */}
+        <View style={mc.headerRow}>
+          <View style={[mc.statusBadge, { backgroundColor: accentLight }]}>
+            <FontAwesome5
+              name={isRejected ? 'times-circle' : 'calendar-check'}
+              size={12}
+              color={accentColor}
+              style={{ marginRight: 5 }}
+            />
+            <Text style={[mc.statusTxt, { color: accentColor }]}>
+              {isRejected ? 'Request Declined' : 'Meeting Scheduled'}
+            </Text>
+          </View>
+          <View style={mc.timeRow}>
+            {unread && <View style={[mc.dot, { backgroundColor: accentColor }]} />}
+            <Text style={mc.time}>{time}</Text>
+          </View>
+        </View>
+
+        {/* Title */}
+        <Text style={[mc.title, unread && { color: C.dark }]} numberOfLines={2}>
+          {notif.title || (isRejected ? 'Meeting Request Declined' : 'Meeting Confirmed')}
+        </Text>
+
+        {/* Lawyer */}
+        {!!data?.lawyer_name && (
+          <View style={mc.infoRow}>
+            <View style={mc.infoIcon}>
+              <FontAwesome5 name="user-tie" size={11} color={C.primary} />
+            </View>
+            <Text style={mc.infoTxt}>{data.lawyer_name}</Text>
+          </View>
+        )}
+
+        {/* Date — accepted only */}
+        {isAccepted && !!(data?.date_display || data?.start_datetime) && (
+          <View style={mc.infoRow}>
+            <View style={[mc.infoIcon, { backgroundColor: accentLight }]}>
+              <FontAwesome5 name="calendar-alt" size={11} color={accentColor} />
+            </View>
+            <Text style={[mc.infoTxt, { color: accentColor, fontWeight: '700' }]}>
+              {data.date_display || fmtEventDate(data.start_datetime)}
+            </Text>
+          </View>
+        )}
+
+        {/* Meeting type badge — accepted only */}
+        {isAccepted && !!mtCfg && (
+          <View style={mc.infoRow}>
+            <View style={[mc.infoIcon, { backgroundColor: mtCfg.bg }]}>
+              <FontAwesome5 name={mtCfg.icon} size={11} color={mtCfg.color} />
+            </View>
+            <Text style={[mc.infoTxt, { color: mtCfg.color, fontWeight: '600' }]}>{mtCfg.label}</Text>
+          </View>
+        )}
+
+        {/* Location — IN_PERSON */}
+        {isAccepted && !isVideo && !!data?.location && (
+          <View style={mc.infoRow}>
+            <View style={mc.infoIcon}>
+              <FontAwesome5 name="map-marker-alt" size={11} color={C.g500} />
+            </View>
+            <Text style={mc.infoTxt} numberOfLines={1}>{data.location}</Text>
+          </View>
+        )}
+
+        {/* Rejection reason */}
+        {isRejected && !!data?.reason && (
+          <View style={[mc.reasonBox, { backgroundColor: C.red50, borderColor: C.red100 }]}>
+            <Text style={mc.reasonTxt}>"{data.reason}"</Text>
+          </View>
+        )}
+
+        {/* Join Meeting button — video accepted */}
+        {isAccepted && isVideo && !!data?.video_call_url && (
+          <TouchableOpacity style={mc.joinBtn} onPress={handleJoin} activeOpacity={0.85}>
+            <FontAwesome5 name="video" size={12} color={C.white} style={{ marginRight: 7 }} />
+            <Text style={mc.joinBtnTxt}>Join Meeting</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── STANDARD NOTIFICATION CARD ─────────────────────────────────────────────
 function NotifCard({ notif, onRead, onNavigate }) {
   const meta       = getMeta(notif.type);
   const unread     = !notif.is_read;
@@ -115,17 +248,13 @@ function NotifCard({ notif, onRead, onNavigate }) {
       onPress={handlePress}
       activeOpacity={0.8}
     >
-      {/* Barre couleur gauche pour non-lu */}
       {unread && <View style={[s.accentBar, { backgroundColor: meta.color }]} />}
 
-      {/* Icône */}
       <View style={[s.iconCircle, { backgroundColor: meta.bg }]}>
         <FontAwesome5 name={meta.icon} size={18} color={meta.color} />
       </View>
 
-      {/* Contenu */}
       <View style={s.body}>
-        {/* Ligne titre + badge */}
         <View style={s.titleRow}>
           <Text style={[s.title, unread && s.titleUnread]} numberOfLines={2}>
             {notif.title || 'Notification'}
@@ -137,14 +266,12 @@ function NotifCard({ notif, onRead, onNavigate }) {
           )}
         </View>
 
-        {/* Message */}
         {!!displayMessage && (
           <Text style={[s.message, !unread && s.messageRead]} numberOfLines={3}>
             {displayMessage}
           </Text>
         )}
 
-        {/* Pied : type + heure + action hint */}
         <View style={s.footer}>
           <View style={[s.typePill, { backgroundColor: meta.bg }]}>
             <Text style={[s.typePillTxt, { color: meta.color }]}>{meta.label}</Text>
@@ -162,7 +289,6 @@ function NotifCard({ notif, onRead, onNavigate }) {
         </View>
       </View>
 
-      {/* Chevron si actionable, checkmark si lu */}
       {isActionable
         ? <Ionicons name="chevron-forward" size={16} color={meta.color} style={{ marginLeft: 6, marginTop: 2 }} />
         : !unread && <Ionicons name="checkmark-done" size={14} color={C.g200} style={{ marginLeft: 8, marginTop: 2 }} />
@@ -171,6 +297,7 @@ function NotifCard({ notif, onRead, onNavigate }) {
   );
 }
 
+// ─── ÉCRAN PRINCIPAL ─────────────────────────────────────────────────────────
 export default function ClientNotificationsScreen({ navigation }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading]             = useState(true);
@@ -208,9 +335,7 @@ export default function ClientNotificationsScreen({ navigation }) {
     setMarkingAll(true);
     try {
       await notificationsAPI.markAllRead();
-      setNotifications(prev =>
-        prev.map(n => ({ ...n, is_read: true }))
-      );
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     } catch {}
     setMarkingAll(false);
   };
@@ -220,6 +345,8 @@ export default function ClientNotificationsScreen({ navigation }) {
     if (type === 'document_request' && notif.reference_id) {
       navigation.navigate('ClientDocuments', { caseId: notif.reference_id });
     } else if (type === 'general' && eventData?.event_id) {
+      navigation.navigate('ClientAppointments');
+    } else if (type === 'meeting_request') {
       navigation.navigate('ClientAppointments');
     } else if (type === 'case_update') {
       navigation.navigate('ClientCases');
@@ -279,7 +406,6 @@ export default function ClientNotificationsScreen({ navigation }) {
           contentContainerStyle={{ paddingBottom: 40, paddingTop: 8 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* Bandeau non-lus */}
           {unreadCount > 0 && (
             <View style={s.unreadBanner}>
               <View style={s.unreadBannerDot} />
@@ -292,16 +418,29 @@ export default function ClientNotificationsScreen({ navigation }) {
 
           {Object.entries(groups).map(([date, items]) => (
             <View key={date}>
-              {/* Séparateur de groupe */}
               <View style={s.groupRow}>
                 <View style={s.groupLine} />
                 <Text style={s.groupLabel}>{date}</Text>
                 <View style={s.groupLine} />
               </View>
 
-              {items.map((n, i) => (
-                <NotifCard key={n.id || i} notif={n} onRead={handleRead} onNavigate={handleNavigate} />
-              ))}
+              {items.map((n, i) => {
+                const meetingData = parseMeetingData(n);
+                if (meetingData) {
+                  return (
+                    <MeetingNotifCard
+                      key={n.id || i}
+                      notif={n}
+                      data={meetingData}
+                      onRead={handleRead}
+                      onNavigate={handleNavigate}
+                    />
+                  );
+                }
+                return (
+                  <NotifCard key={n.id || i} notif={n} onRead={handleRead} onNavigate={handleNavigate} />
+                );
+              })}
             </View>
           ))}
         </ScrollView>
@@ -310,12 +449,55 @@ export default function ClientNotificationsScreen({ navigation }) {
   );
 }
 
+// ─── STYLES : MEETING CARD ────────────────────────────────────────────────────
+const mc = StyleSheet.create({
+  card: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    backgroundColor: C.white,
+    borderRadius: 20, marginHorizontal: 16, marginBottom: 10,
+    padding: 16, paddingLeft: 20,
+    borderWidth: 1.5,
+    shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 }, elevation: 3,
+    overflow: 'hidden',
+  },
+  accentBar: {
+    position: 'absolute', left: 0, top: 0, bottom: 0, width: 5,
+    borderTopLeftRadius: 20, borderBottomLeftRadius: 20,
+  },
+  headerRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 8,
+  },
+  statusBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
+  },
+  statusTxt:  { fontSize: 11, fontWeight: '800' },
+  timeRow:    { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  dot:        { width: 7, height: 7, borderRadius: 4 },
+  time:       { fontSize: 11, color: C.g400, fontWeight: '500' },
+  title:      { fontSize: 14, fontWeight: '700', color: C.g600, marginBottom: 10, lineHeight: 20 },
+  infoRow:    { flexDirection: 'row', alignItems: 'center', marginBottom: 7 },
+  infoIcon:   { width: 26, height: 26, borderRadius: 8, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  infoTxt:    { fontSize: 13, color: C.g600, fontWeight: '500', flex: 1 },
+  reasonBox:  { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, marginTop: 4 },
+  reasonTxt:  { fontSize: 12, color: C.red600, fontStyle: 'italic', lineHeight: 18 },
+  joinBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.teal600, borderRadius: 14,
+    paddingVertical: 11, paddingHorizontal: 20,
+    marginTop: 10, alignSelf: 'flex-start',
+  },
+  joinBtnTxt: { color: C.white, fontWeight: '800', fontSize: 13 },
+});
+
+// ─── STYLES : STANDARD CARD + LAYOUT ─────────────────────────────────────────
 const s = StyleSheet.create({
   safe:   { flex: 1, backgroundColor: C.primary },
   scroll: { flex: 1, backgroundColor: C.g50 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.g50 },
 
-  // ── Header ─────────────────────────────────────────────────────────────────
   header:      { backgroundColor: C.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 18 },
   backBtn:     { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '800', color: C.white },
@@ -323,23 +505,19 @@ const s = StyleSheet.create({
   markAllBtn:  { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
   markAllTxt:  { fontSize: 12, fontWeight: '700', color: C.white },
 
-  // ── Empty state ────────────────────────────────────────────────────────────
   emptyIconWrap: { width: 88, height: 88, borderRadius: 44, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyTitle:    { fontSize: 18, fontWeight: '800', color: C.dark, marginBottom: 6 },
   emptySubtitle: { fontSize: 13, color: C.g500 },
 
-  // ── Bandeau non-lus ────────────────────────────────────────────────────────
   unreadBanner:    { flexDirection: 'row', alignItems: 'center', backgroundColor: C.blue50, marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: C.blue100 },
   unreadBannerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.primary, marginRight: 8 },
   unreadBannerTxt: { fontSize: 13, fontWeight: '700', color: C.primary, flex: 1 },
   unreadBannerHint:{ fontSize: 11, color: C.secondary },
 
-  // ── Séparateur de groupe ───────────────────────────────────────────────────
   groupRow:   { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 14, marginBottom: 10, gap: 10 },
   groupLine:  { flex: 1, height: 1, backgroundColor: C.g200 },
   groupLabel: { fontSize: 11, fontWeight: '700', color: C.g400, textTransform: 'uppercase', letterSpacing: 0.8 },
 
-  // ── Carte notification ─────────────────────────────────────────────────────
   card: {
     flexDirection: 'row', alignItems: 'flex-start',
     backgroundColor: C.white,
@@ -350,19 +528,13 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 }, elevation: 2,
     overflow: 'hidden',
   },
-  cardUnread: {
-    backgroundColor: '#F0F7FF',
-    borderColor: C.blue100,
-  },
+  cardUnread:     { backgroundColor: '#F0F7FF', borderColor: C.blue100 },
+  cardActionable: { borderStyle: 'solid' },
   accentBar: {
     position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
     borderTopLeftRadius: 20, borderBottomLeftRadius: 20,
   },
-  iconCircle: {
-    width: 50, height: 50, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: 14, flexShrink: 0,
-  },
+  iconCircle:  { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 14, flexShrink: 0 },
   body:        { flex: 1 },
   titleRow:    { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 5 },
   title:       { flex: 1, fontSize: 14, fontWeight: '600', color: C.g600, lineHeight: 20 },
@@ -374,8 +546,7 @@ const s = StyleSheet.create({
   footer:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   typePill:    { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   typePillTxt: { fontSize: 10, fontWeight: '700' },
-  timeWrap:      { flexDirection: 'row', alignItems: 'center' },
-  time:          { fontSize: 11, color: C.g400, fontWeight: '500' },
-  actionHint:    { fontSize: 10, fontWeight: '700' },
-  cardActionable:{ borderStyle: 'solid' },
+  timeWrap:    { flexDirection: 'row', alignItems: 'center' },
+  time:        { fontSize: 11, color: C.g400, fontWeight: '500' },
+  actionHint:  { fontSize: 10, fontWeight: '700' },
 });

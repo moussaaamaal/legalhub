@@ -1,13 +1,14 @@
 import io
 import logging
 from datetime import datetime, timezone, date as _date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
+from app.services.case_ingestion import ingest_case
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
 from pydantic import BaseModel
 from typing import Optional
-from app.models.enums import CaseStatus, CasePriority, CaseType, BillingType
+from app.models.enums import CaseStatus, CasePriority, CaseType
 
 _log = logging.getLogger(__name__)
 
@@ -46,7 +47,6 @@ class CreateCaseRequest(BaseModel):
     court_location: Optional[str] = None
     judge_name: Optional[str] = None
     prosecutor_name: Optional[str] = None
-    billing_type: Optional[BillingType] = None
     estimated_value: Optional[float] = None
     filing_date: Optional[str] = None
     first_hearing_date: Optional[str] = None
@@ -65,7 +65,6 @@ class UpdateCaseRequest(BaseModel):
     court_location: Optional[str] = None
     judge_name: Optional[str] = None
     prosecutor_name: Optional[str] = None
-    billing_type: Optional[BillingType] = None
     estimated_value: Optional[float] = None
     filing_date: Optional[str] = None
     first_hearing_date: Optional[str] = None
@@ -111,7 +110,7 @@ async def list_cases(
 
     query = (
         supabase.table("case_file")
-        .select("*, client(id, first_name, last_name, email)")
+        .select("*, client(id, first_name, last_name, email, phone, app_user(avatar_url))")
         .eq("firm_id", current_user["firm_id"])
     )
 
@@ -135,7 +134,7 @@ async def list_cases(
 # ─── POST /api/cases ────────────────────────────────────
 
 @router.post("", status_code=201)
-async def create_case(body: CreateCaseRequest, current_user=Depends(get_lawyer)):
+async def create_case(body: CreateCaseRequest, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
     data = body.model_dump(exclude_none=True)
     data["firm_id"] = current_user["firm_id"]
     data["lawyer_id"] = current_user["id"]
@@ -165,6 +164,7 @@ async def create_case(body: CreateCaseRequest, current_user=Depends(get_lawyer))
         "message": f"{body.title} ({body.case_number}) has been successfully created.",
     }).execute()
 
+    background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
     return result.data[0]
 
 # ─── GET /api/cases/client/:clientId ────────────────────
@@ -328,7 +328,7 @@ async def export_case_pdf(case_id: str, current_user=Depends(get_lawyer)):
 # ─── PUT /api/cases/:id ─────────────────────────────────
 
 @router.put("/{case_id}")
-async def update_case(case_id: str, body: UpdateCaseRequest, current_user=Depends(get_lawyer)):
+async def update_case(case_id: str, body: UpdateCaseRequest, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
     data = body.model_dump(exclude_none=True)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
@@ -354,12 +354,13 @@ async def update_case(case_id: str, body: UpdateCaseRequest, current_user=Depend
         "Case Updated",
         f"Your case '{result.data[0].get('title', 'Unnamed')}' has been updated by your attorney.",
     )
+    background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
     return result.data[0]
 
 # ─── PATCH /api/cases/:id/status ────────────────────────
 
 @router.patch("/{case_id}/status")
-async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, current_user=Depends(get_lawyer)):
+async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
     current = (
         supabase.table("case_file")
         .select("status")
@@ -410,6 +411,7 @@ async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, curren
         "Case Status Changed",
         f"Your case '{case_data.get('title', 'Unnamed')}' status is now: {body.status.value}.",
     )
+    background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
     return case_data
 
 # ─── PATCH /api/cases/:id/restore ──────────────────────

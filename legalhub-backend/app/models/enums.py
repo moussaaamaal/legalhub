@@ -34,12 +34,6 @@ class CaseType(str, Enum):
     LABOR            = "LABOR"
     TAX              = "TAX"
 
-class BillingType(str, Enum):
-    HOURLY      = "HOURLY"
-    FLAT_FEE    = "FLAT_FEE"
-    CONTINGENCY = "CONTINGENCY"
-    RETAINER    = "RETAINER"
-
 class InvoiceStatus(str, Enum):
     DRAFT     = "DRAFT"
     PENDING   = "PENDING"

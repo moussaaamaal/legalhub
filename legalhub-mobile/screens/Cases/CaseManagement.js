@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Linking,
-  RefreshControl, Alert,
+  RefreshControl, Alert, Image, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
 import { casesAPI, calendarAPI, dashboardAPI } from '../../services/api';
@@ -10,6 +10,8 @@ import { casesAPI, calendarAPI, dashboardAPI } from '../../services/api';
 import CaseDetailsScreen from './CaseDetailsScreen';
 import AddCaseScreen from './AddCaseScreen';
 import VoiceNoteScreen from '../TasksNotes/VoiceNoteScreen';
+import InvoiceScreen from '../Invoices/InvoiceScreen';
+import CaseAIAssistantTab from './CaseAIAssistantTab';
 
 // ─── COULEURS ──────────────────────────────────────────────────────────────
 const C = {
@@ -500,7 +502,7 @@ const getCountdown = (iso) => {
 };
 
 // ─── COMPOSANTS ───────────────────────────────────────────────────────────
-const CaseCard = ({ item, onViewDetails, onArchive, onUnarchive }) => {
+const CaseCard = ({ item, onViewDetails, onArchive, onUnarchive, onAIPress }) => {
   const archived = item.isArchived;
   return (
     <View style={[
@@ -535,11 +537,18 @@ const CaseCard = ({ item, onViewDetails, onArchive, onUnarchive }) => {
       {/* Client row */}
       <View style={[s.row, { justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.gray100 }]}>
         <View style={s.row}>
-          <View style={[s.avatarMd, { backgroundColor: archived ? C.gray200 : C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
-            <Text style={{ fontSize: 13, fontWeight: '800', color: archived ? C.gray500 : C.primary }}>
-              {item.client.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-            </Text>
-          </View>
+          {item.avatar ? (
+            <Image
+              source={{ uri: item.avatar }}
+              style={[s.avatarMd, { opacity: archived ? 0.4 : 1 }]}
+            />
+          ) : (
+            <View style={[s.avatarMd, { backgroundColor: archived ? C.gray200 : C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: archived ? C.gray500 : C.primary }}>
+                {item.client.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+              </Text>
+            </View>
+          )}
           <View style={{ marginLeft: 10 }}>
             <Text style={[s.clientName, archived && { color: C.gray500 }]}>{item.client}</Text>
             <Text style={s.clientSince}>Since: {item.clientSince}</Text>
@@ -613,10 +622,11 @@ const CaseCard = ({ item, onViewDetails, onArchive, onUnarchive }) => {
           </TouchableOpacity>
         )}
 
-        {/* AI — désactivé si archivé */}
+        {/* AI — disabled if archived */}
         <TouchableOpacity
           disabled={archived}
           style={[s.iconBtn, { backgroundColor: archived ? C.gray100 : C.blue50, marginLeft: 8, width: 44, height: 44 }]}
+          onPress={() => !archived && onAIPress && onAIPress(item)}
         >
           <Icon lib="FA5" name="robot" size={16} color={archived ? C.gray400 : C.primary} />
         </TouchableOpacity>
@@ -729,7 +739,7 @@ const toCardFormat = (c) => {
       { label: typeLabel,                                                     color: C.gray600, bg: C.gray100 },
       { label: STATUS_LABEL[c.status] || c.status.replace(/_/g, ' '),        color: C.blue600, bg: C.blue50  },
     ],
-    avatar:       null,
+    avatar:       c.client?.app_user?.avatar_url || null,
     client:       clientName,
     clientSince:  filingLabel,
     contacts: [
@@ -765,7 +775,7 @@ const toCardFormat = (c) => {
     clientData: {
       name:    clientName,
       id:      c.client?.id    || '—',
-      avatar:  null,
+      avatar:  c.client?.app_user?.avatar_url || null,
       since:   filingLabel,
       phone:   c.client?.phone || '—',
       email:   c.client?.email || '—',
@@ -924,7 +934,9 @@ const aa = StyleSheet.create({
 // ─── ÉCRAN ─────────────────────────────────────────────────────────────────
 export default function CaseManagement({ navigation }) {
   const [selectedCase,     setSelectedCase]     = useState(null);
+  const [aiCase,           setAiCase]           = useState(null);
   const [voiceNoteCase,    setVoiceNoteCase]    = useState(null);
+  const [invoiceParams,    setInvoiceParams]    = useState(null);
   const [showAddCase,      setShowAddCase]      = useState(false);
   const [showAllActivity,  setShowAllActivity]  = useState(false);
   const [cases,            setCases]            = useState([]);
@@ -1094,6 +1106,16 @@ export default function CaseManagement({ navigation }) {
   const activeCount = tabCounts.active;
   const totalCount  = cases.length;
 
+  // InvoiceScreen depuis CaseDetails
+  if (invoiceParams !== null) {
+    return (
+      <InvoiceScreen
+        navigation={{ goBack: () => setInvoiceParams(null) }}
+        route={{ params: invoiceParams }}
+      />
+    );
+  }
+
   // VoiceNoteScreen depuis CaseDetails (case verrouillé)
   if (voiceNoteCase) {
     return (
@@ -1127,6 +1149,7 @@ export default function CaseManagement({ navigation }) {
           goBack: () => { setSelectedCase(null); loadCases(); },
           navigate: (screen, params) => {
             if (screen === 'VoiceNote') setVoiceNoteCase(params?.lockedCase);
+            if (screen === 'Invoice')   setInvoiceParams(params ?? {});
           },
         }}
         route={{ params: { caseData: selectedCase } }}
@@ -1138,9 +1161,53 @@ export default function CaseManagement({ navigation }) {
     setSelectedCase(rawToDetails(cardItem._raw));
   };
 
+  const handleAIPress = (cardItem) => {
+    const raw = cardItem._raw;
+    setAiCase({
+      id:     raw.id,
+      title:  raw.title,
+      number: raw.case_number,
+    });
+  };
+
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.primary} />
+
+      {/* ── AI Assistant modal (standalone, no CaseDetails) ── */}
+      <Modal
+        visible={!!aiCase}
+        animationType="slide"
+        onRequestClose={() => setAiCase(null)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
+          <View style={aiM.header}>
+            <TouchableOpacity onPress={() => setAiCase(null)} style={aiM.closeBtn}>
+              <FontAwesome5 name="chevron-down" size={16} color="#6B7280" />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={aiM.title}>AI Assistant</Text>
+              {aiCase?.title ? (
+                <Text style={aiM.sub} numberOfLines={1}>{aiCase.title}</Text>
+              ) : null}
+            </View>
+            <View style={{ width: 36 }} />
+          </View>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={0}
+          >
+            {aiCase && (
+              <CaseAIAssistantTab
+                caseId={aiCase.id}
+                caseTitle={aiCase.title}
+                caseNumber={aiCase.number}
+              />
+            )}
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
 
       {/* HEADER */}
       <View style={s.header}>
@@ -1374,7 +1441,7 @@ export default function CaseManagement({ navigation }) {
             </View>
           )}
           {!loading && displayCases.map((c, i) => (
-            <CaseCard key={c._raw?.id ?? i} item={c} onViewDetails={handleViewDetails} onArchive={handleArchive} onUnarchive={handleUnarchive} />
+            <CaseCard key={c._raw?.id ?? i} item={c} onViewDetails={handleViewDetails} onArchive={handleArchive} onUnarchive={handleUnarchive} onAIPress={handleAIPress} />
           ))}
         </View>
 
@@ -1657,6 +1724,14 @@ export default function CaseManagement({ navigation }) {
     </SafeAreaView>
   );
 }
+
+// ─── AI modal header styles ───────────────────────────────────────────────
+const aiM = StyleSheet.create({
+  header:   { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', gap: 12 },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  title:    { fontSize: 16, fontWeight: '800', color: '#1E293B' },
+  sub:      { fontSize: 12, color: '#6B7280', marginTop: 1 },
+});
 
 // ─── STYLES ───────────────────────────────────────────────────────────────
 const s = StyleSheet.create({

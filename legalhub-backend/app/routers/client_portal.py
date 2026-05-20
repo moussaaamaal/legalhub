@@ -464,6 +464,71 @@ async def client_appointments(case_id: Optional[str] = None, ctx=Depends(_requir
     return events
 
 
+# ─── GET /api/client/cases/:case_id/team ────────────────
+
+@router.get("/cases/{case_id}/team")
+async def client_case_team(case_id: str, ctx=Depends(_require_client)):
+    """Membres de l'équipe assignée à un dossier du client (pour sélectionner un avocat)."""
+    client = ctx["client"]
+
+    case_check = (
+        supabase.table("case_file")
+        .select("id, lawyer_id")
+        .eq("id", case_id)
+        .eq("client_id", client["id"])
+        .eq("firm_id", client["firm_id"])
+        .maybe_single()
+        .execute()
+    )
+    if not case_check.data:
+        raise HTTPException(status_code=404, detail="Case not found or access denied")
+
+    case_lead_lawyer_id = case_check.data.get("lawyer_id")
+
+    team_result = (
+        supabase.table("case_team")
+        .select("user_id, app_user(full_name, email, avatar_url, role)")
+        .eq("case_id", case_id)
+        .execute()
+    )
+    team_members = team_result.data or []
+
+    user_ids = [m["user_id"] for m in team_members if m.get("user_id")]
+    lawyer_map: dict = {}
+    if user_ids:
+        lw_res = (
+            supabase.table("lawyer")
+            .select("user_id, id, title, specializations")
+            .in_("user_id", user_ids)
+            .execute()
+        )
+        for lw in (lw_res.data or []):
+            lawyer_map[lw["user_id"]] = {
+                "lawyer_id":       lw.get("id"),
+                "title":           lw.get("title"),
+                "specializations": lw.get("specializations") or [],
+            }
+
+    result = []
+    for m in team_members:
+        uid = m.get("user_id")
+        u   = m.get("app_user") or {}
+        if u.get("role") not in ("LAWYER", "FIRM_ADMIN"):
+            continue
+        lw  = lawyer_map.get(uid, {})
+        result.append({
+            "user_id":         uid,
+            "full_name":       u.get("full_name"),
+            "email":           u.get("email"),
+            "avatar_url":      u.get("avatar_url"),
+            "title":           lw.get("title"),
+            "specializations": lw.get("specializations", []),
+            "is_lead":         lw.get("lawyer_id") == case_lead_lawyer_id,
+        })
+
+    return result
+
+
 # ─── POST /api/client/documents/upload ──────────────────
 
 @router.post("/documents/upload", status_code=201)
@@ -548,18 +613,23 @@ async def client_upload_document(
 
 @router.post("/appointments/request")
 async def client_request_appointment(body: dict, ctx=Depends(_require_client)):
-    """Le client demande un nouveau rendez-vous auprès de son avocat."""
+    """Le client demande un rendez-vous auprès d'un avocat spécifique de son équipe."""
     client = ctx["client"]
 
+    # lawyer_user_id can come directly from body (new flow: client picked team member)
+    # or fall back to the client's assigned_lawyer_id (legacy)
+    target_lawyer_user_id: Optional[str] = body.get("lawyer_user_id")
+
     record = {
-        "firm_id":        client["firm_id"],
-        "client_id":      client["id"],
-        "case_id":        body.get("case_id"),
-        "title":          body.get("title", "Meeting Request"),
-        "meeting_type":   body.get("meeting_type", "IN_PERSON"),
-        "preferred_date": body.get("preferred_date"),
-        "notes":          body.get("notes"),
-        "status":         "PENDING",
+        "firm_id":          client["firm_id"],
+        "client_id":        client["id"],
+        "case_id":          body.get("case_id"),
+        "lawyer_user_id":   target_lawyer_user_id,
+        "title":            body.get("title", "Meeting Request"),
+        "meeting_type":     body.get("meeting_type", "IN_PERSON"),
+        "preferred_date":   body.get("preferred_date"),
+        "notes":            body.get("notes"),
+        "status":           "PENDING",
     }
 
     try:
@@ -569,71 +639,87 @@ async def client_request_appointment(body: dict, ctx=Depends(_require_client)):
             .execute()
         )
         saved = result.data[0] if result.data else None
-    except Exception:
+    except Exception as e:
+        _log.error(f"[request_meeting] DB insert failed: {e}")
         saved = None
 
-    # Notify the assigned lawyer
-    _log.info(
-        f"[request_meeting] client_id={client.get('id')} "
-        f"assigned_lawyer_id={client.get('assigned_lawyer_id')!r}"
-    )
-    if client.get("assigned_lawyer_id"):
+    request_id = saved.get("id") if saved else None
+
+    # Resolve target lawyer user_id — fallback to assigned_lawyer if not provided
+    if not target_lawyer_user_id and client.get("assigned_lawyer_id"):
         try:
-            lawyer_result = (
+            lw_res = (
                 supabase.table("lawyer")
                 .select("user_id")
                 .eq("id", client["assigned_lawyer_id"])
                 .maybe_single()
                 .execute()
             )
-            if lawyer_result and lawyer_result.data:
-                lawyer_user_id = lawyer_result.data.get("user_id")
-                client_name = f"{client.get('first_name', '')} {client.get('last_name', '')}".strip() or "A client"
+            if lw_res and lw_res.data:
+                target_lawyer_user_id = lw_res.data.get("user_id")
+        except Exception:
+            pass
 
-                case_title = None
-                if record.get("case_id"):
-                    try:
-                        case_res = (
-                            supabase.table("case_file")
-                            .select("title")
-                            .eq("id", record["case_id"])
-                            .maybe_single()
-                            .execute()
-                        )
-                        if case_res and case_res.data:
-                            case_title = case_res.data.get("title")
-                    except Exception:
-                        pass
+    _log.info(
+        f"[request_meeting] client_id={client.get('id')} "
+        f"target_lawyer_user_id={target_lawyer_user_id!r} request_id={request_id!r}"
+    )
 
-                notif_message = json.dumps({
-                    "client_name":    client_name,
-                    "request_title":  record["title"],
-                    "meeting_type":   record["meeting_type"],
-                    "preferred_date": record.get("preferred_date") or "",
-                    "notes":          record.get("notes") or "",
-                    "case_title":     case_title or "",
-                }, ensure_ascii=False)
+    if target_lawyer_user_id:
+        try:
+            client_name = f"{client.get('first_name', '')} {client.get('last_name', '')}".strip() or "A client"
 
-                result = supabase_admin.table("notification").insert({
-                    "user_id": lawyer_user_id,
-                    "type":    "MEETING_REQUEST",
-                    "title":   f"New Meeting Request from {client_name}",
-                    "message": notif_message,
-                }).execute()
-                _log.info(
-                    f"[request_meeting] ✅ Lawyer notification inserted — "
-                    f"lawyer_user_id={lawyer_user_id} "
-                    f"notif_id={result.data[0].get('id') if result.data else 'unknown'}"
-                )
-            else:
-                _log.warning(
-                    f"[request_meeting] ⚠️  Lawyer {client.get('assigned_lawyer_id')} "
-                    "has no user_id — notification skipped"
-                )
+            case_title = None
+            if record.get("case_id"):
+                try:
+                    case_res = (
+                        supabase.table("case_file")
+                        .select("title")
+                        .eq("id", record["case_id"])
+                        .maybe_single()
+                        .execute()
+                    )
+                    if case_res and case_res.data:
+                        case_title = case_res.data.get("title")
+                except Exception:
+                    pass
+
+            notif_message = json.dumps({
+                "client_name":    client_name,
+                "request_title":  record["title"],
+                "meeting_type":   record["meeting_type"],
+                "preferred_date": record.get("preferred_date") or "",
+                "notes":          record.get("notes") or "",
+                "case_title":     case_title or "",
+                "request_id":     request_id or "",
+            }, ensure_ascii=False)
+
+            notif_result = supabase_admin.table("notification").insert({
+                "user_id": target_lawyer_user_id,
+                "type":    "MEETING_REQUEST",
+                "title":   f"New Meeting Request from {client_name}",
+                "message": notif_message,
+            }).execute()
+            _log.info(
+                f"[request_meeting] ✅ Lawyer notification inserted — "
+                f"notif_id={notif_result.data[0].get('id') if notif_result.data else 'unknown'}"
+            )
         except Exception as e:
             _log.error(f"[request_meeting] ❌ Lawyer notification failed: {e}")
     else:
-        _log.warning(f"[request_meeting] ⚠️  No assigned_lawyer_id on client {client.get('id')} — notification skipped")
+        _log.warning(f"[request_meeting] ⚠️  No target lawyer resolved — notification skipped")
+
+    # Timeline entry when client submits a meeting request
+    if record.get("case_id"):
+        try:
+            supabase.table("case_timeline").insert({
+                "case_id":      record["case_id"],
+                "firm_id":      client["firm_id"],
+                "action":       f"Meeting requested: {record['title']}",
+                "performed_by": ctx["user"]["id"],
+            }).execute()
+        except Exception as e:
+            _log.warning(f"[request_meeting] timeline insert failed: {e}")
 
     return saved if saved else {"status": "pending", "message": "Request received"}
 

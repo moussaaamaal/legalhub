@@ -147,6 +147,9 @@ export default function ClientAppointmentsScreen({ navigation }) {
   const [submitting, setSubmitting]     = useState(false);
   const [cases, setCases]               = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
+  const [caseTeam, setCaseTeam]         = useState([]);
+  const [loadingTeam, setLoadingTeam]   = useState(false);
+  const [selectedLawyerUserId, setSelectedLawyerUserId] = useState(null);
 
   const loadCases = useCallback(async () => {
     try {
@@ -154,6 +157,20 @@ export default function ClientAppointmentsScreen({ navigation }) {
       setCases(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
+    }
+  }, []);
+
+  const loadCaseTeam = useCallback(async (caseId) => {
+    if (!caseId) { setCaseTeam([]); setSelectedLawyerUserId(null); return; }
+    setLoadingTeam(true);
+    try {
+      const data = await clientPortalAPI.caseTeam(caseId);
+      setCaseTeam(Array.isArray(data) ? data : []);
+      setSelectedLawyerUserId(null);
+    } catch (e) {
+      setCaseTeam([]);
+    } finally {
+      setLoadingTeam(false);
     }
   }, []);
 
@@ -196,6 +213,8 @@ export default function ClientAppointmentsScreen({ navigation }) {
     setPreferredDate(new Date());
     setNotes('');
     setSelectedCaseId(null);
+    setCaseTeam([]);
+    setSelectedLawyerUserId(null);
     setShowDatePicker(false);
     setShowTimePicker(false);
   };
@@ -210,18 +229,23 @@ export default function ClientAppointmentsScreen({ navigation }) {
       Alert.alert('Required', 'Please enter a meeting title.');
       return;
     }
+    if (selectedCaseId && !selectedLawyerUserId) {
+      Alert.alert('Required', 'Please select a lawyer from the case team.');
+      return;
+    }
     setSubmitting(true);
     try {
       await clientPortalAPI.requestMeeting({
-        title: title.trim(),
-        meeting_type: meetingType,
-        preferred_date: preferredDate.toISOString(),
-        notes: notes.trim() || undefined,
-        case_id: selectedCaseId || undefined,
+        title:            title.trim(),
+        meeting_type:     meetingType,
+        preferred_date:   preferredDate.toISOString(),
+        notes:            notes.trim() || undefined,
+        case_id:          selectedCaseId || undefined,
+        lawyer_user_id:   selectedLawyerUserId || undefined,
       });
       setModalVisible(false);
       resetForm();
-      Alert.alert('Request Sent', 'Your meeting request has been submitted. Your attorney will confirm the time.');
+      Alert.alert('Meeting Scheduled', 'Your request has been sent. Your attorney will confirm the appointment.');
       load();
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to send meeting request.');
@@ -258,10 +282,10 @@ export default function ClientAppointmentsScreen({ navigation }) {
             <FontAwesome5 name="calendar-alt" size={28} color={C.g400} />
           </View>
           <Text style={s.emptyTitle}>No Appointments</Text>
-          <Text style={s.emptySubtitle}>Request a meeting with your attorney</Text>
+          <Text style={s.emptySubtitle}>Schedule a meeting with your attorney</Text>
           <TouchableOpacity style={s.emptyBtn} onPress={openModal} activeOpacity={0.8}>
             <FontAwesome5 name="plus" size={13} color={C.white} style={{ marginRight: 8 }} />
-            <Text style={s.emptyBtnTxt}>Request Meeting</Text>
+            <Text style={s.emptyBtnTxt}>Schedule Meeting</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -306,7 +330,7 @@ export default function ClientAppointmentsScreen({ navigation }) {
             <View style={s.modalHandle} />
 
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Request a Meeting</Text>
+              <Text style={s.modalTitle}>Schedule a Meeting</Text>
               <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }} style={s.modalClose}>
                 <Ionicons name="close" size={20} color={C.g500} />
               </TouchableOpacity>
@@ -339,13 +363,28 @@ export default function ClientAppointmentsScreen({ navigation }) {
                 ))}
               </View>
 
-              {/* Preferred Date & Time */}
+              {/* Preferred Date & Time — two explicit buttons */}
               <Text style={s.fieldLabel}>Preferred Date & Time</Text>
-              <TouchableOpacity style={s.datePicker} onPress={() => setShowDatePicker(true)} activeOpacity={0.8}>
-                <FontAwesome5 name="calendar-alt" size={14} color={C.primary} style={{ marginRight: 10 }} />
-                <Text style={s.datePickerTxt}>{formatPickedDate(preferredDate)}</Text>
-                <FontAwesome5 name="chevron-right" size={11} color={C.g400} style={{ marginLeft: 'auto' }} />
-              </TouchableOpacity>
+              <View style={s.dateTimeRow}>
+                <TouchableOpacity
+                  style={[s.dateTimeBtn, { flex: 3 }]}
+                  onPress={() => { setShowTimePicker(false); setShowDatePicker(true); }}
+                  activeOpacity={0.8}
+                >
+                  <FontAwesome5 name="calendar-alt" size={13} color={C.primary} style={{ marginRight: 8 }} />
+                  <Text style={s.dateTimeTxt}>
+                    {preferredDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.dateTimeBtn, { flex: 2 }]}
+                  onPress={() => { setShowDatePicker(false); setShowTimePicker(true); }}
+                  activeOpacity={0.8}
+                >
+                  <FontAwesome5 name="clock" size={13} color={C.primary} style={{ marginRight: 8 }} />
+                  <Text style={s.dateTimeTxt}>{formatTime(preferredDate.toISOString())}</Text>
+                </TouchableOpacity>
+              </View>
 
               {showDatePicker && (
                 <DateTimePicker
@@ -359,7 +398,6 @@ export default function ClientAppointmentsScreen({ navigation }) {
                       const updated = new Date(d);
                       updated.setHours(preferredDate.getHours(), preferredDate.getMinutes());
                       setPreferredDate(updated);
-                      if (Platform.OS === 'android') setShowTimePicker(true);
                     }
                   }}
                 />
@@ -378,11 +416,11 @@ export default function ClientAppointmentsScreen({ navigation }) {
               )}
 
               {/* Related Case */}
-              <Text style={s.fieldLabel}>Related Case (optional)</Text>
+              <Text style={s.fieldLabel}>Related Case <Text style={{ color: C.g400, fontWeight: '400' }}>(optional)</Text></Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 18 }}>
                 <TouchableOpacity
                   style={[s.typeChip, !selectedCaseId && s.typeChipActive]}
-                  onPress={() => setSelectedCaseId(null)}
+                  onPress={() => { setSelectedCaseId(null); loadCaseTeam(null); }}
                   activeOpacity={0.8}
                 >
                   <Text style={[s.typeChipTxt, !selectedCaseId && s.typeChipTxtActive]}>None</Text>
@@ -391,7 +429,7 @@ export default function ClientAppointmentsScreen({ navigation }) {
                   <TouchableOpacity
                     key={c.id}
                     style={[s.typeChip, selectedCaseId === c.id && s.typeChipActive, { marginLeft: 8 }]}
-                    onPress={() => setSelectedCaseId(c.id)}
+                    onPress={() => { setSelectedCaseId(c.id); loadCaseTeam(c.id); }}
                     activeOpacity={0.8}
                   >
                     <Text style={[s.typeChipTxt, selectedCaseId === c.id && s.typeChipTxtActive]} numberOfLines={1}>
@@ -400,6 +438,55 @@ export default function ClientAppointmentsScreen({ navigation }) {
                   </TouchableOpacity>
                 ))}
               </ScrollView>
+
+              {/* Select Lawyer — shown only when a case is selected */}
+              {!!selectedCaseId && (
+                <>
+                  <Text style={s.fieldLabel}>
+                    Select Lawyer <Text style={{ color: C.red600 }}>*</Text>
+                  </Text>
+                  {loadingTeam ? (
+                    <ActivityIndicator size="small" color={C.primary} style={{ marginBottom: 18 }} />
+                  ) : caseTeam.length === 0 ? (
+                    <Text style={[s.fieldLabel, { color: C.g400, fontWeight: '400', marginBottom: 18 }]}>
+                      No team members found for this case.
+                    </Text>
+                  ) : (
+                    <View style={{ marginBottom: 18 }}>
+                      {caseTeam.map(member => {
+                        const isSelected = selectedLawyerUserId === member.user_id;
+                        const initials = (member.full_name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+                        return (
+                          <TouchableOpacity
+                            key={member.user_id}
+                            style={[s.lawyerCard, isSelected && s.lawyerCardActive]}
+                            onPress={() => setSelectedLawyerUserId(member.user_id)}
+                            activeOpacity={0.8}
+                          >
+                            <View style={[s.lawyerAvatar, isSelected && { backgroundColor: C.primary }]}>
+                              <Text style={[s.lawyerAvatarTxt, isSelected && { color: C.white }]}>{initials}</Text>
+                            </View>
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={[s.lawyerName, isSelected && { color: C.primary }]}>{member.full_name}</Text>
+                                {member.is_lead && (
+                                  <View style={s.leadBadge}>
+                                    <Text style={s.leadBadgeTxt}>Lead</Text>
+                                  </View>
+                                )}
+                              </View>
+                              {!!member.title && <Text style={s.lawyerTitle}>{member.title}</Text>}
+                            </View>
+                            {isSelected && (
+                              <FontAwesome5 name="check-circle" size={18} color={C.primary} />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </>
+              )}
 
               {/* Notes */}
               <Text style={s.fieldLabel}>Notes (optional)</Text>
@@ -420,7 +507,7 @@ export default function ClientAppointmentsScreen({ navigation }) {
               >
                 {submitting
                   ? <ActivityIndicator size="small" color={C.white} />
-                  : <Text style={s.submitBtnTxt}>Send Request</Text>
+                  : <Text style={s.submitBtnTxt}>Book Appointment</Text>
                 }
               </TouchableOpacity>
               <View style={{ height: 24 }} />
@@ -496,6 +583,18 @@ const s = StyleSheet.create({
 
   datePicker:    { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g50, borderWidth: 1.5, borderColor: C.g200, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 18 },
   datePickerTxt: { fontSize: 14, color: C.dark, fontWeight: '500', flex: 1 },
+  dateTimeRow:   { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  dateTimeBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: C.g50, borderWidth: 1.5, borderColor: C.g200, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 12 },
+  dateTimeTxt:   { fontSize: 13, color: C.dark, fontWeight: '600' },
+
+  lawyerCard:       { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g50, borderWidth: 1.5, borderColor: C.g200, borderRadius: 14, padding: 14, marginBottom: 10 },
+  lawyerCardActive: { borderColor: C.primary, backgroundColor: C.blue50 },
+  lawyerAvatar:     { width: 44, height: 44, borderRadius: 22, backgroundColor: C.g200, alignItems: 'center', justifyContent: 'center' },
+  lawyerAvatarTxt:  { fontSize: 15, fontWeight: '800', color: C.g600 },
+  lawyerName:       { fontSize: 14, fontWeight: '700', color: C.dark },
+  lawyerTitle:      { fontSize: 12, color: C.g500, marginTop: 2 },
+  leadBadge:        { backgroundColor: '#FEF3C7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
+  leadBadgeTxt:     { fontSize: 10, fontWeight: '700', color: '#D97706' },
 
   submitBtn:    { backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 4 },
   submitBtnTxt: { color: C.white, fontSize: 16, fontWeight: '800' },

@@ -2,7 +2,7 @@
 import { getStoredToken, getStoredRefresh, storeTokens } from '../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'http://192.168.1.13:8000';
+const BASE_URL = 'http://192.168.1.11:8000';
 
 // ─── Offline Cache Helpers ────────────────────────────────────────────────────
 const _setCache = async (key, data) => {
@@ -99,8 +99,9 @@ export const authAPI = {
   uploadAvatar:              (formData) => requestForm('/api/auth/avatar', formData),
   changePassword:            (body) => request('PUT',  '/api/auth/change-password',             body),
   loginHistory:              ()     => request('GET',  '/api/auth/login-history'),
-  getNotifPreferences:       ()     => request('GET',  '/api/auth/notification-preferences'),
-  updateNotifPreferences:    (body) => request('PUT',  '/api/auth/notification-preferences',    body),
+  getNotifPreferences:       ()     => request('GET',    '/api/auth/notification-preferences'),
+  updateNotifPreferences:    (body) => request('PUT',    '/api/auth/notification-preferences',  body),
+  deleteAccount:             ()     => request('DELETE', '/api/auth/me'),
 };
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────
@@ -239,6 +240,7 @@ export const billingAPI = {
   getInvoice:    (id)           => request('GET',  `/api/invoices/${id}`),
   updateInvoice: (id, body)     => request('PUT',  `/api/invoices/${id}`,             body),
   sendInvoice:        (id) => request('POST',   `/api/invoices/${id}/send`,              {}),
+  cancelInvoice:      (id) => request('POST',   `/api/invoices/${id}/cancel`,            {}),
   sendReminder:       (id) => request('POST',   `/api/invoices/${id}/reminder`,          {}),
   sendWhatsapp:       (id) => request('POST',   '/api/whatsapp/send-invoice-notif',      { invoice_id: id }),
   deleteInvoice:      (id) => request('DELETE', `/api/invoices/${id}`),
@@ -275,6 +277,10 @@ export const calendarAPI = {
     const qs = case_id ? `?case_id=${case_id}` : '';
     return request('GET', `/api/calendar/available-participants${qs}`);
   },
+  // Meeting-request management (lawyer side)
+  listMeetingRequests:   ()              => request('GET',  '/api/calendar/meeting-requests'),
+  acceptMeetingRequest:  (id, body)      => request('POST', `/api/calendar/meeting-requests/${id}/accept`, body),
+  rejectMeetingRequest:  (id, body)      => request('POST', `/api/calendar/meeting-requests/${id}/reject`, body),
 };
 
 // ─── TASKS ────────────────────────────────────────────────────────────────
@@ -328,6 +334,20 @@ export const aiAPI = {
   getHistory:     ()                   => request('GET',  '/api/ai/history'),
 };
 
+// ─── RAG / CASE AI ────────────────────────────────────────────────────────
+export const ragAPI = {
+  ingest:        (case_id)                        => request('POST',   '/api/rag/ingest',            { case_id }),
+  ask:           (case_id, question, chat_history) => request('POST',   '/api/rag/ask',               { case_id, question, chat_history: chat_history || [] }),
+  sessionTitle:  (question, answer)               => request('POST',   '/api/rag/session-title',     { question, answer }),
+  status:        (case_id)                        => request('GET',    `/api/rag/status/${case_id}`),
+  history:       (case_id, limit = 30)            => request('GET',    `/api/rag/history/${case_id}?limit=${limit}`),
+  deleteIndex:   (case_id)                        => request('DELETE', `/api/rag/index/${case_id}`),
+  // Firm-wide
+  firmIngest:    ()                               => request('POST',   '/api/rag/firm/ingest'),
+  firmAsk:       (question, chat_history)         => request('POST',   '/api/rag/firm/ask',          { question, chat_history: chat_history || [] }),
+  firmStatus:    ()                               => request('GET',    '/api/rag/firm/status'),
+};
+
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
 export const notificationsAPI = {
   list:         ()     => request('GET',   '/api/notifications'),
@@ -362,6 +382,7 @@ export const clientPortalAPI = {
   },
   appointments:   (caseId) => request('GET',  `/api/client/appointments${caseId ? `?case_id=${caseId}` : ''}`),
   requestMeeting: (body)   => request('POST', '/api/client/appointments/request', body),
+  caseTeam:       (caseId) => request('GET',  `/api/client/cases/${caseId}/team`),
   uploadDocument: async (caseId, file) => {
     const token = await getStoredToken();
     const formData = new FormData();

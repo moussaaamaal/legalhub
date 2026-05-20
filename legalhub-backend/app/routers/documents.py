@@ -5,12 +5,13 @@ import unicodedata
 import logging
 from urllib.parse import unquote
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
 from app.core.config import settings
 from app.models.enums import DocumentCategory, DocumentStatus
+from app.services.case_ingestion import ingest_case
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -40,11 +41,7 @@ def _detect_file_type(filename: str) -> str:
         return "IMAGE"
     return "OTHER"
 
-def _get_openai():
-    if not settings.OPENAI_API_KEY:
-        raise HTTPException(status_code=503, detail="AI service not configured")
-    from openai import OpenAI
-    return OpenAI(api_key=settings.OPENAI_API_KEY)
+
 
 MISTRAL_BASE = "https://api.mistral.ai/v1"
 
@@ -85,6 +82,7 @@ async def list_documents(
     case_id: Optional[str] = None,
     category: Optional[str] = None,
     status: Optional[str] = None,
+    limit: Optional[int] = None,
     current_user=Depends(get_lawyer)
 ):
     is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
@@ -108,7 +106,10 @@ async def list_documents(
         query = query.eq("category", category)
     if status:
         query = query.eq("status", status)
-    result = query.order("created_at", desc=True).execute()
+    query = query.order("created_at", desc=True)
+    if limit:
+        query = query.limit(limit)
+    result = query.execute()
     docs = result.data or []
 
     # Attach uploader full name
@@ -132,6 +133,7 @@ async def list_documents(
 
 @router.post("/upload", status_code=201)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     case_id: str = Form(...),
     original_name: Optional[str] = Form(None),
@@ -189,7 +191,9 @@ async def upload_document(
         "message": f"{file_name} has been uploaded successfully.",
     }).execute()
 
-    return result.data[0]
+    doc = result.data[0]
+    background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+    return doc
 
 
 # ─── POST /api/documents/voice-note-ai ──────────────────
@@ -693,8 +697,27 @@ async def get_document(doc_id: str, current_user=Depends(get_current_user)):
 # ─── DELETE /api/documents/:id ──────────────────────────
 
 @router.delete("/{doc_id}")
-async def delete_document(doc_id: str, current_user=Depends(get_lawyer)):
+async def delete_document(doc_id: str, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
+    doc = supabase.table("document").select("case_id, file_name") \
+        .eq("id", doc_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute()
+    doc_data  = doc.data or {}
+    case_id   = doc_data.get("case_id")
+    file_name = doc_data.get("file_name") or "Document"
+
     supabase.table("document").delete().eq("id", doc_id).eq("firm_id", current_user["firm_id"]).execute()
+
+    if case_id:
+        try:
+            supabase.table("case_timeline").insert({
+                "case_id":      case_id,
+                "firm_id":      current_user["firm_id"],
+                "action":       f'Document deleted: "{file_name}"',
+                "performed_by": current_user["id"],
+            }).execute()
+        except Exception:
+            pass
+        background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+
     return {"message": "Document deleted"}
 
 # ─── PATCH /api/documents/:id/status ────────────────────
@@ -759,6 +782,18 @@ async def share_document(doc_id: str, current_user=Depends(get_lawyer)):
         raise HTTPException(status_code=404, detail="Document not found")
 
     doc_data = result.data[0]
+
+    if doc_data.get("case_id"):
+        try:
+            supabase.table("case_timeline").insert({
+                "case_id":      doc_data["case_id"],
+                "firm_id":      current_user["firm_id"],
+                "action":       f"Document shared with client: {doc_data.get('file_name', 'Document')}",
+                "performed_by": current_user["id"],
+            }).execute()
+        except Exception as e:
+            logger.warning(f"[share_document] timeline insert skipped: {e}")
+
     try:
         case_res = supabase.table("case_file").select("client_id").eq("id", doc_data.get("case_id")).maybe_single().execute()
         if case_res.data and case_res.data.get("client_id"):
@@ -779,6 +814,9 @@ async def share_document(doc_id: str, current_user=Depends(get_lawyer)):
 
 @router.post("/{doc_id}/ai-summarize")
 async def ai_summarize_document(doc_id: str, current_user=Depends(get_lawyer)):
+    from app.services.milvus_client import get_or_create_collection
+    from app.services.embedding_service import _headers, MISTRAL_BASE
+
     doc = (
         supabase.table("document")
         .select("*")
@@ -790,27 +828,93 @@ async def ai_summarize_document(doc_id: str, current_user=Depends(get_lawyer)):
     if not doc.data:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    openai_client = _get_openai()
-    response = openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Summarize this legal document titled '{doc.data['file_name']}'. "
-                "Extract and structure: key clauses, parties involved, important dates, "
-                "obligations, and any potential issues or deadlines."
-            ),
-        }],
-        max_tokens=1500,
+    # Return cached summary if one already exists
+    cached = (
+        supabase.table("ai_summary")
+        .select("id, summary")
+        .eq("document_id", doc_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
     )
-    summary = response.choices[0].message.content
+    if cached.data:
+        return {"summary": cached.data[0]["summary"], "ai_summary_id": cached.data[0]["id"], "cached": True}
 
-    saved = supabase.table("ai_summary").insert({
-        "document_id": doc_id,
-        "summary":     summary,
-        "lawyer_id":   current_user["id"],
-    }).execute()
+    # Fetch indexed chunks for this document from Milvus
+    try:
+        collection = get_or_create_collection()
+        rows = collection.query(
+            expr=f'source_type == "document" && source_id == "{doc_id}" && firm_id == "{current_user["firm_id"]}"',
+            output_fields=["chunk_text"],
+            limit=30,
+        )
+        content = "\n\n".join(r["chunk_text"] for r in rows if r.get("chunk_text"))
+    except Exception as e:
+        logger.warning(f"[ai-summarize] Milvus fetch failed: {e}")
+        content = ""
 
-    supabase.table("document").update({"ai_categorized": True}).eq("id", doc_id).execute()
+    if not content.strip():
+        content = f"Document filename: {doc.data['file_name']}"
 
-    return {"summary": summary, "ai_summary_id": saved.data[0]["id"]}
+    prompt = (
+        f"You are a legal assistant. Summarize the following legal document titled '{doc.data['file_name']}'.\n\n"
+        "Structure your summary with:\n"
+        "• **Document Type**: what kind of document this is\n"
+        "• **Key Parties**: names of parties involved\n"
+        "• **Main Subject**: what the document is about\n"
+        "• **Key Clauses / Obligations**: important terms, deadlines, or obligations\n"
+        "• **Important Dates**: filing dates, deadlines, expiry\n"
+        "• **Potential Issues**: anything that may require attention\n\n"
+        "Be concise and professional. Respond in the same language as the document content.\n\n"
+        f"DOCUMENT CONTENT:\n{content[:6000]}"
+    )
+
+    # Call Mistral with up to 4 retries on 429, honouring Retry-After header
+    resp = None
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        for attempt in range(4):
+            resp = await client.post(
+                f"{MISTRAL_BASE}/chat/completions",
+                headers=_headers(),
+                json={
+                    "model": settings.RAG_CHAT_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                    "max_tokens": 1024,
+                },
+            )
+            if resp.status_code != 429:
+                break
+            retry_after = resp.headers.get("Retry-After") or resp.headers.get("x-ratelimit-reset-requests")
+            try:
+                wait = float(retry_after)
+            except (TypeError, ValueError):
+                wait = 5 * (attempt + 1)  # 5s, 10s, 15s, 20s
+            wait = min(wait, 30)
+            logger.warning(f"[ai-summarize] 429 rate limit, retrying in {wait:.1f}s (attempt {attempt + 1}/4)")
+            await asyncio.sleep(wait)
+
+    if resp.status_code == 429:
+        raise HTTPException(status_code=503, detail="AI service is busy. Please try again in a moment.")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"AI service error: {resp.status_code}")
+
+    summary = resp.json()["choices"][0]["message"]["content"]
+
+    summary_id = None
+    try:
+        saved = supabase.table("ai_summary").insert({
+            "document_id": doc_id,
+            "summary":     summary,
+            "lawyer_id":   current_user["id"],
+        }).execute()
+        summary_id = saved.data[0]["id"] if saved.data else None
+    except Exception as e:
+        logger.warning(f"[ai-summarize] Could not save ai_summary: {e}")
+
+    try:
+        supabase.table("document").update({"ai_categorized": True}).eq("id", doc_id).execute()
+    except Exception:
+        pass
+
+    return {"summary": summary, "ai_summary_id": summary_id, "cached": False}
