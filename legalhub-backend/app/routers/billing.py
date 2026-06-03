@@ -2,7 +2,7 @@ import io
 import logging
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from app.services.case_ingestion import ingest_case
+from app.services.case_ingestion import ingest_invoices
 from fastapi.responses import StreamingResponse
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
@@ -143,7 +143,7 @@ async def export_invoices(
     _auto_mark_overdue(firm_id)
     query = (
         supabase.table("invoice")
-        .select("*, invoice_item(*), client(first_name, last_name, email)")
+        .select("*, invoice_item(*), client(first_name, last_name, email), creator:app_user!lawyer_id(full_name)")
         .eq("firm_id", firm_id)
     )
     if not is_admin:
@@ -166,31 +166,72 @@ async def export_invoices(
         except ImportError:
             raise HTTPException(status_code=503, detail="openpyxl not installed. Run: pip install openpyxl")
 
+        current_user_id = current_user["id"]
+        mine   = [inv for inv in invoices if inv.get("lawyer_id") == current_user_id]
+        others = [inv for inv in invoices if inv.get("lawyer_id") != current_user_id]
+
         wb = Workbook()
         ws = wb.active
         ws.title = "Invoices"
-        header_fill = PatternFill("solid", fgColor="1E40AF")
-        header_font = Font(bold=True, color="FFFFFF")
-        headers = ["Invoice #", "Client", "Status", "Issue Date", "Due Date", "Subtotal", "Tax", "Total", "Currency"]
+
+        header_fill  = PatternFill("solid", fgColor="1E40AF")
+        header_font  = Font(bold=True, color="FFFFFF")
+        section_fill = PatternFill("solid", fgColor="DBEAFE")
+        section_font = Font(bold=True, color="1E40AF")
+        alt_fill     = PatternFill("solid", fgColor="F9FAFB")
+
+        headers = ["Invoice #", "Client", "Created By", "Status", "Issue Date", "Due Date", "Subtotal", "Tax", "Total", "Currency"]
+        num_cols = len(headers)
+
         for col, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=h)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal="center")
-        for row_idx, inv in enumerate(invoices, 2):
-            client = inv.get("client") or {}
-            client_name = f"{client.get('first_name','')} {client.get('last_name','')}".strip() or "—"
-            ws.cell(row=row_idx, column=1, value=inv.get("invoice_number", ""))
-            ws.cell(row=row_idx, column=2, value=client_name)
-            ws.cell(row=row_idx, column=3, value=inv.get("status", ""))
-            ws.cell(row=row_idx, column=4, value=str(inv.get("issue_date", "")))
-            ws.cell(row=row_idx, column=5, value=str(inv.get("due_date", "")))
-            ws.cell(row=row_idx, column=6, value=float(inv.get("subtotal", 0)))
-            ws.cell(row=row_idx, column=7, value=float(inv.get("tax_amount", 0)))
-            ws.cell(row=row_idx, column=8, value=float(inv.get("total_amount", 0)))
-            ws.cell(row=row_idx, column=9, value=inv.get("currency", "USD"))
+
+        def write_section(label, rows, start_row):
+            # Section header spanning all columns
+            ws.cell(row=start_row, column=1, value=label)
+            ws.cell(start_row, 1).font = section_font
+            ws.cell(start_row, 1).fill = section_fill
+            ws.cell(start_row, 1).alignment = Alignment(horizontal="left")
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=num_cols)
+            r = start_row + 1
+            for i, inv in enumerate(rows):
+                client      = inv.get("client") or {}
+                creator     = inv.get("creator") or {}
+                client_name = f"{client.get('first_name','')} {client.get('last_name','')}".strip() or "—"
+                creator_name = creator.get("full_name") or "—"
+                row_fill = alt_fill if i % 2 == 1 else None
+                values = [
+                    inv.get("invoice_number", ""),
+                    client_name,
+                    creator_name,
+                    inv.get("status", ""),
+                    str(inv.get("issue_date", "") or ""),
+                    str(inv.get("due_date", "") or ""),
+                    float(inv.get("subtotal") or 0),
+                    float(inv.get("tax_amount") or 0),
+                    float(inv.get("total_amount") or 0),
+                    inv.get("currency", "USD"),
+                ]
+                for col, val in enumerate(values, 1):
+                    cell = ws.cell(row=r, column=col, value=val)
+                    if row_fill:
+                        cell.fill = row_fill
+                r += 1
+            return r
+
+        row = 2
+        if mine:
+            row = write_section(f"My Invoices ({len(mine)})", mine, row)
+        if others:
+            if mine:
+                row += 1  # blank spacer row
+            row = write_section(f"Team Invoices ({len(others)})", others, row)
+
         for col in ws.columns:
-            ws.column_dimensions[col[0].column_letter].width = 18
+            ws.column_dimensions[col[0].column_letter].width = 20
 
         buf = io.BytesIO()
         wb.save(buf)
@@ -269,7 +310,7 @@ async def list_invoices(
 
     query = (
         supabase.table("invoice")
-        .select("*, invoice_item(*), client(id, first_name, last_name, email), case_file(id, title, case_number)")
+        .select("*, invoice_item(*), client(id, first_name, last_name, email), case_file(id, title, case_number), creator:app_user!lawyer_id(full_name, avatar_url)")
         .eq("firm_id", firm_id)
     )
 
@@ -347,7 +388,7 @@ async def create_invoice(body: CreateInvoiceRequest, background_tasks: Backgroun
     }).execute()
 
     if body.case_id:
-        background_tasks.add_task(ingest_case, body.case_id, current_user["firm_id"])
+        background_tasks.add_task(ingest_invoices, body.case_id, current_user["firm_id"])
         supabase.table("case_timeline").insert({
             "case_id":      body.case_id,
             "firm_id":      current_user["firm_id"],
@@ -429,7 +470,7 @@ async def update_invoice(invoice_id: str, body: UpdateInvoiceRequest, background
             .execute()
         )
         if case_id:
-            background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+            background_tasks.add_task(ingest_invoices, case_id, current_user["firm_id"])
         return result.data[0]
 
     return existing.data

@@ -2,8 +2,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.security import decode_token
 from app.core.database import supabase
+from app.core.cache import sync_cache_get, sync_cache_set, sync_is_blacklisted
 
 bearer_scheme = HTTPBearer()
+
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
@@ -17,9 +19,21 @@ def get_current_user(
             detail="Invalid or expired token"
         )
 
+    if sync_is_blacklisted(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked"
+        )
+
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    cached = sync_cache_get(f"user:{user_id}")
+    if cached:
+        if not cached["is_active"]:
+            raise HTTPException(status_code=403, detail="Account deactivated")
+        return cached
 
     # Récupérer l'utilisateur depuis Supabase
     result = supabase.table("app_user").select("*").eq("id", user_id).single().execute()
@@ -30,7 +44,9 @@ def get_current_user(
     if not user["is_active"]:
         raise HTTPException(status_code=403, detail="Account deactivated")
 
+    sync_cache_set(f"user:{user_id}", user, ttl=60)
     return user
+
 
 def require_role(*roles: str):
     def checker(current_user=Depends(get_current_user)):
@@ -41,6 +57,7 @@ def require_role(*roles: str):
             )
         return current_user
     return checker
+
 
 # Raccourcis pratiques
 def get_firm_admin(user=Depends(require_role("FIRM_ADMIN", "SUPER_ADMIN"))):

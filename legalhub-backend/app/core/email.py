@@ -277,13 +277,143 @@ def send_payment_reminder_email(
         raise
 
 
+def send_password_reset_email(to_email: str, full_name: str, reset_token: str, frontend_url: str):
+    """Send a password reset email with the reset token."""
+    if not settings.SENDGRID_API_KEY:
+        logger.warning("SENDGRID_API_KEY not set — skipping password reset email.")
+        return
+
+    reset_link = f"{frontend_url}/reset-password?token={reset_token}"
+
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 24px;
+                border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff;">
+
+      <div style="background: #1E40AF; color: white; padding: 18px 24px;
+                  border-radius: 8px; margin-bottom: 24px;">
+        <h2 style="margin: 0; font-size: 20px;">Password Reset Request</h2>
+        <p style="margin: 4px 0 0; opacity: .85; font-size: 13px;">LegalHub Security</p>
+      </div>
+
+      <p style="color: #374151;">Hello <strong>{full_name}</strong>,</p>
+      <p style="color: #374151;">
+        We received a request to reset the password for your LegalHub account.
+        Use the code below to complete the reset. This code is valid for <strong>1 hour</strong>.
+      </p>
+
+      <div style="background: #EFF6FF; border: 2px dashed #1E40AF; border-radius: 10px;
+                  padding: 20px; text-align: center; margin: 24px 0;">
+        <p style="margin: 0 0 10px; font-size: 12px; font-weight: 700; color: #9CA3AF;
+                  text-transform: uppercase; letter-spacing: 1px;">Your 6-digit Reset Code</p>
+        <span style="font-size: 40px; font-weight: 900; letter-spacing: 12px;
+                     color: #1E40AF; font-family: monospace;">{reset_token}</span>
+      </div>
+
+      <p style="color: #374151; font-size: 13px;">
+        Or click the button below to reset your password directly:
+      </p>
+      <a href="{reset_link}"
+         style="display: inline-block; background: #1E40AF; color: white; padding: 12px 28px;
+                border-radius: 8px; text-decoration: none; font-weight: bold; margin: 8px 0;">
+        Reset My Password
+      </a>
+
+      <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; color: #9CA3AF; font-size: 12px;">
+          If you did not request a password reset, you can safely ignore this email.
+          Your password will not change unless you use the code above.
+        </p>
+      </div>
+    </div>
+    """
+
+    message = Mail(
+        from_email=settings.FROM_EMAIL,
+        to_emails=to_email,
+        subject="Reset your LegalHub password",
+        html_content=html_content,
+    )
+    try:
+        sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
+        response = sg.send(message)
+        logger.info(f"[email] Password reset sent to {to_email} — HTTP {response.status_code}")
+        print(f"[email] Password reset sent to {to_email} — HTTP {response.status_code}", flush=True)
+    except Exception as e:
+        body = getattr(e, 'body', None)
+        logger.error(f"[email] FAILED password reset to {to_email}: {e} | body: {body}")
+        print(f"[email] FAILED password reset to {to_email}: {e} | body: {body}", flush=True)
+
+
+def send_lawyer_invite_email(to_email: str, full_name: str, firm_name: str, invite_token: str):
+    """Send an invitation email to a lawyer with their temporary access token."""
+    if not settings.SENDGRID_API_KEY:
+        logger.warning("SENDGRID_API_KEY not set — skipping lawyer invite email.")
+        return
+
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 24px;
+                border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff;">
+
+      <div style="background: #1E40AF; color: white; padding: 18px 24px;
+                  border-radius: 8px; margin-bottom: 24px;">
+        <h2 style="margin: 0; font-size: 20px;">Invitation to join {firm_name}</h2>
+        <p style="margin: 4px 0 0; opacity: .85; font-size: 13px;">LegalHub Platform</p>
+      </div>
+
+      <p style="color: #374151;">Hello <strong>{full_name}</strong>,</p>
+      <p style="color: #374151;">
+        You have been invited to join <strong>{firm_name}</strong> as a Lawyer on LegalHub.
+        Use the temporary token below to activate your account.
+      </p>
+
+      <div style="background: #EFF6FF; border: 2px dashed #1E40AF; border-radius: 10px;
+                  padding: 20px; text-align: center; margin: 24px 0;">
+        <p style="margin: 0 0 8px; font-size: 12px; font-weight: 700; color: #9CA3AF;
+                  text-transform: uppercase; letter-spacing: 1px;">Your temporary token</p>
+        <span style="font-size: 15px; font-weight: 800; letter-spacing: 2px;
+                     color: #1E40AF; font-family: monospace; word-break: break-all;">{invite_token}</span>
+      </div>
+
+      <p style="color: #374151; font-size: 13px;">
+        <strong>Steps to get started:</strong><br/>
+        1. Download the <strong>LegalHub</strong> app.<br/>
+        2. On the login screen, tap <em>Accept Invitation</em>.<br/>
+        3. Enter this token and set your password.
+      </p>
+
+      <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; color: #9CA3AF; font-size: 12px;">
+          This invitation was sent by <strong>{firm_name}</strong> via LegalHub.
+          If you did not expect this, you can safely ignore this email.
+        </p>
+      </div>
+    </div>
+    """
+
+    message = Mail(
+        from_email=settings.FROM_EMAIL,
+        to_emails=to_email,
+        subject=f"You've been invited to join {firm_name} on LegalHub",
+        html_content=html_content,
+    )
+    try:
+        sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
+        response = sg.send(message)
+        logger.info(f"[email] Lawyer invite sent to {to_email} — HTTP {response.status_code}")
+        print(f"[email] Lawyer invite sent to {to_email} — HTTP {response.status_code}", flush=True)
+    except Exception as e:
+        body_err = getattr(e, 'body', None)
+        logger.error(f"[email] FAILED lawyer invite to {to_email}: {e} | body: {body_err}")
+        print(f"[email] FAILED lawyer invite to {to_email}: {e} | body: {body_err}", flush=True)
+
+
 def send_client_invite_email(to_email: str, client_name: str, firm_name: str, invite_token: str):
     """Send an invitation email to a client with their invite token."""
     if not settings.SENDGRID_API_KEY:
         logger.warning("SENDGRID_API_KEY not set — skipping email send.")
         return
 
-    invite_link = f"{settings.FRONTEND_URL}/accept-invite?token={invite_token}"
+    deep_link = f"legalhub://accept-invite?token={invite_token}"
 
     html_content = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
@@ -291,14 +421,18 @@ def send_client_invite_email(to_email: str, client_name: str, firm_name: str, in
       <p style="color: #374151;">
         <strong>{firm_name}</strong> has invited you to access your legal portal on LegalHub.
       </p>
-      <p style="color: #374151;">Use the token below to create your account:</p>
+      <p style="color: #374151;">
+        <strong>Step 1</strong> — Download the <strong>LegalHub</strong> app on your phone.<br/>
+        <strong>Step 2</strong> — Open the app, go to the <em>Client</em> tab, and tap <em>Activate Account</em>.<br/>
+        <strong>Step 3</strong> — Enter the invitation token below or tap the button to open the app directly.
+      </p>
       <div style="background: #EFF6FF; border-radius: 8px; padding: 16px; text-align: center; margin: 20px 0;">
-        <span style="font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #1E40AF;">{invite_token}</span>
+        <p style="margin: 0 0 6px; font-size: 12px; color: #6B7280; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">Your Invite Token</p>
+        <span style="font-size: 20px; font-weight: bold; letter-spacing: 3px; color: #1E40AF; word-break: break-all;">{invite_token}</span>
       </div>
-      <p style="color: #374151;">Or click the button below to get started:</p>
-      <a href="{invite_link}"
+      <a href="{deep_link}"
          style="display: inline-block; background: #1E40AF; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 8px 0;">
-        Create My Account
+        Open LegalHub App
       </a>
       <p style="color: #9CA3AF; font-size: 12px; margin-top: 24px;">
         This invitation was sent by {firm_name} via LegalHub. If you did not expect this email, you can ignore it.

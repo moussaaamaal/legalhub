@@ -251,7 +251,7 @@ export default function ScheduleScreen({ navigation }) {
             <FontAwesome5 name="arrow-left" size={16} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Schedule Event</Text>
-          <View style={s.backBtn} />
+          <View style={[s.backBtn, { backgroundColor: 'transparent' }]} />
         </View>
       </View>
 
@@ -307,7 +307,6 @@ export default function ScheduleScreen({ navigation }) {
         <View style={s.section}>
           <Text style={s.sectionTitle}>Event Details</Text>
           <Field label="Event Title *" placeholder="e.g., Criminal Court Hearing" value={form.title} onChange={v => update('title', v)} icon="calendar-alt" />
-          <Field label="Location / Room"   placeholder="e.g., Courtroom 204, City Hall" value={form.location} onChange={v => update('location', v)} icon="map-marker-alt" />
 
           {/* Video call toggle */}
           <View style={s.videoRow}>
@@ -332,6 +331,10 @@ export default function ScheduleScreen({ navigation }) {
             <View style={{ marginTop: 10 }}>
               <Field label="Video Call URL" placeholder="https://meet.google.com/..." value={form.video_call_url} onChange={v => update('video_call_url', v)} icon="link" />
             </View>
+          )}
+
+          {!form.is_video_call && (
+            <Field label="Location / Room" placeholder="e.g., Courtroom 204, City Hall" value={form.location} onChange={v => update('location', v)} icon="map-marker-alt" />
           )}
 
           {cases.length > 0 && (

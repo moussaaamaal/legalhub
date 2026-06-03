@@ -2,6 +2,7 @@ import logging
 import httpx
 from fastapi import HTTPException
 from app.core.config import settings
+from langchain_mistralai import MistralAIEmbeddings
 
 logger = logging.getLogger(__name__)
 
@@ -17,21 +18,23 @@ def _headers() -> dict:
     }
 
 
+def _get_embeddings() -> MistralAIEmbeddings:
+    if not settings.MISTRAL_API_KEY:
+        raise HTTPException(status_code=503, detail="Mistral API key not configured")
+    return MistralAIEmbeddings(
+        model=settings.EMBEDDING_MODEL,
+        api_key=settings.MISTRAL_API_KEY,
+    )
+
+
 async def embed_texts(texts: list[str]) -> list[list[float]]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            f"{MISTRAL_BASE}/embeddings",
-            headers=_headers(),
-            json={"model": settings.EMBEDDING_MODEL, "input": texts},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return [item["embedding"] for item in data["data"]]
+    embeddings = _get_embeddings()
+    return await embeddings.aembed_documents(texts)
 
 
 async def embed_query(query: str) -> list[float]:
-    results = await embed_texts([query])
-    return results[0]
+    embeddings = _get_embeddings()
+    return await embeddings.aembed_query(query)
 
 
 async def ocr_by_url(url: str, file_name: str, file_type: str) -> str:

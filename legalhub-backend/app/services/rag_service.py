@@ -1,8 +1,9 @@
 import logging
-import httpx
 from app.core.config import settings
 from app.services.milvus_client import get_or_create_collection
-from app.services.embedding_service import embed_query, _headers, MISTRAL_BASE
+from app.services.embedding_service import embed_query
+from langchain_mistralai import ChatMistralAI
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,26 @@ STRICT RULES:
 </CONTEXT>"""
 
 
+def _get_llm(temperature: float = 0.1, max_tokens: int = 1024) -> ChatMistralAI:
+    return ChatMistralAI(
+        model=settings.RAG_CHAT_MODEL,
+        api_key=settings.MISTRAL_API_KEY,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+
+def _build_messages(system_msg: str, chat_history: list[dict] | None, question: str) -> list:
+    messages = [SystemMessage(content=system_msg)]
+    for m in (chat_history or [])[-6:]:
+        if m.get("role") == "user":
+            messages.append(HumanMessage(content=m["content"]))
+        elif m.get("role") == "assistant":
+            messages.append(AIMessage(content=m["content"]))
+    messages.append(HumanMessage(content=question))
+    return messages
+
+
 async def retrieve_chunks(case_id: str, firm_id: str, query: str) -> list[dict]:
     collection = get_or_create_collection()
     vec = await embed_query(query)
@@ -103,13 +124,6 @@ async def answer_case_question(
     question: str,
     chat_history: list[dict] | None = None,
 ) -> dict:
-    """
-    Full RAG pipeline:
-    1. Retrieve top-k relevant chunks from Milvus
-    2. Build grounded context
-    3. Call GPT-4o
-    4. Return answer + sources
-    """
     chunks = await retrieve_chunks(case_id, firm_id, question)
 
     if not chunks:
@@ -121,26 +135,11 @@ async def answer_case_question(
 
     context = _format_context(chunks)
     system_msg = _SYSTEM.format(context=context)
+    messages = _build_messages(system_msg, chat_history, question)
 
-    messages = [{"role": "system", "content": system_msg}]
-    for m in (chat_history or [])[-6:]:
-        if m.get("role") in ("user", "assistant"):
-            messages.append({"role": m["role"], "content": m["content"]})
-    messages.append({"role": "user", "content": question})
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            f"{MISTRAL_BASE}/chat/completions",
-            headers=_headers(),
-            json={
-                "model": settings.RAG_CHAT_MODEL,
-                "messages": messages,
-                "temperature": 0.1,
-                "max_tokens": 1024,
-            },
-        )
-        resp.raise_for_status()
-    answer = resp.json()["choices"][0]["message"]["content"]
+    llm = _get_llm(temperature=0.1, max_tokens=1024)
+    response = await llm.ainvoke(messages)
+    answer = response.content
 
     sources = [
         {
@@ -204,26 +203,11 @@ async def answer_scoped_question(
 
     context = _format_context(chunks)
     system_msg = _LAWYER_SYSTEM.format(context=context)
+    messages = _build_messages(system_msg, chat_history, question)
 
-    messages = [{"role": "system", "content": system_msg}]
-    for m in (chat_history or [])[-6:]:
-        if m.get("role") in ("user", "assistant"):
-            messages.append({"role": m["role"], "content": m["content"]})
-    messages.append({"role": "user", "content": question})
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            f"{MISTRAL_BASE}/chat/completions",
-            headers=_headers(),
-            json={
-                "model": settings.RAG_CHAT_MODEL,
-                "messages": messages,
-                "temperature": 0.1,
-                "max_tokens": 1024,
-            },
-        )
-        resp.raise_for_status()
-    answer = resp.json()["choices"][0]["message"]["content"]
+    llm = _get_llm(temperature=0.1, max_tokens=1024)
+    response = await llm.ainvoke(messages)
+    answer = response.content
 
     sources = [
         {
@@ -281,26 +265,11 @@ async def answer_firm_question(
 
     context = _format_context(chunks)
     system_msg = _FIRM_SYSTEM.format(context=context)
+    messages = _build_messages(system_msg, chat_history, question)
 
-    messages = [{"role": "system", "content": system_msg}]
-    for m in (chat_history or [])[-6:]:
-        if m.get("role") in ("user", "assistant"):
-            messages.append({"role": m["role"], "content": m["content"]})
-    messages.append({"role": "user", "content": question})
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            f"{MISTRAL_BASE}/chat/completions",
-            headers=_headers(),
-            json={
-                "model": settings.RAG_CHAT_MODEL,
-                "messages": messages,
-                "temperature": 0.1,
-                "max_tokens": 1024,
-            },
-        )
-        resp.raise_for_status()
-    answer = resp.json()["choices"][0]["message"]["content"]
+    llm = _get_llm(temperature=0.1, max_tokens=1024)
+    response = await llm.ainvoke(messages)
+    answer = response.content
 
     sources = [
         {

@@ -2,6 +2,7 @@ from datetime import date
 from fastapi import APIRouter, Depends
 from app.core.dependencies import get_lawyer
 from app.core.database import supabase
+from app.core.cache import cache_get, cache_set
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
@@ -20,8 +21,13 @@ def _get_lawyer_case_ids(user_id: str) -> list:
 
 @router.get("/stats")
 async def get_dashboard_stats(current_user=Depends(get_lawyer)):
-    firm_id = current_user["firm_id"]
     user_id = current_user["id"]
+    cache_key = f"dashboard:stats:{user_id}"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    firm_id = current_user["firm_id"]
     today   = date.today().isoformat()
     admin   = _is_admin(current_user)
 
@@ -99,7 +105,7 @@ async def get_dashboard_stats(current_user=Depends(get_lawyer)):
         (supabase.table("client").select("id").eq("firm_id", firm_id).execute()).data or []
     )
 
-    return {
+    result = {
         "active_cases":      active_cases,
         "closed_cases":      closed_cases,
         "upcoming_hearings": upcoming_hearings,
@@ -107,6 +113,8 @@ async def get_dashboard_stats(current_user=Depends(get_lawyer)):
         "active_reminders":  active_reminders,
         "client_count":      client_count,
     }
+    await cache_set(cache_key, result, ttl=120)
+    return result
 
 # ─── GET /api/dashboard/today ───────────────────────────
 
@@ -215,7 +223,7 @@ async def get_recent_cases(current_user=Depends(get_lawyer)):
     """5 most recently updated active cases — used for quick preview strip."""
     query = (
         supabase.table("case_file")
-        .select("id, case_number, title, status, priority, updated_at, client(first_name, last_name)")
+        .select("id, case_number, title, status, priority, updated_at, client(first_name, last_name, user_id)")
         .eq("firm_id", current_user["firm_id"])
         .not_.in_("status", ["SETTLED", "CLOSED"])
         .order("updated_at", desc=True)
@@ -228,10 +236,19 @@ async def get_recent_cases(current_user=Depends(get_lawyer)):
         query = query.in_("id", case_ids)
 
     cases = query.execute().data or []
+
+    # Batch-fetch avatars for all client user_ids
+    user_ids = [c["client"]["user_id"] for c in cases if c.get("client") and c["client"].get("user_id")]
+    avatar_map = {}
+    if user_ids:
+        users = supabase.table("app_user").select("id, avatar_url").in_("id", user_ids).execute().data or []
+        avatar_map = {u["id"]: u.get("avatar_url") for u in users}
+
     for case in cases:
         client = case.pop("client", None)
         case["client_name"] = (
             f"{client.get('first_name', '')} {client.get('last_name', '')}".strip()
             if client else None
         )
+        case["client_avatar"] = avatar_map.get(client.get("user_id")) if client else None
     return cases

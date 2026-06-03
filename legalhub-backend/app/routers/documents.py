@@ -5,18 +5,35 @@ import unicodedata
 import logging
 from urllib.parse import unquote
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query
 from pydantic import BaseModel
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
+from app.core.cache import cache_get, cache_set, cache_delete_pattern
 from app.core.config import settings
 from app.models.enums import DocumentCategory, DocumentStatus
-from app.services.case_ingestion import ingest_case
+from app.services.case_ingestion import ingest_document_item, delete_document_chunks
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
+
+
+def _detect_doc_language(text: str) -> str:
+    """Detect primary language from text: Arabic, French, or English."""
+    sample = text[:3000]
+    alpha = [c for c in sample if c.isalpha()]
+    if not alpha:
+        return "English"
+    total = len(alpha)
+    arabic = sum(1 for c in alpha if '؀' <= c <= 'ۿ')
+    french_specific = sum(1 for c in alpha if c in 'àâäéèêëîïôùûüçœæÀÂÄÉÈÊËÎÏÔÙÛÜÇŒÆ')
+    if arabic / total > 0.20:
+        return "Arabic"
+    if french_specific / total > 0.015:
+        return "French"
+    return "English"
 
 # ─── Helpers ────────────────────────────────────────────
 
@@ -85,6 +102,13 @@ async def list_documents(
     limit: Optional[int] = None,
     current_user=Depends(get_lawyer)
 ):
+    # Cache uniquement quand on filtre par case_id (page détails dossier)
+    cache_key = f"case:{case_id}:documents:{category}:{status}" if case_id else None
+    if cache_key:
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
     is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
 
     query = (
@@ -127,6 +151,8 @@ async def list_documents(
             d["uploader_name"]       = u.get("full_name")
             d["uploader_avatar_url"] = u.get("avatar_url")
 
+    if cache_key:
+        await cache_set(cache_key, docs, ttl=60)
     return docs
 
 # ─── POST /api/documents/upload ─────────────────────────
@@ -192,7 +218,8 @@ async def upload_document(
     }).execute()
 
     doc = result.data[0]
-    background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+    await cache_delete_pattern(f"case:{case_id}:documents:*")
+    background_tasks.add_task(ingest_document_item, doc["id"], case_id, current_user["firm_id"])
     return doc
 
 
@@ -697,7 +724,7 @@ async def get_document(doc_id: str, current_user=Depends(get_current_user)):
 # ─── DELETE /api/documents/:id ──────────────────────────
 
 @router.delete("/{doc_id}")
-async def delete_document(doc_id: str, background_tasks: BackgroundTasks, current_user=Depends(get_lawyer)):
+async def delete_document(doc_id: str, current_user=Depends(get_lawyer)):
     doc = supabase.table("document").select("case_id, file_name") \
         .eq("id", doc_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute()
     doc_data  = doc.data or {}
@@ -716,7 +743,8 @@ async def delete_document(doc_id: str, background_tasks: BackgroundTasks, curren
             }).execute()
         except Exception:
             pass
-        background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+        await cache_delete_pattern(f"case:{case_id}:documents:*")
+        delete_document_chunks(doc_id, current_user["firm_id"])
 
     return {"message": "Document deleted"}
 
@@ -733,6 +761,7 @@ async def update_document_status(doc_id: str, status: DocumentStatus, current_us
         raise HTTPException(status_code=404, detail="Document not found")
 
     doc_data = result.data[0]
+    await cache_delete_pattern(f"case:{doc_data.get('case_id')}:documents:*")
 
     file_name = doc_data.get("file_name", "A document")
     approved  = status == DocumentStatus.APPROVED
@@ -813,7 +842,7 @@ async def share_document(doc_id: str, current_user=Depends(get_lawyer)):
 # ─── POST /api/documents/:id/ai-summarize ───────────────
 
 @router.post("/{doc_id}/ai-summarize")
-async def ai_summarize_document(doc_id: str, current_user=Depends(get_lawyer)):
+async def ai_summarize_document(doc_id: str, force: bool = Query(False), current_user=Depends(get_lawyer)):
     from app.services.milvus_client import get_or_create_collection
     from app.services.embedding_service import _headers, MISTRAL_BASE
 
@@ -837,7 +866,7 @@ async def ai_summarize_document(doc_id: str, current_user=Depends(get_lawyer)):
         .limit(1)
         .execute()
     )
-    if cached.data:
+    if cached.data and not force:
         return {"summary": cached.data[0]["summary"], "ai_summary_id": cached.data[0]["id"], "cached": True}
 
     # Fetch indexed chunks for this document from Milvus
@@ -856,17 +885,46 @@ async def ai_summarize_document(doc_id: str, current_user=Depends(get_lawyer)):
     if not content.strip():
         content = f"Document filename: {doc.data['file_name']}"
 
-    prompt = (
-        f"You are a legal assistant. Summarize the following legal document titled '{doc.data['file_name']}'.\n\n"
-        "Structure your summary with:\n"
-        "• **Document Type**: what kind of document this is\n"
-        "• **Key Parties**: names of parties involved\n"
-        "• **Main Subject**: what the document is about\n"
-        "• **Key Clauses / Obligations**: important terms, deadlines, or obligations\n"
-        "• **Important Dates**: filing dates, deadlines, expiry\n"
-        "• **Potential Issues**: anything that may require attention\n\n"
-        "Be concise and professional. Respond in the same language as the document content.\n\n"
-        f"DOCUMENT CONTENT:\n{content[:6000]}"
+    detected_lang = _detect_doc_language(content)
+
+    if detected_lang == "Arabic":
+        lang_rule = "اكتب الملخص كاملاً باللغة العربية. استخدم عناوين الأقسام بالعربية فقط."
+        add_translation = True
+    elif detected_lang == "French":
+        lang_rule = "Rédigez le résumé entièrement en français. Utilisez des titres de section en français uniquement."
+        add_translation = True
+    else:
+        lang_rule = "Write the summary in English only. Do not add any translation or separator."
+        add_translation = False
+
+    translation_rule = (
+        "After the summary, add '---' on its own line, then '## English Summary', "
+        "then a complete English translation of the summary above."
+        if add_translation else
+        "Do NOT add any '---' separator or English translation — one summary only."
+    )
+
+    system_prompt = (
+        "You are a professional multilingual legal assistant. "
+        "You summarize legal documents accurately and follow output rules exactly."
+    )
+
+    user_prompt = (
+        f"Summarize this legal document: '{doc.data['file_name']}'\n\n"
+        f"LANGUAGE RULE (mandatory): {lang_rule}\n\n"
+        "Include a section ONLY if you found actual content for it in the document.\n"
+        "If no content: skip the section entirely — no title, no placeholder text.\n"
+        "NEVER write: N/A, None, Not specified, Non spécifié, Non mentionné, "
+        "غير محدد, لا يوجد, or any similar placeholder.\n\n"
+        "Sections (include only if content found):\n"
+        "  - Document type\n"
+        "  - Parties\n"
+        "  - Main subject\n"
+        "  - Key clauses / obligations\n"
+        "  - Important dates\n"
+        "  - Potential issues\n\n"
+        f"{translation_rule}\n\n"
+        f"DOCUMENT:\n{content[:12000]}"
     )
 
     # Call Mistral with up to 4 retries on 429, honouring Retry-After header
@@ -878,9 +936,12 @@ async def ai_summarize_document(doc_id: str, current_user=Depends(get_lawyer)):
                 headers=_headers(),
                 json={
                     "model": settings.RAG_CHAT_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
                     "temperature": 0.1,
-                    "max_tokens": 1024,
+                    "max_tokens": 1500,
                 },
             )
             if resp.status_code != 429:

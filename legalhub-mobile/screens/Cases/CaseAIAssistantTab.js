@@ -5,10 +5,10 @@ import {
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ragAPI } from '../../services/api';
+import { ragAPI, aiAPI } from '../../services/api';
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
-const SESSIONS_KEY = (caseId) => `ai_sessions_${caseId}`;
+const SESSIONS_KEY = (caseId) => `ai_sessions_${caseId ?? 'general'}`;
 const MSGS_KEY     = (sessionId) => `ai_msgs_${sessionId}`;
 const genId        = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const MAX_MSGS     = 60;
@@ -184,16 +184,37 @@ const bs = StyleSheet.create({
 });
 
 // ─── Index badge ──────────────────────────────────────────────────────────────
-const IndexBadge = ({ status, indexing }) => {
-  if (!status && !indexing) return null;
+const IndexBadge = ({ status, indexing, onReindex }) => {
   return (
     <View style={ib.row}>
       {indexing ? (
-        <><ActivityIndicator size="small" color={C.amber600} /><Text style={[ib.txt, { color: C.amber600 }]}>Updating…</Text></>
+        <>
+          <ActivityIndicator size="small" color={C.amber600} />
+          <Text style={[ib.txt, { color: C.amber600 }]}>Indexing case data…</Text>
+        </>
       ) : status?.is_indexed ? (
-        <><View style={[ib.dot, { backgroundColor: C.green600 }]} /><Text style={[ib.txt, { color: C.green600 }]}>Up to date · {status.total_chunks} chunks</Text></>
+        <>
+          <View style={[ib.dot, { backgroundColor: C.green600 }]} />
+          <Text style={[ib.txt, { color: C.green600 }]}>Ready · {status.total_chunks} chunks</Text>
+          <TouchableOpacity style={ib.btn} onPress={onReindex}>
+            <FontAwesome5 name="sync-alt" size={10} color={C.primary} />
+            <Text style={ib.btnTxt}>Re-index</Text>
+          </TouchableOpacity>
+        </>
+      ) : status && !status.is_indexed ? (
+        <>
+          <View style={[ib.dot, { backgroundColor: C.amber600 }]} />
+          <Text style={[ib.txt, { color: C.amber600 }]}>Not indexed yet</Text>
+          <TouchableOpacity style={ib.btn} onPress={onReindex}>
+            <FontAwesome5 name="sync-alt" size={10} color={C.primary} />
+            <Text style={ib.btnTxt}>Index now</Text>
+          </TouchableOpacity>
+        </>
       ) : (
-        <><View style={[ib.dot, { backgroundColor: C.amber600 }]} /><Text style={[ib.txt, { color: C.amber600 }]}>Preparing…</Text></>
+        <>
+          <View style={[ib.dot, { backgroundColor: C.g300 }]} />
+          <Text style={[ib.txt, { color: C.g500 }]}>Checking index…</Text>
+        </>
       )}
     </View>
   );
@@ -376,12 +397,17 @@ export default function CaseAIAssistantTab({ caseId, caseTitle, caseNumber }) {
   const [loading,         setLoading]         = useState(false);
   const [indexing,        setIndexing]        = useState(false);
   const [status,          setStatus]          = useState(null);
-  const listRef = useRef(null);
+  const listRef    = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // ── Boot: load session list ───────────────────────────────────────────────
   useEffect(() => {
-    if (!caseId) return;
-    loadStatus();
+    if (caseId) loadStatus();
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(SESSIONS_KEY(caseId));
@@ -493,18 +519,21 @@ export default function CaseAIAssistantTab({ caseId, caseTitle, caseNumber }) {
   }, [caseId]);
 
   const triggerIndex = useCallback(async () => {
+    if (!mountedRef.current) return;
     setIndexing(true);
-    try { await ragAPI.ingest(caseId); } catch { setIndexing(false); return; }
+    try { await ragAPI.ingest(caseId); } catch { if (mountedRef.current) setIndexing(false); return; }
     let attempts = 0;
     const poll = async () => {
+      if (!mountedRef.current) return;
       attempts++;
       try {
         const s = await ragAPI.status(caseId);
+        if (!mountedRef.current) return;
         setStatus(s);
         if (s.is_indexed) { setIndexing(false); return; }
       } catch {}
       if (attempts < 15) setTimeout(poll, 8000);
-      else setIndexing(false);
+      else if (mountedRef.current) setIndexing(false);
     };
     setTimeout(poll, 8000);
   }, [caseId]);
@@ -531,7 +560,13 @@ export default function CaseAIAssistantTab({ caseId, caseTitle, caseNumber }) {
     const history = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
 
     try {
-      const res = await ragAPI.ask(caseId, q, history);
+      let res;
+      if (caseId) {
+        res = await ragAPI.ask(caseId, q, history);
+      } else {
+        const data = await aiAPI.caseAssistant(null, q);
+        res = { answer: data.answer, sources: [] };
+      }
       const aiMsg = {
         id:      (Date.now() + 1).toString(),
         role:    'assistant',
@@ -547,19 +582,24 @@ export default function CaseAIAssistantTab({ caseId, caseTitle, caseNumber }) {
         const shortQ = q.length > 50 ? q.slice(0, 47) + '…' : q;
         ragAPI.sessionTitle(q, res.answer)
           .then(({ title }) => {
+            if (!mountedRef.current) return;
             updateSessionMeta(sessionId, { name: title?.trim() || shortQ, msgCount: finalMsgs.length });
           })
           .catch(() => {
+            if (!mountedRef.current) return;
             updateSessionMeta(sessionId, { name: shortQ, msgCount: finalMsgs.length });
           });
       } else {
         updateSessionMeta(sessionId, { msgCount: finalMsgs.length });
       }
-    } catch {
+    } catch (err) {
+      const isNetwork = err?.message?.toLowerCase().includes('network') || err?.message?.includes('fetch');
       const errMsg = {
         id:      (Date.now() + 1).toString(),
         role:    'assistant',
-        content: "An error occurred. Please check your connection and try again.",
+        content: isNetwork
+          ? "Cannot reach the server. Please check your connection and try again."
+          : "An error occurred while processing your question. Please try again.",
         sources: [],
       };
       const finalMsgs = [...newMsgs, errMsg];
@@ -624,7 +664,7 @@ export default function CaseAIAssistantTab({ caseId, caseTitle, caseNumber }) {
             </View>
           )}
 
-          <IndexBadge status={status} indexing={indexing} />
+          {caseId && <IndexBadge status={status} indexing={indexing} onReindex={triggerIndex} />}
 
           {messages.length === 0 && !loading ? (
             <EmptyState onSuggestion={send} />

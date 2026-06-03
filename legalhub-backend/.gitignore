@@ -58,3 +58,10 @@ media/
 # 🔹 Secrets / keys
 *.pem
 *.key
+
+# 🔹 Milvus data
+milvus_data/
+
+# 🔹 Rapports / docs générés
+LEGALHUB_RAPPORT_COMPLET.md
+REDIS_INTEGRATION.md

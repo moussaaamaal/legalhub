@@ -388,6 +388,20 @@ const CaseCard = ({ item, onViewDetails }) => (
 
 const TaskCard = ({ item, onDone }) => (
   <View style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.borderColor }]}>
+    {/* Créateur en haut */}
+    {item.creatorName ? (
+      <View style={[styles.row, { marginBottom: 8, gap: 7 }]}>
+        {item.creatorAvatar
+          ? <Image source={{ uri: item.creatorAvatar }} style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: COLORS.gray200 }} />
+          : (
+            <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.blue100, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon lib="FA5" name="user" size={10} color={COLORS.primary} />
+            </View>
+          )
+        }
+        <Text style={[styles.gray500Sm, { fontWeight: '600', color: COLORS.gray600 }]} numberOfLines={1}>{item.creatorName}</Text>
+      </View>
+    ) : null}
     <View style={styles.row}>
       <TouchableOpacity style={styles.checkbox} onPress={() => onDone && onDone(item.id)} />
       <View style={{ flex: 1 }}>
@@ -409,20 +423,20 @@ const TaskCard = ({ item, onDone }) => (
             <Text style={[styles.gray500Sm, { marginLeft: 5 }]} numberOfLines={1}>{item.caseName}</Text>
           </View>
         ) : null}
-        {/* Avocat + échéance */}
-        <View style={styles.row}>
+        {/* Avocat assigné + échéance */}
+        <View style={[styles.row, { marginTop: 2, justifyContent: 'space-between' }]}>
           {item.lawyerName ? (
-            <>
-              <Icon lib="FA5" name="user-tie" size={10} color={COLORS.gray400} />
-              <Text style={[styles.gray500Sm, { marginLeft: 5, flex: 1 }]} numberOfLines={1}>{item.lawyerName}</Text>
-            </>
-          ) : <View style={{ flex: 1 }} />}
-          {item.timeLeft && (
+            <View style={styles.row}>
+              <Icon lib="FA5" name="user-check" size={10} color={COLORS.blue600} />
+              <Text style={[styles.gray500Sm, { marginLeft: 4, color: COLORS.blue600, fontWeight: '600' }]} numberOfLines={1}>{item.lawyerName}</Text>
+            </View>
+          ) : <View />}
+          {item.timeLeft ? (
             <View style={styles.row}>
               <Icon lib="FA5" name="clock" size={10} color={item.timeColor} />
               <Text style={[styles.gray500Sm, { color: item.timeColor, fontWeight: '600', marginLeft: 4 }]}>{item.timeLeft}</Text>
             </View>
-          )}
+          ) : null}
         </View>
       </View>
     </View>
@@ -432,6 +446,7 @@ const TaskCard = ({ item, onDone }) => (
 const DocumentCard = ({ item }) => {
   const [summarizing,  setSummarizing]  = React.useState(false);
   const [summaryModal, setSummaryModal] = React.useState(null);
+  const [regenerating, setRegenerating] = React.useState(false);
 
   if (!item.action) return null;
 
@@ -449,6 +464,18 @@ const DocumentCard = ({ item }) => {
       Alert.alert('Error', err.message || 'Could not generate summary.');
     } finally {
       setSummarizing(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const result = await documentsAPI.summarize(item.id, true);
+      setSummaryModal(prev => ({ ...prev, summary: result.summary }));
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not regenerate summary.');
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -476,6 +503,17 @@ const DocumentCard = ({ item }) => {
             <ScrollView showsVerticalScrollIndicator={false}>
               <MarkdownText text={summaryModal?.summary || ''} style={dcs.summaryBody} />
             </ScrollView>
+            <TouchableOpacity
+              style={[dcs.regenBtn, regenerating && { opacity: 0.6 }]}
+              onPress={handleRegenerate}
+              disabled={regenerating}
+              activeOpacity={0.7}
+            >
+              {regenerating
+                ? <ActivityIndicator size={12} color="#6366F1" />
+                : <FontAwesome5 name="sync" size={12} color="#6366F1" />}
+              <Text style={dcs.regenBtnTxt}>{regenerating ? 'Regenerating…' : 'Regenerate'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -636,7 +674,11 @@ export default function HomeScreen() {
   }, []);
 
   // ── Marquer une tâche comme terminée ─────────────────────────────────────
-  const handleTaskDone = useCallback((taskId) => {
+  const handleTaskDone = useCallback((task) => {
+    if (task.assignedId !== user?.id) {
+      Alert.alert('Not Allowed', 'Only the assigned lawyer can complete this task.');
+      return;
+    }
     Alert.alert(
       'Complete Task',
       'Mark this task as completed?',
@@ -647,8 +689,8 @@ export default function HomeScreen() {
           style: 'default',
           onPress: async () => {
             try {
-              await tasksAPI.updateStatus(taskId, 'COMPLETED');
-              setPendingTasks(prev => prev.filter(t => t.id !== taskId));
+              await tasksAPI.updateStatus(task.id, 'COMPLETED');
+              setPendingTasks(prev => prev.filter(t => t.id !== task.id));
             } catch {
               Alert.alert('Error', 'Could not update task status. Please try again.');
             }
@@ -656,7 +698,7 @@ export default function HomeScreen() {
         },
       ],
     );
-  }, []);
+  }, [user]);
 
   // ── Cartes de statistiques ────────────────────────────────────────────────
   const STATS_LIVE = stats ? [
@@ -783,7 +825,7 @@ export default function HomeScreen() {
       stats:       { docs: 0, tasks: 0, events: 0, notes: 0 },
       timeTracking:{ billable: 0, nonBillable: 0 },
       client: c.client_name
-        ? { name: c.client_name, id: c.client_id || '', avatar: null, since: '', phone: '', email: '', address: '', status: 'Active', tier: '' }
+        ? { name: c.client_name, id: c.client_id || '', avatar: c.client_avatar || null, since: '', phone: '', email: '', address: '', status: 'Active', tier: '' }
         : null,
     };
   });
@@ -800,6 +842,9 @@ export default function HomeScreen() {
       description: task.description || null,
       caseName:    task.case_file?.title || task.case_file?.case_number || null,
       lawyerName:  task.app_user?.full_name || null,
+      assignedId:  task.assigned_to || null,
+      creatorName:   task.created_user?.full_name || null,
+      creatorAvatar: task.created_user?.avatar_url || null,
       prioLabel:  prioCfg.label,
       prioColor:  prioCfg.color,
       prioBg:     prioCfg.bg,
@@ -1034,7 +1079,7 @@ export default function HomeScreen() {
           <SectionHeader title="Pending Tasks" action="View All ›" onAction={() => navigateTo('AllTasks')} />
           {tasksDisplay.length > 0 ? (
             tasksDisplay.map((t) => (
-              <TaskCard key={t.id} item={t} onDone={handleTaskDone} />
+              <TaskCard key={t.id} item={t} onDone={() => handleTaskDone(t)} />
             ))
           ) : (
             <EmptyState icon="check-circle" text="No pending tasks — all clear!" />
@@ -1129,6 +1174,8 @@ const dcs = StyleSheet.create({
   summaryTitle:  { fontSize: 16, fontWeight: '800', color: COLORS.dark },
   summaryDocName:{ fontSize: 11, color: COLORS.gray500, marginTop: 2 },
   summaryBody:   { fontSize: 13, color: COLORS.dark, lineHeight: 21, paddingBottom: 24 },
+  regenBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: '#EEF2FF' },
+  regenBtnTxt:   { fontSize: 13, fontWeight: '600', color: '#6366F1' },
 });
 
 // ─── STYLES PRINCIPAUX ────────────────────────────────────────────────────────

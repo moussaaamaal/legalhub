@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from app.core.dependencies import get_firm_admin, get_current_user, get_lawyer
-from app.core.database import supabase
+from app.core.database import supabase, supabase_admin
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 
@@ -111,21 +112,6 @@ async def deactivate_team_member(user_id: str, current_user=Depends(get_firm_adm
         raise HTTPException(status_code=404, detail="Team member not found")
     return {"message": "Team member deactivated"}
 
-# ─── GET /api/firm/subscription ─────────────────────────
-
-@router.get("/subscription")
-async def get_subscription(current_user=Depends(get_firm_admin)):
-    result = (
-        supabase.table("subscription")
-        .select("*")
-        .eq("firm_id", current_user["firm_id"])
-        .single()
-        .execute()
-    )
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Subscription not found")
-    return result.data
-
 # ─── GET /api/firm/branding ─────────────────────────────
 
 @router.get("/branding")
@@ -181,3 +167,75 @@ async def get_office_code(current_user=Depends(get_firm_admin)):
     if not result.data:
         raise HTTPException(status_code=404, detail="Firm not found")
     return {"office_code": result.data["office_code"]}
+
+# ─── GET /api/firm/stats ────────────────────────────────
+
+@router.get("/stats")
+async def get_firm_stats(current_user=Depends(get_firm_admin)):
+    firm_id = current_user["firm_id"]
+
+    cases = (
+        supabase.table("case_file").select("id, status").eq("firm_id", firm_id).execute()
+    ).data or []
+    active_cases = len([c for c in cases if c["status"] not in ("SETTLED", "CLOSED")])
+    closed_cases = len([c for c in cases if c["status"] in ("SETTLED", "CLOSED")])
+
+    members = (
+        supabase.table("app_user")
+        .select("id")
+        .eq("firm_id", firm_id)
+        .neq("role", "CLIENT")
+        .eq("is_active", True)
+        .execute()
+    ).data or []
+
+    clients = (
+        supabase.table("app_user")
+        .select("id")
+        .eq("firm_id", firm_id)
+        .eq("role", "CLIENT")
+        .execute()
+    ).data or []
+
+    documents = (
+        supabase.table("document").select("id").eq("firm_id", firm_id).execute()
+    ).data or []
+
+    return {
+        "active_cases":    active_cases,
+        "closed_cases":    closed_cases,
+        "total_members":   len(members),
+        "total_clients":   len(clients),
+        "total_documents": len(documents),
+    }
+
+# ─── POST /api/firm/branding/logo ───────────────────────
+
+@router.post("/branding/logo")
+async def upload_firm_logo(file: UploadFile = File(...), current_user=Depends(get_firm_admin)):
+    firm_id = current_user["firm_id"]
+    content = await file.read()
+    content_type = file.content_type or "image/jpeg"
+    ext = (file.filename or "logo.jpg").rsplit(".", 1)[-1]
+    storage_path = f"logos/{firm_id}/{uuid.uuid4()}.{ext}"
+
+    try:
+        supabase_admin.storage.create_bucket("firm-assets", options={"public": True})
+    except Exception:
+        pass
+
+    supabase_admin.storage.from_("firm-assets").upload(
+        storage_path, content, file_options={"content-type": content_type}
+    )
+    logo_url = supabase_admin.storage.from_("firm-assets").get_public_url(storage_path)
+
+    # Persist to branding table
+    existing = (
+        supabase.table("firm_branding").select("id").eq("firm_id", firm_id).execute()
+    )
+    if existing.data:
+        supabase.table("firm_branding").update({"logo_url": logo_url}).eq("firm_id", firm_id).execute()
+    else:
+        supabase.table("firm_branding").insert({"firm_id": firm_id, "logo_url": logo_url}).execute()
+
+    return {"logo_url": logo_url}

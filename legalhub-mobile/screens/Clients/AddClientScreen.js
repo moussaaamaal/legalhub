@@ -2,9 +2,109 @@ import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, StatusBar, Alert, ActivityIndicator,
-  Modal, Share, Linking,
+  Modal, Share, Linking, Keyboard, TouchableWithoutFeedback,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
+
+// ─── DOB Calendar Picker ──────────────────────────────────────────────────────
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAY_NAMES   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+const buildGrid = (year, month) => {
+  const first       = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < first; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  const rows = [];
+  for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+  return rows;
+};
+
+function DOBPicker({ value, onChange }) {
+  const today    = new Date();
+  const initDate = value ? new Date(value) : null;
+  const [open,       setOpen]       = useState(false);
+  const [viewYear,   setViewYear]   = useState(initDate ? initDate.getFullYear() : today.getFullYear() - 25);
+  const [viewMonth,  setViewMonth]  = useState(initDate ? initDate.getMonth()    : 0);
+
+  const pad  = n => String(n).padStart(2, '0');
+  const toISO = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+
+  const prevMonth = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); };
+  const nextMonth = () => { if (viewMonth === 11) { setViewMonth(0);  setViewYear(y => y + 1); } else setViewMonth(m => m + 1); };
+
+  const grid = buildGrid(viewYear, viewMonth);
+
+  const selectedParts = value ? value.split('-').map(Number) : null; // [Y, M, D]
+
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={s.label}>Date of Birth</Text>
+
+      <TouchableOpacity
+        style={[s.dobBtn, open && { borderColor: C.primary }]}
+        onPress={() => setOpen(v => !v)}
+        activeOpacity={0.8}
+      >
+        <FontAwesome5 name="birthday-cake" size={13} color={value ? C.primary : C.gray400} style={{ marginRight: 10 }} />
+        <Text style={[s.dobBtnTxt, !value && { color: C.gray400 }]}>
+          {value || 'Select date of birth'}
+        </Text>
+        <FontAwesome5 name={open ? 'chevron-up' : 'chevron-down'} size={11} color={C.gray400} style={{ marginLeft: 'auto' }} />
+      </TouchableOpacity>
+
+      {open && (
+        <View style={s.calBox}>
+          {/* Month / Year header */}
+          <View style={s.calHeader}>
+            <TouchableOpacity onPress={() => setViewYear(y => y - 1)} style={s.calNavBtn}>
+              <FontAwesome5 name="angle-double-left" size={14} color={C.white} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={prevMonth} style={s.calNavBtn}>
+              <FontAwesome5 name="chevron-left" size={13} color={C.white} />
+            </TouchableOpacity>
+            <Text style={s.calHeaderTxt}>{MONTH_NAMES[viewMonth]} {viewYear}</Text>
+            <TouchableOpacity onPress={nextMonth} style={s.calNavBtn}>
+              <FontAwesome5 name="chevron-right" size={13} color={C.white} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setViewYear(y => y + 1)} style={s.calNavBtn}>
+              <FontAwesome5 name="angle-double-right" size={14} color={C.white} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Day labels */}
+          <View style={s.calDayRow}>
+            {DAY_NAMES.map(d => <Text key={d} style={s.calDayLabel}>{d}</Text>)}
+          </View>
+
+          {/* Cells */}
+          {grid.map((row, ri) => (
+            <View key={ri} style={s.calDayRow}>
+              {row.map((day, ci) => {
+                const isSelected = selectedParts &&
+                  selectedParts[0] === viewYear &&
+                  selectedParts[1] === viewMonth + 1 &&
+                  selectedParts[2] === day;
+                return (
+                  <TouchableOpacity
+                    key={ci}
+                    style={[s.calCell, !day && { opacity: 0 }, isSelected && s.calCellSelected]}
+                    disabled={!day}
+                    onPress={() => { onChange(toISO(viewYear, viewMonth, day)); setOpen(false); }}
+                  >
+                    <Text style={[s.calCellTxt, isSelected && s.calCellTxtSelected]}>{day ?? ''}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
 import { clientsAPI } from '../../services/api';
 
 const C = {
@@ -27,6 +127,7 @@ export default function AddClientScreen({ navigation }) {
     firstName: '', lastName: '', email: '', phone: '',
     whatsapp: '', clientType: 'Individual', company: '',
     address: '', occupation: '', dateOfBirth: '',
+    gender: '', nationality: '',
     nationalId: '', preferredContact: 'Email',
     caseType: '', referredBy: '', notes: '',
   });
@@ -51,8 +152,10 @@ export default function AddClientScreen({ navigation }) {
         address:                  form.address || undefined,
         occupation:               form.occupation || undefined,
         date_of_birth:            form.dateOfBirth || undefined,
+        gender:                   form.gender || undefined,
+        nationality:              form.nationality || undefined,
         national_id:              form.nationalId || undefined,
-        preferred_contact_method: form.preferredContact,
+        preferred_contact:        form.preferredContact || undefined,
         notes:                    form.notes || undefined,
       });
 
@@ -64,6 +167,7 @@ export default function AddClientScreen({ navigation }) {
         phone:     form.phone || form.whatsapp || '',
         firstName: form.firstName,
       });
+      Keyboard.dismiss();
       setModal(true);
     } catch (err) {
       Alert.alert('Error', err.message);
@@ -105,7 +209,7 @@ export default function AddClientScreen({ navigation }) {
             <FontAwesome5 name="arrow-left" size={16} color={C.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Add New Client</Text>
-          <View style={s.backBtn} />
+          <View style={[s.backBtn, { backgroundColor: 'transparent' }]} />
         </View>
       </View>
 
@@ -135,8 +239,23 @@ export default function AddClientScreen({ navigation }) {
               <Field label="First Name *"         placeholder="First name"         value={form.firstName}   onChange={v => update('firstName', v)}   icon="user"         />
               <Field label="Last Name"             placeholder="Last name"          value={form.lastName}    onChange={v => update('lastName', v)}    icon="user"         />
               <Field label="Occupation"            placeholder="e.g. Engineer, CEO" value={form.occupation}  onChange={v => update('occupation', v)}  icon="briefcase"    />
-              <Field label="Date of Birth"         placeholder="YYYY-MM-DD"         value={form.dateOfBirth} onChange={v => update('dateOfBirth', v)} icon="birthday-cake"/>
-              <Field label="National ID / Passport" placeholder="ID number"         value={form.nationalId}  onChange={v => update('nationalId', v)}  icon="id-card"      />
+              <DOBPicker value={form.dateOfBirth} onChange={v => update('dateOfBirth', v)} />
+
+              <Text style={s.label}>Gender</Text>
+              <View style={s.chipRow}>
+                {[{ value: 'MALE', label: 'Male' }, { value: 'FEMALE', label: 'Female' }, { value: 'OTHER', label: 'Other' }].map(g => (
+                  <TouchableOpacity
+                    key={g.value}
+                    style={[s.chip, form.gender === g.value && s.chipActive]}
+                    onPress={() => update('gender', form.gender === g.value ? '' : g.value)}
+                  >
+                    <Text style={[s.chipTxt, form.gender === g.value && s.chipTxtActive]}>{g.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Field label="Nationality"            placeholder="e.g. Tunisian, French" value={form.nationality}  onChange={v => update('nationality', v)}  icon="flag"      />
+              <Field label="National ID / Passport" placeholder="ID number"              value={form.nationalId}  onChange={v => update('nationalId', v)}   icon="id-card"   />
 
               <Text style={s.label}>Client Type</Text>
               <View style={s.chipRow}>
@@ -267,8 +386,10 @@ export default function AddClientScreen({ navigation }) {
       </View>
 
       {/* ── INVITE MODAL (MOB-CLT-05) ── */}
-      <Modal visible={modal} transparent animationType="slide">
+      <Modal visible={modal} transparent animationType="slide" onRequestClose={() => setModal(false)}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={s.modalOverlay}>
+          <TouchableWithoutFeedback>
           <View style={s.modalBox}>
             <View style={s.modalIconWrap}>
               <FontAwesome5 name="check-circle" size={30} color={C.green600} />
@@ -327,7 +448,9 @@ export default function AddClientScreen({ navigation }) {
               <Text style={s.doneBtnTxt}>Done</Text>
             </TouchableOpacity>
           </View>
+          </TouchableWithoutFeedback>
         </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   );
@@ -378,6 +501,20 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: '700', color: C.dark, marginBottom: 16 },
   label:        { fontSize: 13, fontWeight: '600', color: C.dark, marginBottom: 8 },
   input:        { borderWidth: 1.5, borderColor: C.gray200, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: C.dark, backgroundColor: C.white },
+
+  // DOB picker
+  dobBtn:          { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: C.gray200, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: C.white, marginBottom: 0 },
+  dobBtnTxt:       { fontSize: 14, color: C.dark, fontWeight: '500', flex: 1 },
+  calBox:          { borderWidth: 1.5, borderColor: C.gray200, borderRadius: 14, overflow: 'hidden', marginTop: 8 },
+  calHeader:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.primary, paddingHorizontal: 6, paddingVertical: 10 },
+  calHeaderTxt:    { fontSize: 13, fontWeight: '700', color: C.white, flex: 1, textAlign: 'center' },
+  calNavBtn:       { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  calDayRow:       { flexDirection: 'row', backgroundColor: C.white },
+  calDayLabel:     { flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '700', color: C.gray400, paddingVertical: 6, backgroundColor: C.gray50 },
+  calCell:         { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 6, margin: 1 },
+  calCellSelected: { backgroundColor: C.primary },
+  calCellTxt:      { fontSize: 12, color: C.dark },
+  calCellTxtSelected: { color: C.white, fontWeight: '700' },
 
   chipRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   chip:       { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: C.gray200, backgroundColor: C.white },

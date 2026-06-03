@@ -314,15 +314,18 @@ const toTaskDisplay = (task) => {
     dueColor = C.primary;
   }
   return {
-    id:          task.id,
-    title:       task.title || 'Task',
-    description: task.description || '',
-    due:         dueLabel,
+    id:            task.id,
+    title:         task.title || 'Task',
+    description:   task.description || '',
+    due:           dueLabel,
     dueColor,
-    priority:    TASK_PRI_MAP[(task.priority || '').toUpperCase()] || 'normal',
-    assignee:    task.app_user?.full_name || task.assigned_to_name || '',
-    createdBy:   task.created_user?.full_name || '',
-    done:        isDone,
+    priority:      TASK_PRI_MAP[(task.priority || '').toUpperCase()] || 'normal',
+    assignee:      task.app_user?.full_name || task.assigned_to_name || '',
+    assignedId:    task.assigned_to || task.app_user?.id || null,
+    createdBy:     task.created_user?.full_name || '',
+    createdById:   task.created_by || task.created_user?.id || null,
+    creatorAvatar: task.created_user?.avatar_url || null,
+    done:          isDone,
   };
 };
 
@@ -1034,9 +1037,10 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, cur
   const [reqModal,     setReqModal]     = useState(false);
   const [reqDesc,      setReqDesc]      = useState('');
   const [sendingReq,   setSendingReq]   = useState(false);
-  const [reviewing,    setReviewing]    = useState(null);
-  const [summarizing,  setSummarizing]  = useState(null);
-  const [summaryModal, setSummaryModal] = useState(null);
+  const [reviewing,      setReviewing]      = useState(null);
+  const [summarizing,    setSummarizing]    = useState(null);
+  const [summaryModal,   setSummaryModal]   = useState(null);
+  const [reRegenerating, setReRegenerating] = useState(false);
 
   useEffect(() => { setLocalDocs(documents); }, [documents]);
 
@@ -1115,7 +1119,7 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, cur
     setSummarizing(doc.id);
     try {
       const result = await documentsAPI.summarize(doc.id);
-      setSummaryModal({ docName: doc.name, summary: result.summary });
+      setSummaryModal({ docId: doc.id, docName: doc.name, summary: result.summary });
     } catch (err) {
       Alert.alert('Error', err.message || 'Could not generate summary.');
     } finally {
@@ -1271,6 +1275,28 @@ const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, cur
               <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 4 }}>
                 <MarkdownText text={summaryModal?.summary || ''} style={dc.summaryTxt} />
               </ScrollView>
+              <TouchableOpacity
+                style={[dc.regenBtn, reRegenerating && { opacity: 0.6 }]}
+                onPress={async () => {
+                  if (!summaryModal?.docId || reRegenerating) return;
+                  setReRegenerating(true);
+                  try {
+                    const r = await documentsAPI.summarize(summaryModal.docId, true);
+                    setSummaryModal(prev => ({ ...prev, summary: r.summary }));
+                  } catch (err) {
+                    Alert.alert('Error', err.message || 'Could not regenerate summary.');
+                  } finally {
+                    setReRegenerating(false);
+                  }
+                }}
+                disabled={reRegenerating}
+                activeOpacity={0.7}
+              >
+                {reRegenerating
+                  ? <ActivityIndicator size={12} color="#6366F1" />
+                  : <FontAwesome5 name="sync" size={12} color="#6366F1" />}
+                <Text style={dc.regenBtnTxt}>{reRegenerating ? 'Regenerating…' : 'Regenerate'}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -1469,6 +1495,8 @@ const dc = StyleSheet.create({
   emptyUploadSub:   { fontSize: 12, color: C.g400 },
   btnTxt:           { fontSize: 11, fontWeight: '700', color: C.white },
   summaryTxt:       { fontSize: 13, color: C.dark, lineHeight: 21, paddingBottom: 24 },
+  regenBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: '#EEF2FF' },
+  regenBtnTxt:      { fontSize: 13, fontWeight: '600', color: '#6366F1' },
   modalOverlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalBox:         { backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36 },
   modalHandle:      { width: 40, height: 4, backgroundColor: C.g200, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
@@ -1562,7 +1590,7 @@ const tkCal = StyleSheet.create({
   selectedText:{ fontSize: 11, color: C.g500, textAlign: 'center', marginTop: 8, marginBottom: 2, fontWeight: '500' },
 });
 
-const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, team = [] }) => {
+const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, team = [], currentUserId, currentUserAvatar }) => {
   const [tasks,          setTasks]          = useState(propTasks.map(toTaskDisplay));
   const [showAdd,        setShowAdd]        = useState(false);
   const [addTitle,       setAddTitle]       = useState('');
@@ -1592,6 +1620,10 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, 
   const toggle = async (id) => {
     const task    = tasks.find(t => t.id === id);
     if (!task) return;
+    if (task.assignedId !== currentUserId) {
+      Alert.alert('Not Allowed', 'Only the assigned lawyer can update this task status.');
+      return;
+    }
     const newStatus = task.done ? 'PENDING' : 'COMPLETED';
     setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
     try {
@@ -1700,16 +1732,23 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId, 
                     ) : null}
                     {task.createdBy ? (
                       <View style={tk.metaRow}>
-                        <FontAwesome5 name="user-edit" size={9} color={C.g400} />
-                        <Text style={tk.metaTxt}>by {task.createdBy}</Text>
+                        {(() => {
+                          const avatarUri = task.createdById === currentUserId ? currentUserAvatar : task.creatorAvatar;
+                          return avatarUri
+                            ? <Image source={{ uri: avatarUri }} style={{ width: 14, height: 14, borderRadius: 7, marginRight: 4 }} />
+                            : <FontAwesome5 name="user-edit" size={9} color={C.g400} style={{ marginRight: 4 }} />;
+                        })()}
+                        <Text style={tk.metaTxt}>by {task.createdById === currentUserId ? 'You' : task.createdBy}</Text>
                       </View>
                     ) : null}
                   </View>
                 )}
               </View>
-              <TouchableOpacity style={{ padding: 6 }} onPress={() => handleDeleteTask(task.id)}>
-                <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
-              </TouchableOpacity>
+              {task.createdById === currentUserId && (
+                <TouchableOpacity style={{ padding: 6 }} onPress={() => handleDeleteTask(task.id)}>
+                  <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
+                </TouchableOpacity>
+              )}
             </View>
           );
         })}
@@ -3024,7 +3063,7 @@ export default function CaseDetailsScreen({ navigation, route, initialAIOpen = f
     switch (activeTab) {
       case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} initialAIOpen={initialAIOpen} />;
       case 'documents': return <DocumentsTab documents={documents} stats={stats} loading={tabLoading} caseId={caseData._id} currentUserId={currentUserId} onUploaded={(n) => setStats(s => ({ ...s, docs: n }))} />;
-      case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} caseId={caseData._id} team={team} />;
+      case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} caseId={caseData._id} team={team} currentUserId={currentUserId} currentUserAvatar={currentUserAvatar} />;
       case 'invoices':  return <InvoicesTab  invoices={invoices} loading={tabLoading} currentUserId={currentUserId} currentUserAvatar={currentUserAvatar} team={team} navigation={navigation} caseId={caseData._id} clientId={caseData.client_id || caseData.client?.id} />;
       case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} caseId={caseData._id} navigation={navigation} caseData={caseData} currentUserId={currentUserId} currentUserAvatar={currentUserAvatar} />;
       case 'team':      return <TeamTab      team={team}                    loading={tabLoading} caseId={caseData._id} lawyerId={lawyerId} onTeamChange={loadTeam} />;

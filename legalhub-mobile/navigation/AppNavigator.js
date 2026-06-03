@@ -18,7 +18,7 @@ import AuthScreen     from "../screens/AuthScreen";
 import HomeScreen     from "../screens/HomeScreen";
 import CaseManagement from "../screens/Cases/CaseManagement";
 import CalendarScreen from "../screens/Calender/CalendarScreen";
-import ProfileScreen  from "../screens/Profile/ProfileScreen";
+import ProfileNavigator from "./ProfileNavigator";
 import QuickAddScreen from "../screens/QuickAddScreen";
 import ClientNavigator from "./ClientNavigator";
 
@@ -66,7 +66,7 @@ export default function AppNavigator() {
         <Tab.Screen name="Cases"    component={CaseManagement} options={{ tabBarLabel: "Cases"    }} />
         <Tab.Screen name="Add"      component={QuickAddScreen} options={{ tabBarButton: () => null }} />
         <Tab.Screen name="Calendar" component={CalendarScreen} options={{ tabBarLabel: "Calendar" }} />
-        <Tab.Screen name="Profile"  component={ProfileScreen}  options={{ tabBarLabel: "Profile"  }} />
+        <Tab.Screen name="Profile"  component={ProfileNavigator}  options={{ tabBarLabel: "Profile"  }} />
       </Tab.Navigator>
     </NavigationContainer>
   );

@@ -5,18 +5,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { supabase } from '../supabase/supabase';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, getRememberedEmail } from '../context/AuthContext';
 import { authAPI } from '../services/api';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const BIO_EMAIL_KEY = 'lh_bio_email';
-const BIO_PASS_KEY  = 'lh_bio_pass';
+const bioTokenKey         = (uid) => `lh_bio_token_${uid}`;
+const BIO_ACTIVE_USER_KEY = 'lh_bio_active_user';
+const REMEMBERED_PASS_KEY = 'lh_remembered_pass';
 
 // ─── COULEURS ─────────────────────────────────────────────────────────────
 const C = {
@@ -67,6 +69,16 @@ export default function AuthScreen() {
   const [twoFATempToken, setTwoFATempToken]   = useState('');
   const [twoFACode, setTwoFACode]             = useState('');
   const [twoFALoading, setTwoFALoading]       = useState(false);
+  // Reset password modal
+  const [resetModal, setResetModal]           = useState(false);
+  const [resetStep, setResetStep]             = useState('email'); // 'email' | 'code'
+  const [resetEmail, setResetEmail]           = useState('');
+  const [resetToken, setResetToken]           = useState('');
+  const [resetNewPass, setResetNewPass]       = useState('');
+  const [resetConfirmPass, setResetConfirmPass] = useState('');
+  const [resetLoading, setResetLoading]       = useState(false);
+  const [showResetPass, setShowResetPass]     = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // ── OAuth via Supabase ───────────────────────────────────────────────────
   const handleOAuthLogin = async (provider) => {
@@ -134,13 +146,43 @@ export default function AuthScreen() {
     }
   };
 
+  const handleDeepLink = (url) => {
+    if (!url || !url.includes('accept-invite')) return;
+    const parsed = Linking.parse(url);
+    const token = parsed.queryParams?.token;
+    if (token) {
+      setActiveTab('invite');
+      setInvToken(token);
+    }
+  };
+
   useEffect(() => {
     (async () => {
-      const supported   = await LocalAuthentication.hasHardwareAsync();
-      const enrolled    = await LocalAuthentication.isEnrolledAsync();
-      const savedEmail  = await SecureStore.getItemAsync(BIO_EMAIL_KEY);
-      setBiometricAvailable(supported && enrolled && !!savedEmail);
+      const [supported, enrolled, activeUser, savedEmail] = await Promise.all([
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+        AsyncStorage.getItem(BIO_ACTIVE_USER_KEY),
+        getRememberedEmail(),
+      ]);
+      const [savedToken, savedPass] = await Promise.all([
+        activeUser ? SecureStore.getItemAsync(bioTokenKey(activeUser)) : null,
+        SecureStore.getItemAsync(REMEMBERED_PASS_KEY),
+      ]);
+      setBiometricAvailable(supported && enrolled && !!savedToken);
+      if (savedEmail) {
+        setEmail(savedEmail);
+        setRemember(true);
+      }
+      if (savedPass) setPassword(savedPass);
+
+      // Handle deep link on cold start (app was closed)
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) handleDeepLink(initialUrl);
     })();
+
+    // Handle deep link when app is already open in background
+    const sub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
+    return () => sub.remove();
   }, []);
 
   const handleBiometricLogin = async () => {
@@ -151,23 +193,28 @@ export default function AuthScreen() {
 
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage:         hasFaceID ? 'Sign in with Face ID' : 'Sign in with fingerprint',
-        fallbackLabel:         'Use password instead',
         cancelLabel:           'Cancel',
         disableDeviceFallback: false,
       });
 
-      if (!result.success) return;
-
-      const savedEmail = await SecureStore.getItemAsync(BIO_EMAIL_KEY);
-      const savedPass  = await SecureStore.getItemAsync(BIO_PASS_KEY);
-
-      if (!savedEmail || !savedPass) {
-        Alert.alert('Setup required', 'Please sign in once with your password to enable biometric login.');
-        setActiveTab('signin');
+      if (!result.success) {
+        // UserCancel / SystemCancel → l'utilisateur a annulé, pas d'alerte
+        if (result.error === 'UserCancel' || result.error === 'SystemCancel') return;
+        // BiometryLockout → Face ID bloqué par iOS après trop d'échecs
+        if (result.error === 'BiometryLockout') {
+          Alert.alert('Face ID Locked', 'Too many failed attempts. Enter your device passcode to unlock Face ID, then try again.');
+        }
         return;
       }
 
-      const data = await authAPI.login(savedEmail, savedPass);
+      const activeUser = await AsyncStorage.getItem(BIO_ACTIVE_USER_KEY);
+      const savedToken = activeUser ? await SecureStore.getItemAsync(bioTokenKey(activeUser)) : null;
+      if (!savedToken) {
+        Alert.alert('Setup required', 'Please enable biometric login in Profile → Security Settings.');
+        return;
+      }
+
+      const data = await authAPI.biometricLogin(savedToken);
 
       if (data.requires_2fa) {
         setTwoFATempToken(data.temp_token);
@@ -178,7 +225,7 @@ export default function AuthScreen() {
 
       await signIn(data.access_token, data.refresh_token, data.user);
     } catch (err) {
-      Alert.alert('Error', err.message || 'Biometric authentication failed.');
+      Alert.alert('Sign In Failed', err.message || 'Biometric authentication failed.');
     } finally {
       setBioLoading(false);
     }
@@ -205,6 +252,15 @@ export default function AuthScreen() {
   const [invName, setInvName]         = useState('');
   const [invPass, setInvPass]         = useState('');
   const [invConfirm, setInvConfirm]   = useState('');
+
+  // ── Accept Lawyer Invite ──
+  const [lawyerInviteMode, setLawyerInviteMode]         = useState(false); // toggle dans l'onglet Lawyer
+  const [lawyerInvToken, setLawyerInvToken]             = useState('');
+  const [lawyerInvEmail, setLawyerInvEmail]             = useState('');
+  const [lawyerInvPass, setLawyerInvPass]               = useState('');
+  const [lawyerInvConfirm, setLawyerInvConfirm]         = useState('');
+  const [showLawyerInvPass, setShowLawyerInvPass]       = useState(false);
+  const [showLawyerInvConfirm, setShowLawyerInvConfirm] = useState(false);
 
   // ─── HANDLERS ───────────────────────────────────────────────────────────
 
@@ -248,15 +304,12 @@ export default function AuthScreen() {
         return;
       }
 
-      await signIn(data.access_token, data.refresh_token, data.user);
-
-      // Save credentials for biometric login (SecureStore, encrypted)
-      const supported = await LocalAuthentication.hasHardwareAsync();
-      const enrolled  = await LocalAuthentication.isEnrolledAsync();
-      if (supported && enrolled) {
-        await SecureStore.setItemAsync(BIO_EMAIL_KEY, email);
-        await SecureStore.setItemAsync(BIO_PASS_KEY,  password);
+      if (remember) {
+        await SecureStore.setItemAsync(REMEMBERED_PASS_KEY, password);
+      } else {
+        await SecureStore.deleteItemAsync(REMEMBERED_PASS_KEY);
       }
+      await signIn(data.access_token, data.refresh_token, data.user, remember);
     } catch (err) {
       Alert.alert('Sign In Failed', err.message);
     } finally {
@@ -272,13 +325,6 @@ export default function AuthScreen() {
       const data = await authAPI.login2FA(twoFATempToken, twoFACode.trim());
       setTwoFAModal(false);
       await signIn(data.access_token, data.refresh_token, data.user);
-
-      const supported = await LocalAuthentication.hasHardwareAsync();
-      const enrolled  = await LocalAuthentication.isEnrolledAsync();
-      if (supported && enrolled) {
-        await SecureStore.setItemAsync(BIO_EMAIL_KEY, email);
-        await SecureStore.setItemAsync(BIO_PASS_KEY,  password);
-      }
     } catch (err) {
       Alert.alert('Invalid Code', err.message || 'The code is incorrect or expired.');
     } finally {
@@ -344,20 +390,83 @@ export default function AuthScreen() {
     }
   };
 
-  // Forgot Password
-  const handleForgotPassword = async () => {
-    if (!email.trim()) {
-      Alert.alert('Email Required', 'Enter your email first, then tap Forgot Password.');
+  // Accept Lawyer Invite — activate account with invite token
+  const handleAcceptLawyerInvite = async () => {
+    if (!lawyerInvToken.trim() || !lawyerInvEmail.trim() || !lawyerInvPass.trim()) {
+      Alert.alert('Champs manquants', 'Veuillez remplir tous les champs.');
+      return;
+    }
+    if (lawyerInvPass !== lawyerInvConfirm) {
+      Alert.alert('Mots de passe différents', 'Les mots de passe ne correspondent pas.');
+      return;
+    }
+    if (lawyerInvPass.length < 8) {
+      Alert.alert('Mot de passe trop court', 'Le mot de passe doit contenir au moins 8 caractères.');
       return;
     }
     setLoading(true);
     try {
-      await authAPI.forgotPassword(email);
-      Alert.alert('Email Sent', 'Check your inbox for the password reset link.');
+      const data = await authAPI.acceptLawyerInvite({
+        invite_token: lawyerInvToken.trim(),
+        email:        lawyerInvEmail.trim(),
+        new_password: lawyerInvPass,
+      });
+      await signIn(data.access_token, data.refresh_token, data.user);
     } catch (err) {
-      Alert.alert('Error', err.message);
+      Alert.alert('Erreur', err.message || "Token invalide ou expiré.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Forgot Password — open the reset modal
+  const handleForgotPassword = () => {
+    setResetEmail(email.trim());
+    setResetToken('');
+    setResetNewPass('');
+    setResetConfirmPass('');
+    setResetStep('email');
+    setResetModal(true);
+  };
+
+  const handleSendResetCode = async () => {
+    if (!resetEmail.trim()) {
+      Alert.alert('Email Required', 'Please enter your email address.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await authAPI.forgotPassword(resetEmail.trim());
+      setResetStep('code');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to send reset email.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetToken.trim()) {
+      Alert.alert('Code Required', 'Enter the reset code from your email.');
+      return;
+    }
+    if (!resetNewPass || resetNewPass.length < 6) {
+      Alert.alert('Password Too Short', 'Password must be at least 6 characters.');
+      return;
+    }
+    if (resetNewPass !== resetConfirmPass) {
+      Alert.alert('Mismatch', 'Passwords do not match.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await authAPI.resetPassword(resetToken.trim(), resetNewPass);
+      setResetModal(false);
+      Alert.alert('Success', 'Your password has been reset. You can now sign in.');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Invalid or expired reset code.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -485,85 +594,129 @@ export default function AuthScreen() {
             </View>
           )}
 
-          {/* ── LAWYER — Office Code ── */}
+          {/* ── LAWYER — Office Code ou Invitation ── */}
           {activeTab === 'lawyer' && (
             <View>
-              <View style={[s.infoBox, { backgroundColor: C.blue50, borderColor: '#BFDBFE', borderWidth: 1, marginBottom: 20 }]}>
-                <FontAwesome5 name="info-circle" size={13} color={C.primary} style={{ marginTop: 1 }} />
-                <Text style={s.infoTxt}>
-                  Your office code is provided by your firm administrator. Fill in your details to join the firm as a lawyer.
-                </Text>
-              </View>
-
-              <Text style={s.label}>Office Code</Text>
-              <View style={s.inputWrap}>
-                <FontAwesome5 name="hashtag" size={14} color={C.g400} style={s.inputIcon} />
-                <TextInput
-                  style={s.input}
-                  placeholder="e.g., STERLING2024"
-                  placeholderTextColor={C.g400}
-                  value={officeCode}
-                  onChangeText={setOfficeCode}
-                  autoCapitalize="characters"
-                />
-              </View>
-
-              <Text style={s.label}>Full Name</Text>
-              <View style={s.inputWrap}>
-                <FontAwesome5 name="user" size={14} color={C.g400} style={s.inputIcon} />
-                <TextInput
-                  style={s.input}
-                  placeholder="Your full name"
-                  placeholderTextColor={C.g400}
-                  value={fullName}
-                  onChangeText={setFullName}
-                />
-              </View>
-
-              <Text style={s.label}>Email Address</Text>
-              <View style={s.inputWrap}>
-                <FontAwesome5 name="envelope" size={14} color={C.g400} style={s.inputIcon} />
-                <TextInput
-                  style={s.input}
-                  placeholder="your@email.com"
-                  placeholderTextColor={C.g400}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <Text style={s.label}>Password</Text>
-              <View style={s.inputWrap}>
-                <FontAwesome5 name="lock" size={14} color={C.g400} style={s.inputIcon} />
-                <TextInput
-                  style={[s.input, { flex: 1 }]}
-                  placeholder="Create a password"
-                  placeholderTextColor={C.g400}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPass}
-                />
-                <TouchableOpacity onPress={() => setShowPass(!showPass)} style={{ paddingRight: 14 }}>
-                  <FontAwesome5 name={showPass ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
+              {/* Toggle Office Code / Invitation */}
+              <View style={s.subTabRow}>
+                <TouchableOpacity
+                  style={[s.subTab, !lawyerInviteMode && s.subTabActive]}
+                  onPress={() => setLawyerInviteMode(false)}
+                >
+                  <FontAwesome5 name="hashtag" size={12} color={!lawyerInviteMode ? C.white : C.g500} style={{ marginRight: 5 }} />
+                  <Text style={[s.subTabTxt, !lawyerInviteMode && s.subTabTxtActive]}>Code du cabinet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.subTab, lawyerInviteMode && s.subTabActive]}
+                  onPress={() => setLawyerInviteMode(true)}
+                >
+                  <FontAwesome5 name="envelope-open-text" size={12} color={lawyerInviteMode ? C.white : C.g500} style={{ marginRight: 5 }} />
+                  <Text style={[s.subTabTxt, lawyerInviteMode && s.subTabTxtActive]}>J'ai une invitation</Text>
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                style={s.btnPrimary}
-                onPress={handleValidateOfficeCode}
-                activeOpacity={0.85}
-                disabled={loading}
-              >
-                {loading
-                  ? <ActivityIndicator color={C.white} />
-                  : <>
-                      <Text style={s.btnPrimaryTxt}>Join Firm</Text>
+              {/* ─ Formulaire Office Code ─ */}
+              {!lawyerInviteMode && (
+                <View>
+                  <View style={[s.infoBox, { backgroundColor: C.blue50, borderColor: '#BFDBFE', borderWidth: 1, marginBottom: 16 }]}>
+                    <FontAwesome5 name="info-circle" size={13} color={C.primary} style={{ marginTop: 1 }} />
+                    <Text style={s.infoTxt}>Le code est fourni par l'administrateur du cabinet.</Text>
+                  </View>
+
+                  <Text style={s.label}>Code du Cabinet</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="hashtag" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={s.input} placeholder="ex: STERLING2024" placeholderTextColor={C.g400}
+                      value={officeCode} onChangeText={setOfficeCode} autoCapitalize="characters" />
+                  </View>
+
+                  <Text style={s.label}>Nom complet</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="user" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={s.input} placeholder="Prénom Nom" placeholderTextColor={C.g400}
+                      value={fullName} onChangeText={setFullName} />
+                  </View>
+
+                  <Text style={s.label}>Email</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="envelope" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={s.input} placeholder="vous@email.com" placeholderTextColor={C.g400}
+                      value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+                  </View>
+
+                  <Text style={s.label}>Mot de passe</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="lock" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Créer un mot de passe" placeholderTextColor={C.g400}
+                      value={password} onChangeText={setPassword} secureTextEntry={!showPass} />
+                    <TouchableOpacity onPress={() => setShowPass(!showPass)} style={{ paddingRight: 14 }}>
+                      <FontAwesome5 name={showPass ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity style={s.btnPrimary} onPress={handleValidateOfficeCode} activeOpacity={0.85} disabled={loading}>
+                    {loading ? <ActivityIndicator color={C.white} /> : <>
+                      <Text style={s.btnPrimaryTxt}>Rejoindre le Cabinet</Text>
                       <FontAwesome5 name="sign-in-alt" size={14} color={C.white} style={{ marginLeft: 8 }} />
-                    </>
-                }
-              </TouchableOpacity>
+                    </>}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* ─ Formulaire Invitation ─ */}
+              {lawyerInviteMode && (
+                <View>
+                  <View style={[s.infoBox, { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF', borderWidth: 1, marginBottom: 16 }]}>
+                    <FontAwesome5 name="envelope-open-text" size={13} color={C.purple600} style={{ marginTop: 1 }} />
+                    <Text style={[s.infoTxt, { color: '#7E22CE' }]}>
+                      Entrez le token reçu par email ainsi que votre email et choisissez un nouveau mot de passe.
+                    </Text>
+                  </View>
+
+                  <Text style={s.label}>Token d'invitation</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="key" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={s.input} placeholder="Token reçu par email" placeholderTextColor={C.g400}
+                      value={lawyerInvToken} onChangeText={setLawyerInvToken}
+                      autoCapitalize="none" autoCorrect={false} />
+                  </View>
+
+                  <Text style={s.label}>Votre email</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="envelope" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={s.input} placeholder="vous@email.com" placeholderTextColor={C.g400}
+                      value={lawyerInvEmail} onChangeText={setLawyerInvEmail}
+                      keyboardType="email-address" autoCapitalize="none" />
+                  </View>
+
+                  <Text style={s.label}>Nouveau mot de passe</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="lock" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Min. 8 caractères" placeholderTextColor={C.g400}
+                      value={lawyerInvPass} onChangeText={setLawyerInvPass} secureTextEntry={!showLawyerInvPass} />
+                    <TouchableOpacity onPress={() => setShowLawyerInvPass(!showLawyerInvPass)} style={{ paddingRight: 14 }}>
+                      <FontAwesome5 name={showLawyerInvPass ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={s.label}>Confirmer le mot de passe</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="lock" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Répéter le mot de passe" placeholderTextColor={C.g400}
+                      value={lawyerInvConfirm} onChangeText={setLawyerInvConfirm} secureTextEntry={!showLawyerInvConfirm} />
+                    <TouchableOpacity onPress={() => setShowLawyerInvConfirm(!showLawyerInvConfirm)} style={{ paddingRight: 14 }}>
+                      <FontAwesome5 name={showLawyerInvConfirm ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity style={[s.btnPrimary, { backgroundColor: C.purple600 }]} onPress={handleAcceptLawyerInvite} activeOpacity={0.85} disabled={loading}>
+                    {loading ? <ActivityIndicator color={C.white} /> : <>
+                      <Text style={s.btnPrimaryTxt}>Activer mon compte</Text>
+                      <FontAwesome5 name="check-circle" size={14} color={C.white} style={{ marginLeft: 8 }} />
+                    </>}
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
 
@@ -905,6 +1058,113 @@ export default function AuthScreen() {
 
       </ScrollView>
 
+      {/* ── Reset Password Modal ──────────────────────────────────────── */}
+      <Modal visible={resetModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: C.white, borderRadius: 16, padding: 28, width: '100%', maxWidth: 380 }}>
+
+            {/* Header */}
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: C.blue100, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                <FontAwesome5 name="lock" size={22} color={C.primary} />
+              </View>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: C.dark }}>
+                {resetStep === 'email' ? 'Forgot Password' : 'Reset Password'}
+              </Text>
+              <Text style={{ fontSize: 13, color: C.g500, marginTop: 6, textAlign: 'center' }}>
+                {resetStep === 'email'
+                  ? 'Enter your email and we\'ll send you a reset code.'
+                  : 'Enter the code from your email and choose a new password.'}
+              </Text>
+            </View>
+
+            {resetStep === 'email' ? (
+              <>
+                <TextInput
+                  style={{ borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, padding: 14, fontSize: 15, color: C.dark, marginBottom: 16 }}
+                  placeholder="Email address"
+                  placeholderTextColor={C.g400}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={resetEmail}
+                  onChangeText={setResetEmail}
+                />
+                <TouchableOpacity
+                  style={{ backgroundColor: resetLoading ? C.g200 : C.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 12 }}
+                  onPress={handleSendResetCode}
+                  disabled={resetLoading}
+                >
+                  {resetLoading
+                    ? <ActivityIndicator color={C.white} />
+                    : <Text style={{ color: C.white, fontWeight: '700', fontSize: 16 }}>Send Reset Code</Text>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity style={{ alignItems: 'center', padding: 10 }} onPress={() => setResetModal(false)}>
+                  <Text style={{ color: C.g500, fontSize: 14 }}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                {/* Reset code input */}
+                <TextInput
+                  style={{ borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, padding: 14, fontSize: 15, color: C.dark, marginBottom: 12 }}
+                  placeholder="6-digit code from email"
+                  placeholderTextColor={C.g400}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={resetToken}
+                  onChangeText={setResetToken}
+                />
+                {/* New password */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, marginBottom: 12 }}>
+                  <TextInput
+                    style={{ flex: 1, padding: 14, fontSize: 15, color: C.dark }}
+                    placeholder="New password"
+                    placeholderTextColor={C.g400}
+                    secureTextEntry={!showResetPass}
+                    value={resetNewPass}
+                    onChangeText={setResetNewPass}
+                  />
+                  <TouchableOpacity onPress={() => setShowResetPass(!showResetPass)} style={{ paddingRight: 14 }}>
+                    <FontAwesome5 name={showResetPass ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
+                  </TouchableOpacity>
+                </View>
+                {/* Confirm password */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, marginBottom: 20 }}>
+                  <TextInput
+                    style={{ flex: 1, padding: 14, fontSize: 15, color: C.dark }}
+                    placeholder="Confirm new password"
+                    placeholderTextColor={C.g400}
+                    secureTextEntry={!showResetConfirm}
+                    value={resetConfirmPass}
+                    onChangeText={setResetConfirmPass}
+                  />
+                  <TouchableOpacity onPress={() => setShowResetConfirm(!showResetConfirm)} style={{ paddingRight: 14 }}>
+                    <FontAwesome5 name={showResetConfirm ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  style={{ backgroundColor: resetLoading ? C.g200 : C.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 12 }}
+                  onPress={handleResetPassword}
+                  disabled={resetLoading}
+                >
+                  {resetLoading
+                    ? <ActivityIndicator color={C.white} />
+                    : <Text style={{ color: C.white, fontWeight: '700', fontSize: 16 }}>Reset Password</Text>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity style={{ alignItems: 'center', padding: 6 }} onPress={() => setResetStep('email')}>
+                  <Text style={{ color: C.primary, fontSize: 13 }}>Resend code</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={{ alignItems: 'center', padding: 8 }} onPress={() => setResetModal(false)}>
+                  <Text style={{ color: C.g500, fontSize: 14 }}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* ── 2FA Challenge Modal ───────────────────────────────────────── */}
       <Modal visible={twoFAModal} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
@@ -996,6 +1256,11 @@ const s = StyleSheet.create({
   tabBtnActive:    { backgroundColor: C.white, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   tabBtnTxt:       { fontSize: 13, fontWeight: '600', color: C.g600 },
   tabBtnTxtActive: { color: C.primary, fontWeight: '700' },
+  subTabRow:       { flexDirection: 'row', backgroundColor: C.g100, borderRadius: 12, padding: 3, marginBottom: 16 },
+  subTab:          { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: 10 },
+  subTabActive:    { backgroundColor: C.primary },
+  subTabTxt:       { fontSize: 12, fontWeight: '600', color: C.g500 },
+  subTabTxtActive: { color: C.white, fontWeight: '700' },
   checkbox:        { width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: C.g400, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   checkboxChecked: { backgroundColor: C.primary, borderColor: C.primary },
   checkLabel:      { fontSize: 13, color: C.g600, fontWeight: '500' },

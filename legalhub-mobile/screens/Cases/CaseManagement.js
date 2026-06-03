@@ -1584,37 +1584,23 @@ export default function CaseManagement({ navigation }) {
         </View>
 
         {/* AI INSIGHTS */}
-        <View style={[s.section, { backgroundColor: C.indigo50 }]}>
-          <View style={s.aiCard}>
-            <View style={[s.row, { marginBottom: 16 }]}>
+        <View style={[s.section, { backgroundColor: '#EEF2FF' }]}>
+          <TouchableOpacity
+            style={s.aiCard}
+            onPress={() => setAiCase({ id: null, title: 'AI Legal Assistant', number: null })}
+            activeOpacity={0.85}
+          >
+            <View style={s.row}>
               <View style={s.aiIconWrap}>
-                <Icon lib="FA5" name="brain" size={24} color={C.white} />
+                <Icon lib="FA5" name="robot" size={24} color={C.white} />
               </View>
-              <View style={{ marginLeft: 12 }}>
-                <Text style={s.aiTitle}>AI Case Insights</Text>
-                <Text style={s.aiSub}>Smart recommendations</Text>
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={s.aiTitle}>AI Legal Assistant</Text>
+                <Text style={s.aiSub}>Tap to open your intelligent legal companion</Text>
               </View>
+              <Icon lib="FA5" name="chevron-right" size={14} color={C.white} />
             </View>
-            {AI_INSIGHTS.map((a, i) => (
-              <View key={i} style={s.aiItem}>
-                <View style={[s.aiItemIcon, { backgroundColor: a.iconBg }]}>
-                  <Icon lib="FA5" name={a.icon} size={14} color={C.white} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={s.aiItemTitle}>{a.title}</Text>
-                  <Text style={s.aiItemDesc}>{a.desc}</Text>
-                  <TouchableOpacity style={s.aiItemBtn}>
-                    <Text style={s.aiItemBtnText}>{a.btn}</Text>
-                    <Icon lib="FA5" name="arrow-right" size={10} color={C.white} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-            <TouchableOpacity style={s.aiMainBtn}>
-              <Icon lib="FA5" name="robot" size={16} color={C.indigo600} />
-              <Text style={s.aiMainBtnText}>Get More AI Insights</Text>
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* UPCOMING EVENTS */}
@@ -1791,18 +1777,10 @@ const s = StyleSheet.create({
   qfIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   qfCount: { fontSize: 20, fontWeight: '800', color: C.dark, marginTop: 6 },
   activityIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  aiCard: { backgroundColor: C.indigo600, borderRadius: 24, padding: 20 },
+  aiCard: { backgroundColor: C.indigo600, borderRadius: 20, padding: 18 },
   aiIconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   aiTitle: { fontSize: 16, fontWeight: '700', color: C.white },
   aiSub: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
-  aiItem: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  aiItemIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  aiItemTitle: { fontSize: 13, fontWeight: '700', color: C.white, marginBottom: 3 },
-  aiItemDesc: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginBottom: 8 },
-  aiItemBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, gap: 4 },
-  aiItemBtnText: { fontSize: 12, fontWeight: '600', color: C.white },
-  aiMainBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: C.white, paddingVertical: 12, borderRadius: 14, gap: 8, marginTop: 4 },
-  aiMainBtnText: { fontSize: 14, fontWeight: '700', color: C.indigo600 },
   deadlineCard: { borderRadius: 16, padding: 14, borderLeftWidth: 4, marginBottom: 10, backgroundColor: C.gray50 },
   deadlineBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
   deadlineBtnText: { color: C.white, fontSize: 12, fontWeight: '700' },

@@ -37,6 +37,12 @@ def _ensure_storage_buckets():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _ensure_storage_buckets()
+    # Warm up Redis connection so the first request isn't slow
+    from app.core.cache import ping as redis_ping
+    if await redis_ping():
+        logger.info("✅ Redis connected.")
+    else:
+        logger.warning("⚠️  Redis unavailable — caching disabled.")
     scheduler = start_scheduler()
     yield
     scheduler.shutdown()
@@ -87,5 +93,12 @@ def root():
     return {"message": "LegalHub API v2.0", "status": "running", "docs": "/docs"}
 
 @app.get("/health", tags=["Health"])
-def health():
-    return {"status": "ok"}
+async def health():
+    from app.core.cache import _get_client
+    redis_status = "unavailable"
+    try:
+        pong = await _get_client().ping()
+        redis_status = "ok" if pong else "unavailable"
+    except Exception:
+        pass
+    return {"status": "ok", "redis": redis_status}

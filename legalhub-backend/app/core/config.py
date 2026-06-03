@@ -13,9 +13,6 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # ─── OpenAI (optionnel en dev) ─────────────────────
-    OPENAI_API_KEY: Optional[str] = None
-
     # ─── Mistral / Voxtral (optionnel en dev) ─────────
     MISTRAL_API_KEY: Optional[str] = None
 
@@ -51,6 +48,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/calendar/sync/google/callback"
+
+    # ─── Redis (cache / blacklist) ────────────────────
+    REDIS_URL: str = "redis://localhost:6379"
 
     # ─── Milvus / RAG ─────────────────────────────────
     MILVUS_HOST: str = "localhost"

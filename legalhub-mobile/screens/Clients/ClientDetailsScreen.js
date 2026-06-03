@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
-  Alert, Image, Modal, TextInput, Linking, KeyboardAvoidingView, Platform,
+  Alert, Image, Modal, TextInput, Linking, KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { clientsAPI } from '../../services/api';
@@ -98,6 +98,9 @@ export default function ClientDetailsScreen({ navigation, route }) {
   const [emailModal,   setEmailModal]   = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody,    setEmailBody]    = useState('');
+  const [editModal,  setEditModal]  = useState(false);
+  const [editForm,   setEditForm]   = useState({});
+  const [saving,     setSaving]     = useState(false);
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -155,6 +158,45 @@ export default function ClientDetailsScreen({ navigation, route }) {
       ]
     );
   }, [client, clientId]);
+
+  const openEdit = useCallback(() => {
+    if (!client) return;
+    setEditForm({
+      first_name:      client.first_name || '',
+      last_name:       client.last_name  || '',
+      email:           client.email      || '',
+      phone:           client.phone      || '',
+      whatsapp_number: client.whatsapp_number || '',
+      address:         client.address    || '',
+      occupation:      client.occupation || '',
+      company_name:    client.company_name || '',
+      national_id:     client.national_id || '',
+      nationality:     client.nationality || '',
+      date_of_birth:   client.date_of_birth || '',
+      gender:          client.gender     || '',
+      notes:           client.notes      || '',
+    });
+    setEditModal(true);
+  }, [client]);
+
+  const saveEdit = useCallback(async () => {
+    setSaving(true);
+    try {
+      const payload = {};
+      Object.entries(editForm).forEach(([k, v]) => {
+        if (v !== (client[k] || '')) payload[k] = v || null;
+      });
+      if (Object.keys(payload).length === 0) { setEditModal(false); return; }
+      const updated = await clientsAPI.update(clientId, payload);
+      setClient(updated);
+      setEditModal(false);
+      Alert.alert('Saved', 'Client updated successfully.');
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  }, [client, clientId, editForm]);
 
   const openEmailCompose = useCallback(() => {
     if (!client?.email) return;
@@ -223,7 +265,9 @@ export default function ClientDetailsScreen({ navigation, route }) {
             <FontAwesome5 name="arrow-left" size={16} color={C.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Client Details</Text>
-          <View style={s.backBtn} />
+          <TouchableOpacity style={s.backBtn} onPress={openEdit}>
+            <FontAwesome5 name="pen" size={14} color={C.white} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -341,6 +385,101 @@ export default function ClientDetailsScreen({ navigation, route }) {
 
       </ScrollView>
 
+      {/* EDIT MODAL */}
+      <Modal visible={editModal} transparent animationType="slide" onRequestClose={() => setEditModal(false)}>
+        <KeyboardAvoidingView style={ed.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={ed.sheet}>
+            {/* Header */}
+            <View style={ed.sheetHeader}>
+              <TouchableOpacity onPress={() => setEditModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <FontAwesome5 name="times" size={16} color={C.g500} />
+              </TouchableOpacity>
+              <Text style={ed.sheetTitle}>Edit Client</Text>
+              <TouchableOpacity onPress={saveEdit} disabled={saving}>
+                {saving
+                  ? <ActivityIndicator size="small" color={C.primary} />
+                  : <Text style={ed.saveBtn}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {[
+                { key: 'first_name',      label: 'First Name',    icon: 'user'            },
+                { key: 'last_name',       label: 'Last Name',     icon: 'user'            },
+                { key: 'email',           label: 'Email',         icon: 'envelope',  keyboardType: 'email-address' },
+                { key: 'phone',           label: 'Phone',         icon: 'phone',     keyboardType: 'phone-pad'     },
+                { key: 'whatsapp_number', label: 'WhatsApp',      icon: 'whatsapp',  keyboardType: 'phone-pad'     },
+                { key: 'address',         label: 'Address',       icon: 'map-marker-alt'  },
+                { key: 'occupation',      label: 'Occupation',    icon: 'briefcase'       },
+                { key: 'company_name',    label: 'Company',       icon: 'building'        },
+                { key: 'national_id',     label: 'National ID',   icon: 'id-card'         },
+                { key: 'nationality',     label: 'Nationality',   icon: 'flag'            },
+                { key: 'date_of_birth',   label: 'Date of Birth', icon: 'birthday-cake', placeholder: 'YYYY-MM-DD' },
+              ].map(({ key, label, icon, keyboardType, placeholder }) => (
+                <View key={key} style={ed.field}>
+                  <View style={ed.fieldIconWrap}>
+                    <FontAwesome5 name={icon} size={13} color={C.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={ed.fieldLabel}>{label}</Text>
+                    <TextInput
+                      style={ed.fieldInput}
+                      value={editForm[key] || ''}
+                      onChangeText={v => setEditForm(f => ({ ...f, [key]: v }))}
+                      placeholder={placeholder || `Enter ${label.toLowerCase()}`}
+                      placeholderTextColor={C.g400}
+                      keyboardType={keyboardType || 'default'}
+                      autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
+                    />
+                  </View>
+                </View>
+              ))}
+
+              {/* Gender */}
+              <View style={ed.field}>
+                <View style={ed.fieldIconWrap}>
+                  <FontAwesome5 name="venus-mars" size={13} color={C.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={ed.fieldLabel}>Gender</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                    {[{ value: 'MALE', label: 'Male' }, { value: 'FEMALE', label: 'Female' }, { value: 'OTHER', label: 'Other' }].map(g => (
+                      <TouchableOpacity
+                        key={g.value}
+                        style={[ed.chip, editForm.gender === g.value && ed.chipActive]}
+                        onPress={() => setEditForm(f => ({ ...f, gender: f.gender === g.value ? '' : g.value }))}
+                      >
+                        <Text style={[ed.chipTxt, editForm.gender === g.value && ed.chipTxtActive]}>{g.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              {/* Notes */}
+              <View style={[ed.field, { alignItems: 'flex-start' }]}>
+                <View style={[ed.fieldIconWrap, { marginTop: 2 }]}>
+                  <FontAwesome5 name="sticky-note" size={13} color={C.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={ed.fieldLabel}>Notes</Text>
+                  <TextInput
+                    style={[ed.fieldInput, { minHeight: 80, textAlignVertical: 'top', marginTop: 4 }]}
+                    value={editForm.notes || ''}
+                    onChangeText={v => setEditForm(f => ({ ...f, notes: v }))}
+                    placeholder="Internal notes…"
+                    placeholderTextColor={C.g400}
+                    multiline
+                  />
+                </View>
+              </View>
+
+              <View style={{ height: 24 }} />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* EMAIL COMPOSE MODAL */}
       <Modal visible={emailModal} transparent animationType="slide" onRequestClose={() => setEmailModal(false)}>
         <KeyboardAvoidingView style={em.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -444,6 +583,22 @@ const s = StyleSheet.create({
   statusPillTxt: { fontSize: 11, fontWeight: '600' },
 
   emptyTxt:   { fontSize: 13, color: C.g400, textAlign: 'center', paddingVertical: 12 },
+});
+
+const ed = StyleSheet.create({
+  overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheet:        { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 36, maxHeight: '92%' },
+  sheetHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  sheetTitle:   { fontSize: 17, fontWeight: '800', color: C.dark },
+  saveBtn:      { fontSize: 15, fontWeight: '700', color: C.primary },
+  field:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  fieldIconWrap:{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.blue50, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  fieldLabel:   { fontSize: 11, color: C.g400, marginBottom: 2 },
+  fieldInput:   { fontSize: 14, color: C.dark, paddingVertical: 2 },
+  chip:         { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: C.g100, borderWidth: 1.5, borderColor: 'transparent' },
+  chipActive:   { backgroundColor: C.blue50, borderColor: C.primary },
+  chipTxt:      { fontSize: 13, fontWeight: '600', color: C.g600 },
+  chipTxtActive:{ color: C.primary, fontWeight: '700' },
 });
 
 const em = StyleSheet.create({

@@ -506,6 +506,148 @@ async def ingest_firm(firm_id: str) -> dict:
     }
 
 
+# ─── Partial ingestion (one source_type at a time) ───────────────────────────
+
+async def _index_texts(
+    collection,
+    firm_id: str,
+    case_id: str,
+    items: list[tuple[str, str, str]],
+) -> int:
+    """Chunk, embed, and insert a list of (text, source_type, source_id) into Milvus."""
+    ids, firm_ids, case_ids, src_types, src_ids, texts = [], [], [], [], [], []
+    for text, stype, sid in items:
+        for chunk in _splitter.split_text(text):
+            chunk = chunk.strip()
+            if chunk:
+                ids.append(str(uuid.uuid4()))
+                firm_ids.append(firm_id)
+                case_ids.append(case_id)
+                src_types.append(stype)
+                src_ids.append(sid)
+                texts.append(chunk[:4096])
+    if not texts:
+        return 0
+    embeddings: list[list[float]] = []
+    for i in range(0, len(texts), 50):
+        embeddings.extend(await embed_texts(texts[i:i + 50]))
+    collection.insert([ids, firm_ids, case_ids, src_types, src_ids, texts, embeddings])
+    collection.flush()
+    return len(texts)
+
+
+async def ingest_tasks(case_id: str, firm_id: str) -> int:
+    """Partial re-index: delete + re-insert only 'tasks' chunks for this case."""
+    collection = get_or_create_collection()
+    try:
+        collection.delete(f'case_id == "{case_id}" && firm_id == "{firm_id}" && source_type == "tasks"')
+    except Exception as e:
+        logger.warning(f"ingest_tasks: delete failed: {e}")
+    tasks_res = supabase_admin.table("task").select("*").eq("case_id", case_id).execute()
+    tasks = tasks_res.data or []
+    if not tasks:
+        return 0
+    n = await _index_texts(collection, firm_id, case_id, [(_tasks_text(tasks), "tasks", case_id)])
+    logger.info(f"ingest_tasks: {n} chunks for case {case_id}")
+    return n
+
+
+async def ingest_notes(case_id: str, firm_id: str) -> int:
+    """Partial re-index: delete + re-insert only 'notes' chunks for this case."""
+    collection = get_or_create_collection()
+    try:
+        collection.delete(f'case_id == "{case_id}" && firm_id == "{firm_id}" && source_type == "notes"')
+    except Exception as e:
+        logger.warning(f"ingest_notes: delete failed: {e}")
+    notes_res = supabase_admin.table("note").select("*").eq("case_id", case_id).order("created_at").execute()
+    notes = [n for n in (notes_res.data or []) if not n.get("is_voice_note")]
+    if not notes:
+        return 0
+    n = await _index_texts(collection, firm_id, case_id, [(_notes_text(notes), "notes", case_id)])
+    logger.info(f"ingest_notes: {n} chunks for case {case_id}")
+    return n
+
+
+async def ingest_invoices(case_id: str, firm_id: str) -> int:
+    """Partial re-index: delete + re-insert only 'invoices' chunks for this case."""
+    collection = get_or_create_collection()
+    try:
+        collection.delete(f'case_id == "{case_id}" && firm_id == "{firm_id}" && source_type == "invoices"')
+    except Exception as e:
+        logger.warning(f"ingest_invoices: delete failed: {e}")
+    invoices_res = supabase_admin.table("invoice").select("*, invoice_item(*)").eq("case_id", case_id).execute()
+    invoices = invoices_res.data or []
+    if not invoices:
+        return 0
+    n = await _index_texts(collection, firm_id, case_id, [(_invoices_text(invoices), "invoices", case_id)])
+    logger.info(f"ingest_invoices: {n} chunks for case {case_id}")
+    return n
+
+
+async def ingest_case_events(case_id: str, firm_id: str) -> int:
+    """Partial re-index: delete + re-insert only 'events' chunks for this case."""
+    collection = get_or_create_collection()
+    try:
+        collection.delete(f'case_id == "{case_id}" && firm_id == "{firm_id}" && source_type == "events"')
+    except Exception as e:
+        logger.warning(f"ingest_case_events: delete failed: {e}")
+    events_res = supabase_admin.table("calendar_event").select("*").eq("case_id", case_id).order("start_datetime").execute()
+    events = events_res.data or []
+    if not events:
+        return 0
+    n = await _index_texts(collection, firm_id, case_id, [(_events_text(events), "events", case_id)])
+    logger.info(f"ingest_case_events: {n} chunks for case {case_id}")
+    return n
+
+
+async def ingest_document_item(doc_id: str, case_id: str, firm_id: str) -> int:
+    """Partial index: remove old chunks for one document and re-index just that file."""
+    collection = get_or_create_collection()
+    try:
+        collection.delete(f'firm_id == "{firm_id}" && source_type == "document" && source_id == "{doc_id}"')
+    except Exception as e:
+        logger.warning(f"ingest_document_item: delete failed: {e}")
+    doc_res = supabase_admin.table("document").select("*").eq("id", doc_id).single().execute()
+    doc = doc_res.data
+    if not doc:
+        return 0
+    url       = doc.get("storage_url", "")
+    name      = doc.get("file_name", doc_id)
+    file_type = doc.get("file_type", "")
+    if not url:
+        return 0
+    try:
+        bucket, path = _parse_storage_url(url)
+        file_bytes   = supabase_admin.storage.from_(bucket).download(path)
+        text         = _extract_text(file_bytes, file_type)
+        if not text.strip():
+            text = await ocr_by_url(url, name, file_type)
+        if not text.strip():
+            logger.warning(f"ingest_document_item: no text for doc {doc_id}")
+            return 0
+        header = (
+            f"DOCUMENT: {name} | "
+            f"Category: {doc.get('category', '')} | "
+            f"Status: {doc.get('status', '')}\n"
+        )
+        n = await _index_texts(collection, firm_id, case_id, [(header + text, "document", doc_id)])
+        logger.info(f"ingest_document_item: {n} chunks for doc {doc_id}")
+        return n
+    except Exception as e:
+        logger.warning(f"ingest_document_item: failed for doc {doc_id}: {e}")
+        return 0
+
+
+def delete_document_chunks(doc_id: str, firm_id: str) -> None:
+    """Remove all Milvus chunks for a deleted document (synchronous, no re-embedding)."""
+    try:
+        collection = get_or_create_collection()
+        collection.delete(f'firm_id == "{firm_id}" && source_type == "document" && source_id == "{doc_id}"')
+        logger.info(f"delete_document_chunks: removed chunks for doc {doc_id}")
+    except Exception as e:
+        logger.warning(f"delete_document_chunks: failed for doc {doc_id}: {e}")
+
+
 async def ingest_standalone_events(firm_id: str, lawyer_id: str | None = None) -> int:
     """
     Re-index only standalone (no case_id) calendar events.

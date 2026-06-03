@@ -296,6 +296,14 @@ const RECURRENCE_OPTS = [
 ];
 const UNIT_LABEL = { weekly: 'week(s)', biweekly: 'bi-week(s)', monthly: 'month(s)' };
 
+const REMINDER_OPTS_EVENT = [
+  { val: 'none', lab: 'No reminder'   },
+  { val: '15',   lab: '15 min before' },
+  { val: '30',   lab: '30 min before' },
+  { val: '60',   lab: '1 hour before' },
+  { val: '1440', lab: '1 day before'  },
+];
+
 function AddEventModal({ visible, onClose, onCreated }) {
   const [title, setTitle] = useState('');
   const [type, setType]   = useState('MEETING');
@@ -320,6 +328,10 @@ function AddEventModal({ visible, onClose, onCreated }) {
   // Video call
   const [isVideoCall,   setIsVideoCall]   = useState(false);
   const [videoCallUrl,  setVideoCallUrl]  = useState('');
+
+  // Location & reminder
+  const [location,       setLocation]       = useState('');
+  const [reminderMinutes, setReminderMinutes] = useState('none');
 
   // Recurrence
   const [recurrence,      setRecurrence]      = useState('none');
@@ -350,6 +362,7 @@ function AddEventModal({ visible, onClose, onCreated }) {
     setSelectedParticipants(new Set());
     setAvailableParticipants([]);
     setIsVideoCall(false); setVideoCallUrl('');
+    setLocation(''); setReminderMinutes('none');
     setRecurrence('none'); setLimitType('count'); setRecCount('4');
     setUntilDate(new Date()); setShowUntilCal(false);
   };
@@ -372,6 +385,11 @@ function AddEventModal({ visible, onClose, onCreated }) {
     if (isVideoCall) {
       payload.is_video_call = true;
       if (videoCallUrl.trim()) payload.video_call_url = videoCallUrl.trim();
+    } else if (location.trim()) {
+      payload.location = location.trim();
+    }
+    if (reminderMinutes !== 'none') {
+      payload.reminder_minutes = [parseInt(reminderMinutes, 10)];
     }
 
     if (recurrence !== 'none') {
@@ -504,6 +522,37 @@ function AddEventModal({ visible, onClose, onCreated }) {
                 </View>
               </>
             )}
+
+            {/* Location — shown only when not a video call */}
+            {!isVideoCall && (
+              <>
+                <Text style={m.label}>Location</Text>
+                <View style={m.locationRow}>
+                  <Icon lib="FA5" name="map-marker-alt" size={14} color={C.gray400} style={{ marginRight: 10 }} />
+                  <TextInput
+                    style={m.locationInput}
+                    placeholder="e.g. Courthouse Room 3, 12 Rue de la Paix…"
+                    placeholderTextColor={C.gray400}
+                    value={location}
+                    onChangeText={setLocation}
+                  />
+                </View>
+              </>
+            )}
+
+            {/* Reminder */}
+            <Text style={m.label}>Reminder</Text>
+            <View style={m.reminderRow}>
+              {REMINDER_OPTS_EVENT.map(({ val, lab }) => (
+                <TouchableOpacity
+                  key={val}
+                  style={[m.reminderBtn, reminderMinutes === val && m.reminderBtnActive]}
+                  onPress={() => setReminderMinutes(val)}
+                >
+                  <Text style={[m.reminderBtnText, reminderMinutes === val && m.reminderBtnTextActive]}>{lab}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             {/* Linked Case */}
             {cases.length > 0 && (
@@ -1219,6 +1268,15 @@ const m = StyleSheet.create({
   radioDot:      { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primary },
   caseText:      { fontSize: 13, color: C.gray600, flex: 1 },
   caseTextActive:{ color: C.primary, fontWeight: '600' },
+  // Location
+  locationRow:   { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.gray200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: C.gray50 },
+  locationInput: { flex: 1, fontSize: 13, color: C.dark },
+  // Reminder selector
+  reminderRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  reminderBtn:        { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: C.gray200, backgroundColor: C.white },
+  reminderBtnActive:  { backgroundColor: C.primary, borderColor: C.primary },
+  reminderBtnText:    { fontSize: 12, fontWeight: '600', color: C.gray600 },
+  reminderBtnTextActive: { color: C.white },
   // Video call
   videoToggleRow:       { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: C.gray200, borderRadius: 14, padding: 14, backgroundColor: C.gray50 },
   videoToggleRowActive: { borderColor: C.green500, backgroundColor: C.green50 },

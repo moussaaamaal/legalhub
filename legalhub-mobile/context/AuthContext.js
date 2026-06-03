@@ -5,9 +5,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const AuthContext = createContext(null);
 
 const KEYS = {
-  ACCESS:  'lh_access_token',
-  REFRESH: 'lh_refresh_token',
-  USER:    'lh_user',
+  ACCESS:        'lh_access_token',
+  REFRESH:       'lh_refresh_token',
+  USER:          'lh_user',
+  REMEMBERED_EMAIL: 'lh_remembered_email',
 };
 
 export const AuthProvider = ({ children }) => {
@@ -36,12 +37,25 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // ── Called after successful login/register ─────────────────────────────
-  const signIn = async (accessToken, refreshToken, userData) => {
-    await Promise.all([
-      AsyncStorage.setItem(KEYS.ACCESS,  accessToken),
-      AsyncStorage.setItem(KEYS.REFRESH, refreshToken),
-      AsyncStorage.setItem(KEYS.USER,    JSON.stringify(userData)),
-    ]);
+  // remember=true  → persist session in AsyncStorage (survives app restart)
+  // remember=false → memory only, cleared when app is killed
+  const signIn = async (accessToken, refreshToken, userData, remember = true) => {
+    if (remember) {
+      await Promise.all([
+        AsyncStorage.setItem(KEYS.ACCESS,  accessToken),
+        AsyncStorage.setItem(KEYS.REFRESH, refreshToken),
+        AsyncStorage.setItem(KEYS.USER,    JSON.stringify(userData)),
+        AsyncStorage.setItem(KEYS.REMEMBERED_EMAIL, userData.email ?? ''),
+      ]);
+    } else {
+      // Clear any previously persisted session
+      await Promise.all([
+        AsyncStorage.removeItem(KEYS.ACCESS),
+        AsyncStorage.removeItem(KEYS.REFRESH),
+        AsyncStorage.removeItem(KEYS.USER),
+        AsyncStorage.removeItem(KEYS.REMEMBERED_EMAIL),
+      ]);
+    }
     setToken(accessToken);
     setUser(userData);
   };
@@ -78,8 +92,9 @@ export const useAuth = () => {
 };
 
 // ── Helpers (used by api.js outside of React tree) ────────────────────────
-export const getStoredToken   = () => AsyncStorage.getItem(KEYS.ACCESS);
-export const getStoredRefresh = () => AsyncStorage.getItem(KEYS.REFRESH);
+export const getStoredToken     = () => AsyncStorage.getItem(KEYS.ACCESS);
+export const getStoredRefresh   = () => AsyncStorage.getItem(KEYS.REFRESH);
+export const getRememberedEmail = () => AsyncStorage.getItem(KEYS.REMEMBERED_EMAIL);
 export const storeTokens = (access, refresh) =>
   Promise.all([
     AsyncStorage.setItem(KEYS.ACCESS,  access),

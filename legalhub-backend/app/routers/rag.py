@@ -1,17 +1,24 @@
 import logging
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
+from langchain_mistralai import ChatMistralAI
+from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
 
+import hashlib
 from app.core.dependencies import get_lawyer
 from app.core.database import supabase, supabase_admin
 from app.services.case_ingestion import ingest_case, ingest_firm, ingest_lawyer_scope
 from app.services.rag_service import answer_case_question, answer_firm_question, answer_scoped_question
-from app.services.embedding_service import _headers, MISTRAL_BASE
+from app.core.cache import cache_get, cache_set, cache_delete_pattern
 from app.core.config import settings
+
+
+def _rag_cache_key(prefix: str, question: str) -> str:
+    q_hash = hashlib.sha256(question.strip().lower().encode()).hexdigest()[:16]
+    return f"rag:{prefix}:{q_hash}"
 
 router = APIRouter(prefix="/api/rag", tags=["RAG"])
 
@@ -53,6 +60,7 @@ async def ingest_case_endpoint(
 ):
     firm_id = current_user["firm_id"]
     _verify_case_access(body.case_id, firm_id)
+    await cache_delete_pattern(f"rag:case:{body.case_id}:*")
     background_tasks.add_task(ingest_case, body.case_id, firm_id)
     return {"message": "Indexing started", "case_id": body.case_id}
 
@@ -65,12 +73,24 @@ async def ask_question(
     firm_id = current_user["firm_id"]
     _verify_case_access(body.case_id, firm_id)
 
+    # Only cache stateless questions (no conversation history)
+    use_cache = not body.chat_history
+    cache_key = _rag_cache_key(f"case:{body.case_id}", body.question) if use_cache else None
+
+    if use_cache:
+        cached = await cache_get(cache_key)
+        if cached:
+            return cached
+
     result = await answer_case_question(
         case_id=body.case_id,
         firm_id=firm_id,
         question=body.question,
         chat_history=body.chat_history,
     )
+
+    if use_cache:
+        await cache_set(cache_key, result, ttl=300)
 
     # Persist Q&A in session history
     try:
@@ -103,20 +123,15 @@ async def generate_session_title(
         "Title:"
     )
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.post(
-                f"{MISTRAL_BASE}/chat/completions",
-                headers=_headers(),
-                json={
-                    "model": settings.RAG_CHAT_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.2,
-                    "max_tokens": 20,
-                },
-            )
-            resp.raise_for_status()
-            title = resp.json()["choices"][0]["message"]["content"].strip().strip('"\'').strip()
-            return {"title": title or None}
+        llm = ChatMistralAI(
+            model=settings.RAG_CHAT_MODEL,
+            api_key=settings.MISTRAL_API_KEY,
+            temperature=0.2,
+            max_tokens=20,
+        )
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        title = response.content.strip().strip('"\'').strip()
+        return {"title": title or None}
     except Exception as e:
         logger.warning(f"session-title generation failed: {e}")
         return {"title": None}  # mobile will keep "New conversation"
@@ -213,6 +228,14 @@ async def ask_firm_question(
 ):
     firm_id = current_user["firm_id"]
 
+    use_cache = not body.chat_history
+    cache_key = _rag_cache_key(f"firm:{firm_id}:{current_user['id']}", body.question) if use_cache else None
+
+    if use_cache:
+        cached = await cache_get(cache_key)
+        if cached:
+            return cached
+
     if _is_admin(current_user):
         result = await answer_firm_question(
             firm_id=firm_id,
@@ -221,7 +244,6 @@ async def ask_firm_question(
         )
     else:
         case_ids = _get_lawyer_case_ids(current_user["id"], firm_id)
-        # Include sentinel so client/lawyer profiles are also searched
         scope_ids = case_ids + [f"__lawyer_{current_user['id']}__"]
         result = await answer_scoped_question(
             firm_id=firm_id,
@@ -229,6 +251,9 @@ async def ask_firm_question(
             question=body.question,
             chat_history=body.chat_history,
         )
+
+    if use_cache:
+        await cache_set(cache_key, result, ttl=300)
 
     try:
         supabase.table("ai_session").insert({

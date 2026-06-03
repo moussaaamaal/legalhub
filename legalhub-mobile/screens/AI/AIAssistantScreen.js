@@ -383,7 +383,13 @@ export default function AIAssistantScreen({ navigation }) {
   const [loading,         setLoading]         = useState(false);
   const [indexing,        setIndexing]        = useState(false);
   const [status,          setStatus]          = useState(null);
-  const listRef = useRef(null);
+  const listRef    = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -492,18 +498,21 @@ export default function AIAssistantScreen({ navigation }) {
   }, []);
 
   const triggerIndex = useCallback(async () => {
+    if (!mountedRef.current) return;
     setIndexing(true);
-    try { await ragAPI.firmIngest(); } catch { setIndexing(false); return; }
+    try { await ragAPI.firmIngest(); } catch { if (mountedRef.current) setIndexing(false); return; }
     let attempts = 0;
     const poll = async () => {
+      if (!mountedRef.current) return;
       attempts++;
       try {
         const s = await ragAPI.firmStatus();
+        if (!mountedRef.current) return;
         setStatus(s);
         if (s.is_indexed) { setIndexing(false); return; }
       } catch {}
       if (attempts < 20) setTimeout(poll, 10000);
-      else setIndexing(false);
+      else if (mountedRef.current) setIndexing(false);
     };
     setTimeout(poll, 10000);
   }, []);
@@ -545,9 +554,11 @@ export default function AIAssistantScreen({ navigation }) {
         const shortQ = q.length > 50 ? q.slice(0, 47) + '…' : q;
         ragAPI.sessionTitle(q, res.answer)
           .then(({ title }) => {
+            if (!mountedRef.current) return;
             updateSessionMeta(sessionId, { name: title?.trim() || shortQ, msgCount: finalMsgs.length });
           })
           .catch(() => {
+            if (!mountedRef.current) return;
             updateSessionMeta(sessionId, { name: shortQ, msgCount: finalMsgs.length });
           });
       } else {

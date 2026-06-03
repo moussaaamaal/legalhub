@@ -1,7 +1,9 @@
 """
-Background scheduler — sends calendar event reminder emails.
-Runs every minute and checks for events starting in 30 min / 1 h / 1 day.
-Duplicate sends are prevented with an in-memory set (resets on server restart,
+Background scheduler — sends calendar event reminder emails and task due-date reminders.
+Calendar job: runs every minute, checks events starting in 30 min / 1 h / 1 day.
+Task job: runs every hour, sends an in-app notification 1 day before a task's due_date
+          only when the assigned user has task_reminders enabled in their profile.
+Duplicate sends are prevented with in-memory sets (resets on server restart,
 which is fine for a short-lived dev/PFE setup).
 """
 
@@ -20,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 # (event_id, offset_minutes) — avoids sending the same reminder twice
 _sent: set = set()
+
+# task_id — avoids sending the same task reminder twice
+_task_sent: set = set()
 
 # Reminder windows to check (minutes before event)
 REMINDER_OFFSETS = [30, 60, 1440]   # 30 min, 1 h, 1 day
@@ -97,6 +102,62 @@ def _check_and_send_reminders():
         logger.error(f"Reminder scheduler error: {e}")
 
 
+def _check_task_due_reminders():
+    """Send an in-app notification 1 day before a task's due_date if task_reminders is enabled."""
+    try:
+        tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat()
+        print(f"[scheduler] task-reminder check — due_date={tomorrow}", flush=True)
+
+        result = (
+            supabase.table("task")
+            .select("id, title, due_date, assigned_to")
+            .eq("due_date", tomorrow)
+            .not_.in_("status", ["COMPLETED", "CANCELLED"])
+            .execute()
+        )
+        tasks = result.data or []
+        print(f"[scheduler] {len(tasks)} task(s) due tomorrow", flush=True)
+
+        for task in tasks:
+            task_id = task["id"]
+            if task_id in _task_sent:
+                continue
+
+            user_id = task.get("assigned_to")
+            if not user_id:
+                continue
+
+            # Check notification_preferences — default to True if row absent
+            pref_res = (
+                supabase.table("notification_preferences")
+                .select("task_reminders")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if pref_res.data:
+                enabled = pref_res.data[0].get("task_reminders", True)
+            else:
+                enabled = True
+
+            if not enabled:
+                print(f"[scheduler] task_reminders disabled for user={user_id}, skipping task={task_id}", flush=True)
+                continue
+
+            supabase.table("notification").insert({
+                "user_id": user_id,
+                "type":    "TASK_ASSIGNED",
+                "title":   "Task Due Tomorrow",
+                "message": f"{task['title']} — Due: {task['due_date']}",
+            }).execute()
+
+            _task_sent.add(task_id)
+            print(f"[scheduler] task reminder sent — task={task_id} user={user_id}", flush=True)
+
+    except Exception as e:
+        print(f"[scheduler] task-reminder ERROR: {e}", flush=True)
+        logger.error(f"Task reminder scheduler error: {e}")
+
+
 def start_scheduler():
     scheduler = BackgroundScheduler()
     scheduler.add_job(
@@ -105,6 +166,12 @@ def start_scheduler():
         id="reminder_job",
         replace_existing=True,
     )
+    scheduler.add_job(
+        _check_task_due_reminders,
+        trigger=IntervalTrigger(hours=1),
+        id="task_reminder_job",
+        replace_existing=True,
+    )
     scheduler.start()
-    print("✅ [scheduler] Reminder scheduler started — checks every minute", flush=True)
+    print("[scheduler] Reminder scheduler started - calendar: every minute, tasks: every hour", flush=True)
     return scheduler

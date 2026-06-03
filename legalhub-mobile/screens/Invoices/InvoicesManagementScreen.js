@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
-  Alert, RefreshControl, Linking, Share,
+  Alert, RefreshControl, Linking, Image,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { billingAPI } from '../../services/api';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { billingAPI, authAPI } from '../../services/api';
 
 const C = {
   primary: '#1E40AF', dark: '#1E293B', white: '#FFFFFF',
@@ -67,7 +69,7 @@ function getDaysOverdue(dueDateStr) {
   return Math.max(0, Math.round((today - due) / 86400000));
 }
 
-function InvoiceCard({ inv, onRemind, onSend, onCancel, onViewDetails }) {
+function InvoiceCard({ inv, onRemind, onSend, onCancel, onViewDetails, currentUserId, currentUserAvatar }) {
   const status  = (inv.status || 'DRAFT').toUpperCase();
   const meta    = STATUS_META[status] || STATUS_META.DRAFT;
   const client  = inv.client;
@@ -76,6 +78,9 @@ function InvoiceCard({ inv, onRemind, onSend, onCancel, onViewDetails }) {
     ? `${client.first_name || ''} ${client.last_name || ''}`.trim()
     : 'Unknown Client';
   const daysOverdue = status === 'OVERDUE' ? getDaysOverdue(inv.due_date) : 0;
+  const isOwner     = inv.lawyer_id === currentUserId;
+  const creatorName = isOwner ? 'You' : (inv.creator?.full_name || 'Lawyer');
+  const creatorAvatar = isOwner ? currentUserAvatar : (inv.creator?.avatar_url || null);
   const [sending, setSending] = useState(false);
 
   const handleRemind = () => {
@@ -143,6 +148,20 @@ function InvoiceCard({ inv, onRemind, onSend, onCancel, onViewDetails }) {
         </View>
       </View>
 
+      {/* Creator row */}
+      <View style={s.creatorRow}>
+        {creatorAvatar
+          ? <Image source={{ uri: creatorAvatar }} style={s.creatorAvatar} />
+          : <View style={[s.creatorAvatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+              <FontAwesome5 name="user-tie" size={13} color={C.primary} />
+            </View>
+        }
+        <View style={{ marginLeft: 8 }}>
+          <Text style={s.creatorLabel}>Created by</Text>
+          <Text style={s.creatorName}>{creatorName}</Text>
+        </View>
+      </View>
+
       {/* Related case row */}
       {!!caseFile && (
         <View style={s.caseRow}>
@@ -173,40 +192,8 @@ function InvoiceCard({ inv, onRemind, onSend, onCancel, onViewDetails }) {
 
       {/* Action buttons */}
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        {status === 'OVERDUE' && (
-          <TouchableOpacity
-            style={[s.btnMain, { backgroundColor: C.red600, flex: 1 }]}
-            onPress={handleRemind}
-            disabled={sending}
-          >
-            {sending
-              ? <ActivityIndicator size="small" color={C.white} />
-              : <><FontAwesome5 name="paper-plane" size={12} color={C.white} /><Text style={s.btnMainText}>Send Reminder</Text></>
-            }
-          </TouchableOpacity>
-        )}
-        {status === 'DRAFT' && (
-          <TouchableOpacity
-            style={[s.btnMain, { backgroundColor: C.primary, flex: 1 }]}
-            onPress={handleSend}
-            disabled={sending}
-          >
-            {sending
-              ? <ActivityIndicator size="small" color={C.white} />
-              : <><FontAwesome5 name="paper-plane" size={12} color={C.white} /><Text style={s.btnMainText}>Send Invoice</Text></>
-            }
-          </TouchableOpacity>
-        )}
-        {status === 'DRAFT' && (
-          <TouchableOpacity
-            style={[s.iconBtn, { backgroundColor: C.red50 }]}
-            onPress={() => onCancel?.(inv.id)}
-            disabled={sending}
-          >
-            <FontAwesome5 name="ban" size={14} color={C.red600} />
-          </TouchableOpacity>
-        )}
-        {(status === 'PENDING' || status === 'PAID') && (
+        {!isOwner ? (
+          /* Non-owner: view details only */
           <TouchableOpacity
             style={[s.btnMain, { backgroundColor: C.primary, flex: 1 }]}
             onPress={() => onViewDetails?.(inv)}
@@ -214,25 +201,77 @@ function InvoiceCard({ inv, onRemind, onSend, onCancel, onViewDetails }) {
             <FontAwesome5 name="eye" size={12} color={C.white} />
             <Text style={s.btnMainText}>View Details</Text>
           </TouchableOpacity>
-        )}
-        {/* Email client */}
-        {!!client?.email && (
-          <TouchableOpacity
-            style={[s.iconBtn, { backgroundColor: C.purple50 }]}
-            onPress={() => Linking.openURL(`mailto:${client.email}`)}
-          >
-            <FontAwesome5 name="envelope" size={14} color={C.purple600} />
-          </TouchableOpacity>
-        )}
-        {/* Send reminder for PENDING too */}
-        {status === 'PENDING' && (
-          <TouchableOpacity
-            style={[s.iconBtn, { backgroundColor: C.amber50 }]}
-            onPress={handleRemind}
-            disabled={sending}
-          >
-            <FontAwesome5 name="bell" size={14} color={C.amber600} />
-          </TouchableOpacity>
+        ) : (
+          <>
+            {status === 'OVERDUE' && (
+              <TouchableOpacity
+                style={[s.btnMain, { backgroundColor: C.red600, flex: 1 }]}
+                onPress={handleRemind}
+                disabled={sending}
+              >
+                {sending
+                  ? <ActivityIndicator size="small" color={C.white} />
+                  : <><FontAwesome5 name="paper-plane" size={12} color={C.white} /><Text style={s.btnMainText}>Send Reminder</Text></>
+                }
+              </TouchableOpacity>
+            )}
+            {status === 'DRAFT' && (
+              <TouchableOpacity
+                style={[s.btnMain, { backgroundColor: C.g100, flex: 1 }]}
+                onPress={() => onViewDetails?.(inv)}
+              >
+                <FontAwesome5 name="eye" size={12} color={C.g600} />
+                <Text style={[s.btnMainText, { color: C.g600 }]}>View Details</Text>
+              </TouchableOpacity>
+            )}
+            {status === 'DRAFT' && (
+              <TouchableOpacity
+                style={[s.btnMain, { backgroundColor: C.primary, flex: 1 }]}
+                onPress={handleSend}
+                disabled={sending}
+              >
+                {sending
+                  ? <ActivityIndicator size="small" color={C.white} />
+                  : <><FontAwesome5 name="paper-plane" size={12} color={C.white} /><Text style={s.btnMainText}>Send Invoice</Text></>
+                }
+              </TouchableOpacity>
+            )}
+            {status === 'DRAFT' && (
+              <TouchableOpacity
+                style={[s.iconBtn, { backgroundColor: C.red50 }]}
+                onPress={() => onCancel?.(inv.id)}
+                disabled={sending}
+              >
+                <FontAwesome5 name="ban" size={14} color={C.red600} />
+              </TouchableOpacity>
+            )}
+            {(status === 'PENDING' || status === 'PAID') && (
+              <TouchableOpacity
+                style={[s.btnMain, { backgroundColor: C.primary, flex: 1 }]}
+                onPress={() => onViewDetails?.(inv)}
+              >
+                <FontAwesome5 name="eye" size={12} color={C.white} />
+                <Text style={s.btnMainText}>View Details</Text>
+              </TouchableOpacity>
+            )}
+            {status === 'PENDING' && (
+              <TouchableOpacity
+                style={[s.iconBtn, { backgroundColor: C.amber50 }]}
+                onPress={handleRemind}
+                disabled={sending}
+              >
+                <FontAwesome5 name="bell" size={14} color={C.amber600} />
+              </TouchableOpacity>
+            )}
+            {!!client?.email && (
+              <TouchableOpacity
+                style={[s.iconBtn, { backgroundColor: C.purple50 }]}
+                onPress={() => Linking.openURL(`mailto:${client.email}`)}
+              >
+                <FontAwesome5 name="envelope" size={14} color={C.purple600} />
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
     </View>
@@ -240,22 +279,26 @@ function InvoiceCard({ inv, onRemind, onSend, onCancel, onViewDetails }) {
 }
 
 export default function InvoicesManagementScreen({ navigation }) {
-  const [activeFilter,  setActiveFilter]  = useState(0);
-  const [invoices,      setInvoices]      = useState([]);
-  const [analytics,     setAnalytics]     = useState(null);
-  const [loading,       setLoading]       = useState(true);
-  const [refreshing,    setRefreshing]    = useState(false);
-  const [search,        setSearch]        = useState('');
+  const [activeFilter,      setActiveFilter]      = useState(0);
+  const [invoices,          setInvoices]          = useState([]);
+  const [analytics,         setAnalytics]         = useState(null);
+  const [loading,           setLoading]           = useState(true);
+  const [refreshing,        setRefreshing]        = useState(false);
+  const [search,            setSearch]            = useState('');
+  const [currentUserId,     setCurrentUserId]     = useState(null);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const [invData, kpis] = await Promise.all([
+      const [invData, kpis, me] = await Promise.all([
         billingAPI.listInvoices(),
         billingAPI.getAnalytics(),
+        authAPI.me().catch(() => null),
       ]);
       setInvoices(invData || []);
       setAnalytics(kpis);
+      if (me?.id) { setCurrentUserId(me.id); setCurrentUserAvatar(me.avatar_url || null); }
     } catch (e) {
       if (!isRefresh) Alert.alert('Error', e.message || 'Failed to load invoices');
     } finally {
@@ -280,35 +323,23 @@ export default function InvoicesManagementScreen({ navigation }) {
       Alert.alert('No Data', 'There are no invoices to export.');
       return;
     }
-    const lines = [
-      'Invoice #,Client,Case,Status,Amount,Currency,Issue Date,Due Date',
-      ...invoices.map(inv => {
-        const client = inv.client;
-        const clientName = client
-          ? `${client.first_name || ''} ${client.last_name || ''}`.trim()
-          : 'Unknown';
-        const caseName = inv.case_file
-          ? `${inv.case_file.case_number || ''} - ${inv.case_file.title || ''}`.trim()
-          : '';
-        return [
-          inv.invoice_number || inv.id?.slice(0, 8),
-          `"${clientName}"`,
-          `"${caseName}"`,
-          inv.status,
-          inv.total_amount != null ? parseFloat(inv.total_amount).toFixed(2) : '0.00',
-          inv.currency || 'USD',
-          inv.issue_date || '',
-          inv.due_date || '',
-        ].join(',');
-      }),
-    ];
     try {
-      await Share.share({
-        title: 'Invoices Export',
-        message: lines.join('\n'),
-      });
-    } catch {
-      Alert.alert('Error', 'Could not open share sheet.');
+      const { url, headers } = await billingAPI.getExportUrl('excel');
+      const localUri = FileSystem.cacheDirectory + `invoices_${Date.now()}.xlsx`;
+      const result = await FileSystem.downloadAsync(url, localUri, { headers });
+      if (result.status !== 200) throw new Error('Export failed');
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(result.uri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Export Invoices',
+          UTI: 'com.microsoft.excel.xlsx',
+        });
+      } else {
+        Alert.alert('Exported', 'File saved to: ' + result.uri);
+      }
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Could not export invoices.');
     }
   }, [invoices]);
 
@@ -572,18 +603,24 @@ export default function InvoicesManagementScreen({ navigation }) {
               <Text style={s.emptyTitle}>No invoices found</Text>
               <Text style={s.emptySub}>{search ? 'Try a different search term' : 'Create your first invoice'}</Text>
             </View>
-          ) : (
-            filtered.map(inv => (
-              <InvoiceCard
-                key={inv.id}
-                inv={inv}
-                onRemind={handleRemind}
-                onSend={handleSend}
-                onCancel={handleCancel}
-                onViewDetails={(i) => navigation?.navigate?.('InvoiceDetails', { invoice: i })}
-              />
-            ))
-          )}
+          ) : (() => {
+            const mine   = filtered.filter(inv => inv.lawyer_id === currentUserId);
+            const others = filtered.filter(inv => inv.lawyer_id !== currentUserId);
+            const cardProps = { onRemind: handleRemind, onSend: handleSend, onCancel: handleCancel, onViewDetails: (i) => navigation?.navigate?.('InvoiceDetails', { invoice: i }), currentUserId, currentUserAvatar };
+            return (
+              <>
+                {mine.map(inv => <InvoiceCard key={inv.id} inv={inv} {...cardProps} />)}
+                {mine.length > 0 && others.length > 0 && (
+                  <View style={s.groupSep}>
+                    <View style={s.groupSepLine} />
+                    <Text style={s.groupSepTxt}>From colleagues</Text>
+                    <View style={s.groupSepLine} />
+                  </View>
+                )}
+                {others.map(inv => <InvoiceCard key={inv.id} inv={inv} {...cardProps} />)}
+              </>
+            );
+          })()}
         </View>
       </ScrollView>
 
@@ -643,9 +680,13 @@ const s = StyleSheet.create({
   pill:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   pillText:   { fontSize: 11, fontWeight: '600' },
   cardTitle:  { fontSize: 14, fontWeight: '700', color: C.dark, marginBottom: 2 },
-  clientRow:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderColor: C.g100, marginTop: 10 },
-  clientName: { fontSize: 12, fontWeight: '700', color: C.dark },
-  clientRole: { fontSize: 11, color: C.g400 },
+  clientRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderColor: C.g100, marginTop: 10 },
+  clientName:   { fontSize: 12, fontWeight: '700', color: C.dark },
+  clientRole:   { fontSize: 11, color: C.g400 },
+  creatorRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderColor: C.g100 },
+  creatorAvatar:{ width: 30, height: 30, borderRadius: 8 },
+  creatorLabel: { fontSize: 10, color: C.g400 },
+  creatorName:  { fontSize: 12, fontWeight: '700', color: C.dark },
   caseRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderColor: C.g100, marginBottom: 10 },
   caseIconWrap: { width: 26, height: 26, borderRadius: 8, backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' },
   caseName:   { fontSize: 12, fontWeight: '600', color: C.primary, flex: 1 },
@@ -658,8 +699,11 @@ const s = StyleSheet.create({
   btnMainText:{ color: C.white, fontSize: 13, fontWeight: '700' },
   iconBtn:    { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
 
-  emptyBox:   { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  emptyTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
-  emptySub:   { fontSize: 13, color: C.g500, textAlign: 'center' },
+  emptyBox:     { alignItems: 'center', paddingVertical: 40, gap: 10 },
+  emptyTitle:   { fontSize: 15, fontWeight: '700', color: C.dark },
+  emptySub:     { fontSize: 13, color: C.g500, textAlign: 'center' },
+  groupSep:     { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 14 },
+  groupSepLine: { flex: 1, height: 1, backgroundColor: C.g200 },
+  groupSepTxt:  { fontSize: 11, fontWeight: '700', color: C.g400, textTransform: 'uppercase', letterSpacing: 0.8 },
 
 });

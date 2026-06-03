@@ -3,10 +3,11 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   Image, StyleSheet, SafeAreaView, StatusBar,
   Switch, TextInput, Alert, Share,
-  Modal, ActivityIndicator,
+  Modal, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
@@ -18,7 +19,9 @@ import { authAPI, firmAPI, dashboardAPI, clientsAPI, calendarAPI } from '../../s
 
 WebBrowser.maybeCompleteAuthSession();
 
-const BIOMETRIC_KEY = 'lh_biometric_enabled';
+const bioEnabledKey     = (uid) => `lh_biometric_enabled_${uid}`;
+const bioTokenKey       = (uid) => `lh_bio_token_${uid}`;
+const BIO_ACTIVE_USER_KEY = 'lh_bio_active_user';
 
 // ─── COULEURS ──────────────────────────────────────────────────────────────
 const C = {
@@ -135,7 +138,6 @@ export default function ProfileScreen({ navigation }) {
   const { user, signOut, updateUser } = useAuth();
   const { theme: T, strings: L } = useAppPrefs();
   const [profile, setProfile]             = useState(null);
-  const [officeCode, setOfficeCode]       = useState(null);
   const [stats, setStats]                 = useState({ active_cases: 0, total_clients: 0 });
   // Edit personal info
   const [editing, setEditing]             = useState(false);
@@ -163,6 +165,7 @@ export default function ProfileScreen({ navigation }) {
   // Notification preferences
   const [notifPrefs, setNotifPrefs]       = useState(null);
   const [savingNotif, setSavingNotif]     = useState(false);
+  const [refreshing, setRefreshing]           = useState(false);
   const scrollRef   = useRef(null);
   const notifSectionY = useRef(0);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -171,38 +174,48 @@ export default function ProfileScreen({ navigation }) {
   const [googleSyncing,     setGoogleSyncing]     = useState(false);
   const [googleSyncResult,  setGoogleSyncResult]  = useState(null);
   const [googleConnected,   setGoogleConnected]   = useState(false);
+  // Firm profile + branding
+  const [firmProfile, setFirmProfile]   = useState(null);
+  const [firmBranding, setFirmBranding] = useState(null);
 
 
-  useEffect(() => {
-    // Profile + office code
-    authAPI.me().then(data => {
+  const loadData = useCallback(async () => {
+    try {
+      const data = await authAPI.me();
       setProfile(data);
       updateUser(data);
       setEditName(data.full_name || '');
       setEditPhone(data.phone || '');
       if (data.role === 'FIRM_ADMIN' || data.role === 'LAWYER') {
-        firmAPI.getOfficeCode().then(res => setOfficeCode(res.office_code)).catch(() => {});
+        firmAPI.getProfile().then(setFirmProfile).catch(() => {});
+        firmAPI.getBranding().then(setFirmBranding).catch(() => {});
       }
-    }).catch(() => {});
+    } catch {}
 
-    // Stats
     Promise.all([dashboardAPI.stats(), clientsAPI.list()])
       .then(([s, clients]) => setStats({
         active_cases:  s.active_cases || 0,
         total_clients: Array.isArray(clients) ? clients.length : 0,
       })).catch(() => {});
 
-    // Notification preferences
     authAPI.getNotifPreferences().then(setNotifPrefs).catch(() => setNotifPrefs(NOTIF_DEFAULTS));
+  }, []);
 
-    // Biometric support + saved preference
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
+
+  useEffect(() => {
+    loadData();
+
     LocalAuthentication.hasHardwareAsync().then(supported => {
       setBiometricSupported(supported);
-      if (supported) {
-        AsyncStorage.getItem(BIOMETRIC_KEY).then(val => setBiometricEnabled(val === 'true'));
+      if (supported && user?.id) {
+        AsyncStorage.getItem(bioEnabledKey(user.id)).then(val => setBiometricEnabled(val === 'true'));
       }
     });
-
   }, []);
 
 
@@ -248,18 +261,45 @@ export default function ProfileScreen({ navigation }) {
 
   // ── Biometric ──────────────────────────────────────────
   const handleToggleBiometric = useCallback(async (value) => {
+    const userId = user?.id;
+    if (!userId) return;
+
     if (value) {
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      if (!enrolled) {
-        Alert.alert('Not configured', 'No fingerprint or Face ID is enrolled on this device.');
+      const supported = await LocalAuthentication.hasHardwareAsync();
+      const enrolled  = await LocalAuthentication.isEnrolledAsync();
+      if (!supported || !enrolled) {
+        Alert.alert('Not available', 'No Face ID or fingerprint is enrolled on this device.');
         return;
       }
-      const result = await LocalAuthentication.authenticateAsync({ promptMessage: 'Confirm your identity' });
-      if (!result.success) return;
+      Alert.alert(
+        'Enable Biometric Login',
+        'Use Face ID or fingerprint to sign in quickly next time?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Enable', onPress: async () => {
+              try {
+                const data = await authAPI.registerBiometric();
+                await SecureStore.setItemAsync(bioTokenKey(userId), data.biometric_token);
+                await AsyncStorage.setItem(bioEnabledKey(userId), 'true');
+                await AsyncStorage.setItem(BIO_ACTIVE_USER_KEY, userId);
+                setBiometricEnabled(true);
+              } catch (err) {
+                Alert.alert('Error', err.message || 'Could not enable biometric login.');
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      try { await authAPI.revokeBiometric(); } catch (_) {}
+      await SecureStore.deleteItemAsync(bioTokenKey(userId));
+      await AsyncStorage.setItem(bioEnabledKey(userId), 'false');
+      const activeUser = await AsyncStorage.getItem(BIO_ACTIVE_USER_KEY);
+      if (activeUser === userId) await AsyncStorage.removeItem(BIO_ACTIVE_USER_KEY);
+      setBiometricEnabled(false);
     }
-    await AsyncStorage.setItem(BIOMETRIC_KEY, String(value));
-    setBiometricEnabled(value);
-  }, []);
+  }, [user]);
 
   // ── Login history ──────────────────────────────────────
   const handleOpenHistory = useCallback(async () => {
@@ -293,7 +333,7 @@ export default function ProfileScreen({ navigation }) {
   const fullName = me.full_name || 'Your Name';
   const email    = me.email     || '';
   const phone    = me.phone     || '';
-  const avatarUrl = me.avatar_url || 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg';
+  const avatarUrl = me.avatar_url || null;
   const firmName = me.firm_name || 'Your Firm';
   const role     = me.role      || 'LAWYER';
   const twoFaEnabled = me.two_fa_enabled || false;
@@ -387,7 +427,7 @@ export default function ProfileScreen({ navigation }) {
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.url) throw new Error('URL OAuth manquante');
+      if (!data?.url) throw new Error('Missing OAuth URL');
 
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
       if (result.type !== 'success' || !result.url) return;
@@ -404,7 +444,7 @@ export default function ProfileScreen({ navigation }) {
       );
 
       const providerToken = params.provider_token;
-      if (!providerToken) throw new Error('Token Google Calendar absent. Vérifiez que le scope calendar est autorisé dans Supabase → Providers → Google.');
+      if (!providerToken) throw new Error('Google Calendar token missing. Make sure the calendar scope is enabled in Supabase → Providers → Google.');
 
       await calendarAPI.saveGoogleToken({
         access_token:  providerToken,
@@ -413,10 +453,10 @@ export default function ProfileScreen({ navigation }) {
       });
 
       setGoogleConnected(true);
-      Alert.alert('Connecté ✓', 'Google Calendar connecté ! Appuyez sur Sync Now pour synchroniser.');
+      Alert.alert('Connected ✓', 'Google Calendar connected! Tap Sync Now to synchronize.');
     } catch (err) {
       if (err.code !== 'ERR_REQUEST_CANCELED') {
-        Alert.alert('Erreur', err.message || 'Impossible de connecter Google Calendar.');
+        Alert.alert('Error', err.message || 'Could not connect Google Calendar.');
       }
     } finally {
       setGoogleConnecting(false);
@@ -500,13 +540,17 @@ export default function ProfileScreen({ navigation }) {
             <Icon lib="FA5" name="arrow-left" size={18} color={C.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Profile Settings</Text>
-          <TouchableOpacity style={s.headerBtn} onPress={() => scrollRef.current?.scrollTo({ y: notifSectionY.current, animated: true })}>
-            <Icon lib="ION" name="notifications-outline" size={22} color={C.white} />
-          </TouchableOpacity>
+          <View style={[s.headerBtn, { backgroundColor: 'transparent' }]} />
         </View>
       </View>
 
-      <ScrollView ref={scrollRef} style={s.scroll} contentContainerStyle={{ paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        style={s.scroll}
+        contentContainerStyle={{ paddingBottom: 90 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[C.primary]} tintColor={C.primary} />}
+      >
 
         {/* ── PROFILE HEADER ── */}
         <View style={[s.section, { backgroundColor: C.blue50 }]}>
@@ -514,10 +558,13 @@ export default function ProfileScreen({ navigation }) {
             {/* Avatar */}
             <View style={{ alignItems: 'center', marginBottom: 20 }}>
               <View style={{ position: 'relative', marginBottom: 12 }}>
-                <Image
-                  source={{ uri: avatarUrl }}
-                  style={s.profileAvatar}
-                />
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={s.profileAvatar} />
+                ) : (
+                  <View style={[s.profileAvatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+                    <Icon lib="FA5" name="user" size={44} color={C.primary} />
+                  </View>
+                )}
                 <TouchableOpacity style={s.cameraBtn} onPress={handlePickAvatar} disabled={uploadingAvatar}>
                   {uploadingAvatar
                     ? <ActivityIndicator size={14} color={C.white} />
@@ -591,30 +638,122 @@ export default function ProfileScreen({ navigation }) {
           )}
         </View>
 
-        {/* ── OFFICE CODE (FIRM_ADMIN & LAWYER) ── */}
-        {(role === 'FIRM_ADMIN' || role === 'LAWYER') && officeCode && (
+        {/* ── FIRM INFORMATION (FIRM_ADMIN & LAWYER) ── */}
+        {(role === 'FIRM_ADMIN' || role === 'LAWYER') && firmProfile && (
           <View style={s.section}>
-            <SectionHeader title="Office Code" />
-            <View style={[s.card, { backgroundColor: C.blue50, borderWidth: 1, borderColor: C.blue100 }]}>
-              <View style={[s.row, { marginBottom: 10 }]}>
-                <View style={[s.iconBtn48, { backgroundColor: C.blue100 }]}>
-                  <Icon lib="FA5" name="key" size={20} color={C.primary} />
-                </View>
-                <View style={{ marginLeft: 12, flex: 1 }}>
-                  <Text style={s.smBold}>{role === 'FIRM_ADMIN' ? 'Firm Office Code' : 'Your Office Code'}</Text>
-                  <Text style={s.xs}>{role === 'FIRM_ADMIN' ? 'Share this code with lawyers to join your firm' : 'Your unique code for firm identification'}</Text>
+            <SectionHeader title="Firm Information" />
+            <View style={s.card}>
+
+              {/* Logo + nom */}
+              <View style={[s.row, { marginBottom: 16 }]}>
+                {firmBranding?.logo_url ? (
+                  <Image
+                    source={{ uri: firmBranding.logo_url }}
+                    style={{ width: 60, height: 60, borderRadius: 12, borderWidth: 1, borderColor: C.gray200 }}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <View style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: C.blue50, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.blue100 }}>
+                    <Icon lib="FA5" name="building" size={26} color={C.primary} />
+                  </View>
+                )}
+                <View style={{ marginLeft: 14, flex: 1 }}>
+                  <Text style={s.smBold}>{firmBranding?.display_name || firmProfile.name}</Text>
+                  {firmProfile.legal_entity_type ? <Text style={s.xs}>{firmProfile.legal_entity_type}</Text> : null}
+                  {(firmProfile.city || firmProfile.country) ? (
+                    <Text style={[s.xs, { marginTop: 2 }]}>{[firmProfile.city, firmProfile.country].filter(Boolean).join(' · ')}</Text>
+                  ) : null}
                 </View>
               </View>
-              <View style={[s.row, { justifyContent: 'space-between', backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: C.gray200 }]}>
-                <Text style={{ fontSize: 22, fontWeight: '800', color: C.primary, letterSpacing: 4 }}>{officeCode}</Text>
-                <TouchableOpacity
-                  onPress={() => Share.share({ message: `Office Code: ${officeCode}` })}
-                  style={[s.actionBtn, { backgroundColor: C.blue100 }]}
-                >
-                  <Icon lib="FA5" name="share" size={15} color={C.primary} />
-                </TouchableOpacity>
-              </View>
+
+              <View style={{ height: 1, backgroundColor: C.gray100, marginBottom: 12 }} />
+
+              {/* Champs */}
+              {[
+                { iconLib:'FA5', iconName:'envelope',       iconColor:C.purple600, iconBg:C.purple100, label:'Firm Email',          value: firmProfile.email               },
+                { iconLib:'FA5', iconName:'phone',          iconColor:C.green600,  iconBg:C.green100,  label:'Firm Phone',          value: firmProfile.phone               },
+                { iconLib:'FA5', iconName:'map-marker-alt', iconColor:C.red600,    iconBg:C.red100,    label:'Address',             value: firmProfile.address             },
+                { iconLib:'FA5', iconName:'globe',          iconColor:C.amber600,  iconBg:C.amber100,  label:'Country',             value: firmProfile.country             },
+                { iconLib:'FA5', iconName:'id-card',        iconColor:C.blue600,   iconBg:C.blue100,   label:'Registration No.',    value: firmProfile.registration_number },
+                { iconLib:'FA5', iconName:'file-invoice',   iconColor:C.amber600,  iconBg:C.amber100,  label:'Tax ID',              value: firmProfile.tax_id              },
+              ].filter(f => f.value).map((f, i, arr) => (
+                <View key={i}>
+                  <View style={[s.row, { paddingVertical: 8 }]}>
+                    <View style={[s.iconBtn40, { backgroundColor: f.iconBg }]}>
+                      <Icon lib={f.iconLib} name={f.iconName} size={15} color={f.iconColor} />
+                    </View>
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                      <Text style={s.fieldLabel}>{f.label}</Text>
+                      <Text style={[s.smBold, { marginTop: 1 }]}>{f.value}</Text>
+                    </View>
+                  </View>
+                  {i < arr.length - 1 && <View style={{ height: 1, backgroundColor: C.gray100 }} />}
+                </View>
+              ))}
+
+              {/* Domaines d'activité */}
+              {firmProfile.practice_areas?.length > 0 && (
+                <>
+                  <View style={{ height: 1, backgroundColor: C.gray100, marginVertical: 4 }} />
+                  <View style={{ paddingVertical: 8 }}>
+                    <View style={[s.row, { marginBottom: 8 }]}>
+                      <View style={[s.iconBtn40, { backgroundColor: C.blue100 }]}>
+                        <Icon lib="FA5" name="gavel" size={15} color={C.primary} />
+                      </View>
+                      <Text style={[s.fieldLabel, { marginLeft: 12 }]}>Practice Areas</Text>
+                    </View>
+                    <View style={[s.row, { flexWrap: 'wrap', gap: 6, paddingLeft: 52 }]}>
+                      {firmProfile.practice_areas.map((area, i) => (
+                        <View key={i} style={[s.tag, { backgroundColor: C.blue100 }]}>
+                          <Text style={[s.tagText, { color: C.primary }]}>{area}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                </>
+              )}
+
+              {/* Description */}
+              {firmProfile.description ? (
+                <>
+                  <View style={{ height: 1, backgroundColor: C.gray100, marginVertical: 4 }} />
+                  <View style={{ paddingVertical: 8 }}>
+                    <View style={[s.row, { marginBottom: 6 }]}>
+                      <View style={[s.iconBtn40, { backgroundColor: C.gray100 }]}>
+                        <Icon lib="FA5" name="align-left" size={15} color={C.gray500} />
+                      </View>
+                      <Text style={[s.fieldLabel, { marginLeft: 12 }]}>Description</Text>
+                    </View>
+                    <Text style={[s.xs, { paddingLeft: 52, lineHeight: 18, color: C.gray700 }]}>{firmProfile.description}</Text>
+                  </View>
+                </>
+              ) : null}
+
+
             </View>
+          </View>
+        )}
+
+        {/* ── CABINET MANAGEMENT (FIRM_ADMIN only) ── */}
+        {role === 'FIRM_ADMIN' && (
+          <View style={s.section}>
+            <SectionHeader title="Firm Management" />
+            <TouchableOpacity
+              style={[s.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+              activeOpacity={0.75}
+              onPress={() => navigation.navigate('CabinetManagement')}
+            >
+              <View style={s.row}>
+                <View style={[s.iconBtn48, { backgroundColor: '#EEF2FF' }]}>
+                  <Icon lib="FA5" name="landmark" size={20} color="#4F46E5" />
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={s.smBold}>Cabinet Management</Text>
+                  <Text style={s.xs}>Logo, members, statistics</Text>
+                </View>
+              </View>
+              <Icon lib="FA5" name="chevron-right" size={13} color={C.gray400} />
+            </TouchableOpacity>
           </View>
         )}
 

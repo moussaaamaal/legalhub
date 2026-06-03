@@ -281,12 +281,14 @@ function formatFullDate(d) {
     '  ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-const NotifDetailModal = ({ visible, notif, onClose, onAccept, onReject }) => {
+const NotifDetailModal = ({ visible, notif, onClose, onAccept, onReject, pendingRequestIds }) => {
   if (!notif) return null;
   const isMeeting  = notif.type === 'MEETING_REQUEST' && notif._details;
   const isCalEvent = notif._details && !!notif._details.event_title;
-  const isPendingRequest = isMeeting && !isCalEvent && notif._details?.request_id &&
-    !notif._details?.status;
+  const requestId  = notif._details?.request_id;
+  const isPendingRequest = isMeeting && !isCalEvent && requestId &&
+    !notif._details?.status &&
+    (pendingRequestIds === null || pendingRequestIds?.has(requestId));
   const d = notif._details || {};
   const mt = isMeeting ? (MEETING_TYPE_LABELS[d.meeting_type] || { label: d.meeting_type, icon: 'calendar', color: C.g500 }) : null;
 
@@ -741,24 +743,33 @@ export default function NotificationsScreen({ navigation }) {
   const [rejectTarget,    setRejectTarget]          = useState(null);
   const [rejectReason,    setRejectReason]          = useState('');
   const [submittingReject, setSubmittingReject]     = useState(false);
+  const [pendingRequestIds, setPendingRequestIds]  = useState(null);
 
   // Chargement notifications + marquage auto comme lues
   const loadNotifications = useCallback(() => {
     setLoading(true);
     setError(false);
-    notificationsAPI.list()
-      .then(data => {
-        const cards = (data || []).map(apiNotifToCard);
+    Promise.allSettled([
+      notificationsAPI.list(),
+      calendarAPI.listMeetingRequests(),
+    ]).then(([notifRes, reqRes]) => {
+      if (notifRes.status === 'fulfilled') {
+        const data  = notifRes.value || [];
+        const cards = data.map(apiNotifToCard);
         setNotifications(cards);
-        const hasUnread = (data || []).some(n => !n.is_read);
+        const hasUnread = data.some(n => !n.is_read);
         if (hasUnread) {
           notificationsAPI.markAllRead()
             .then(() => setNotifications(prev => prev.map(n => ({ ...n, is_read: true }))))
             .catch(() => {});
         }
-      })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
+      } else {
+        setError(true);
+      }
+      if (reqRes.status === 'fulfilled') {
+        setPendingRequestIds(new Set((reqRes.value || []).map(r => r.id)));
+      }
+    }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { loadNotifications(); }, [loadNotifications]);
@@ -792,6 +803,16 @@ export default function NotificationsScreen({ navigation }) {
     setSubmittingReject(true);
     try {
       await calendarAPI.rejectMeetingRequest(requestId, { reason: rejectReason.trim() });
+      setNotifications(prev => prev.map(n =>
+        n.id === rejectTarget.id
+          ? { ...n, _details: { ...n._details, status: 'REJECTED' } }
+          : n
+      ));
+      setPendingRequestIds(prev => {
+        const next = new Set(prev);
+        next.delete(requestId);
+        return next;
+      });
       setRejectTarget(null);
       setRejectReason('');
       Alert.alert('Request Declined', 'The client has been notified.');
@@ -1063,6 +1084,7 @@ export default function NotificationsScreen({ navigation }) {
         onClose={() => setSelectedMeeting(null)}
         onAccept={(n) => setAcceptTarget(n)}
         onReject={(n) => { setRejectTarget(n); setRejectReason(''); }}
+        pendingRequestIds={pendingRequestIds}
       />
 
       {/* Accept meeting form modal */}
@@ -1070,7 +1092,24 @@ export default function NotificationsScreen({ navigation }) {
         visible={!!acceptTarget}
         notif={acceptTarget}
         onClose={() => setAcceptTarget(null)}
-        onDone={loadNotifications}
+        onDone={() => {
+          const rid = acceptTarget?._details?.request_id;
+          if (acceptTarget?.id) {
+            setNotifications(prev => prev.map(n =>
+              n.id === acceptTarget.id
+                ? { ...n, _details: { ...n._details, status: 'ACCEPTED' } }
+                : n
+            ));
+          }
+          if (rid) {
+            setPendingRequestIds(prev => {
+              const next = new Set(prev);
+              next.delete(rid);
+              return next;
+            });
+          }
+          loadNotifications();
+        }}
       />
 
       {/* Reject confirmation modal */}

@@ -172,8 +172,7 @@ export default function QuickAddScreen({ navigation }) {
 
           <Text style={styles.headerTitle}>Quick Add</Text>
 
-          {/* Placeholder à droite pour centrer le titre */}
-          <View style={styles.backBtn} />
+          <View style={[styles.backBtn, { backgroundColor: 'transparent' }]} />
         </View>
       </View>
 

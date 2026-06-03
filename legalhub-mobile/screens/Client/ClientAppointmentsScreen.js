@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   SafeAreaView, StatusBar, ActivityIndicator, Modal,
-  TextInput, Alert, Platform, Linking, KeyboardAvoidingView,
+  TextInput, Alert, Platform, Linking, KeyboardAvoidingView, RefreshControl,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -289,7 +289,15 @@ export default function ClientAppointmentsScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView style={s.scroll} contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          style={s.scroll}
+          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={[C.primary]} tintColor={C.primary} />
+          }
+        >
 
           {upcoming.length > 0 && (
             <>

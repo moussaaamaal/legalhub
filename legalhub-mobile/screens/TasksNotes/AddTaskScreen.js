@@ -246,7 +246,7 @@ export default function AddTaskScreen({ navigation }) {
             <FontAwesome5 name="arrow-left" size={16} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Add Task</Text>
-          <View style={s.backBtn} />
+          <View style={[s.backBtn, { backgroundColor: 'transparent' }]} />
         </View>
       </View>
 

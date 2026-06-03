@@ -83,19 +83,22 @@ async def client_dashboard(ctx=Depends(_require_client)):
     pending_invoices_total = sum(i["total_amount"] for i in invoice_data)
     pending_invoices_count = len(invoice_data)
 
-    # Documents en attente (partagés mais pas encore téléchargés par le client)
-    docs = (
-        supabase.table("document")
-        .select("id, status")
-        .eq("firm_id", firm_id)
-        .eq("is_shared_with_client", True)
-        .in_("status", ["PENDING_REVIEW"])
-        .execute()
-    )
-    pending_docs = len(docs.data or [])
-
     # Prochain rendez-vous — filtrés par participation du client
     client_case_ids = [c["id"] for c in case_data]
+
+    # Documents en attente — uniquement ceux liés aux dossiers du client
+    pending_docs = 0
+    if client_case_ids:
+        docs = (
+            supabase.table("document")
+            .select("id, status")
+            .eq("firm_id", firm_id)
+            .eq("is_shared_with_client", True)
+            .in_("status", ["PENDING_REVIEW"])
+            .in_("case_id", client_case_ids)
+            .execute()
+        )
+        pending_docs = len(docs.data or [])
     upcoming_raw = []
     if client_case_ids:
         appt_res = (

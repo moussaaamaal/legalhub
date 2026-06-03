@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.services.case_ingestion import ingest_case
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
+from app.core.cache import cache_get, cache_set, cache_delete_pattern
 from pydantic import BaseModel
 from typing import Optional
 from app.models.enums import CaseStatus, CasePriority, CaseType
@@ -106,6 +107,11 @@ async def list_cases(
     case_type: Optional[str] = None,
     current_user=Depends(get_lawyer)
 ):
+    cache_key = f"cases:list:{current_user['id']}:{status}:{priority}:{case_type}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
 
     query = (
@@ -129,6 +135,7 @@ async def list_cases(
         query = query.eq("case_type", case_type)
 
     result = query.order("created_at", desc=True).execute()
+    await cache_set(cache_key, result.data, ttl=60)
     return result.data
 
 # ─── POST /api/cases ────────────────────────────────────
@@ -164,6 +171,7 @@ async def create_case(body: CreateCaseRequest, background_tasks: BackgroundTasks
         "message": f"{body.title} ({body.case_number}) has been successfully created.",
     }).execute()
 
+    await cache_delete_pattern(f"cases:list:{current_user['id']}:*")
     background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
     return result.data[0]
 
@@ -354,6 +362,7 @@ async def update_case(case_id: str, body: UpdateCaseRequest, background_tasks: B
         "Case Updated",
         f"Your case '{result.data[0].get('title', 'Unnamed')}' has been updated by your attorney.",
     )
+    await cache_delete_pattern(f"cases:list:{current_user['id']}:*")
     background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
     return result.data[0]
 
@@ -411,6 +420,7 @@ async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, backgr
         "Case Status Changed",
         f"Your case '{case_data.get('title', 'Unnamed')}' status is now: {body.status.value}.",
     )
+    await cache_delete_pattern(f"cases:list:{current_user['id']}:*")
     background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
     return case_data
 
@@ -435,6 +445,7 @@ async def restore_case(case_id: str, current_user=Depends(get_lawyer)):
         "performed_by": current_user["id"],
     }).execute()
 
+    await cache_delete_pattern(f"cases:list:{current_user['id']}:*")
     return result.data[0]
 
 # ─── DELETE /api/cases/:id (archive) ────────────────────
@@ -453,12 +464,18 @@ async def archive_case(case_id: str, current_user=Depends(get_lawyer)):
         "performed_by": current_user["id"],
     }).execute()
 
+    await cache_delete_pattern(f"cases:list:{current_user['id']}:*")
     return {"message": "Case archived"}
 
 # ─── GET /api/cases/:id/timeline ────────────────────────
 
 @router.get("/{case_id}/timeline")
 async def get_case_timeline(case_id: str, current_user=Depends(get_current_user)):
+    cache_key = f"case:{case_id}:timeline"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     result = (
         supabase.table("case_timeline")
         .select("*")
@@ -466,19 +483,28 @@ async def get_case_timeline(case_id: str, current_user=Depends(get_current_user)
         .order("created_at", desc=True)
         .execute()
     )
-    return result.data
+    data = result.data
+    await cache_set(cache_key, data, ttl=60)
+    return data
 
 # ─── GET /api/cases/:id/team ────────────────────────────
 
 @router.get("/{case_id}/team")
 async def get_case_team(case_id: str, current_user=Depends(get_lawyer)):
+    cache_key = f"case:{case_id}:team"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     result = (
         supabase.table("case_team")
         .select("*, app_user(id, full_name, email, role, avatar_url)")
         .eq("case_id", case_id)
         .execute()
     )
-    return result.data
+    data = result.data
+    await cache_set(cache_key, data, ttl=300)
+    return data
 
 # ─── POST /api/cases/:id/team ───────────────────────────
 
@@ -515,6 +541,7 @@ async def add_team_member(case_id: str, body: AddTeamMemberRequest, current_user
         "message": f"You were added to a case team by {current_user.get('full_name', 'a colleague')}.",
     }).execute()
 
+    await cache_delete(f"case:{case_id}:team")
     return result.data[0]
 
 # ─── DELETE /api/cases/:id/team/:user_id ────────────────
@@ -522,4 +549,5 @@ async def add_team_member(case_id: str, body: AddTeamMemberRequest, current_user
 @router.delete("/{case_id}/team/{user_id}")
 async def remove_team_member(case_id: str, user_id: str, current_user=Depends(get_lawyer)):
     supabase.table("case_team").delete().eq("case_id", case_id).eq("user_id", user_id).execute()
+    await cache_delete(f"case:{case_id}:team")
     return {"message": "Team member removed"}

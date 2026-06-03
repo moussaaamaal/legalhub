@@ -6,8 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FontAwesome5 } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
-import { casesAPI, clientsAPI, firmAPI, documentsAPI } from '../../services/api';
+import { casesAPI, clientsAPI, firmAPI } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 const COLORS = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B',
@@ -35,6 +35,12 @@ const BILLING_TYPES = [
   { label: 'Flat Fee',    value: 'FLAT_FEE',    icon: 'tag',         color: '#7C3AED', bg: '#F5F3FF' },
   { label: 'Contingency', value: 'CONTINGENCY', icon: 'percent',     color: '#D97706', bg: '#FFFBEB' },
   { label: 'Retainer',    value: 'RETAINER',    icon: 'handshake',   color: '#059669', bg: '#ECFDF5' },
+];
+
+const PRACTICE_AREAS = [
+  'Corporate & Business', 'Criminal Defense', 'Family Law',
+  'Real Estate', 'Immigration', 'IP & Technology',
+  'Personal Injury', 'Employment Law', 'Tax Law', 'Civil Litigation',
 ];
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -156,11 +162,16 @@ const CalendarStrip = ({ label, selectedDate, onSelect, calendarBase, onPrev, on
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AddCaseScreen({ navigation }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'FIRM_ADMIN';
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    title: '', caseType: '', priority: '',
-    court: '', judge: '', filingDate: '', description: '', notes: '',
+    title: '', caseType: '', priority: '', practiceArea: '',
+    court: '', courtLocation: '', judge: '', prosecutorName: '',
+    opposingParty: '', opposingCounsel: '',
+    filingDate: '', firstHearingDate: '', statuteOfLimitations: '',
+    description: '',
     billingType: '', estimatedValue: '',
   });
 
@@ -178,22 +189,24 @@ export default function AddCaseScreen({ navigation }) {
   const [showAttorneyDrop, setShowAttorneyDrop]     = useState(false);
   const [selectedAttorneyId, setSelectedAttorneyId] = useState(null);
 
-  // ── Calendar strip ──
-  const [calendarBase, setCalendarBase] = useState(new Date());
-  const [attachedDocs, setAttachedDocs] = useState([]);
+  // ── Calendar strips ──
+  const [calendarBase,  setCalendarBase]  = useState(new Date());
+  const [calendarBase2, setCalendarBase2] = useState(new Date());
+  const [calendarBase3, setCalendarBase3] = useState(new Date());
 
   const progress = (step / 3) * 100;
   const update = (key, val) => setForm(p => ({ ...p, [key]: val }));
 
-  // Load team members once
+  // Load team members once — only needed for admin attorney picker
   useEffect(() => {
+    if (!isAdmin) return;
     firmAPI.getTeam()
       .then(data => {
         const members = Array.isArray(data) ? data : (data.members || data.team || []);
         setAllAttorneys(members);
       })
       .catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   // ── Client search ──
   const onClientChange = (text) => {
@@ -239,26 +252,12 @@ export default function AddCaseScreen({ navigation }) {
   };
 
   // ── Calendar navigation ──
-  const prevWeek = () => {
-    const d = new Date(calendarBase);
-    d.setDate(d.getDate() - 7);
-    setCalendarBase(d);
-  };
-  const nextWeek = () => {
-    const d = new Date(calendarBase);
-    d.setDate(d.getDate() + 7);
-    setCalendarBase(d);
-  };
-
-  const handlePickDocument = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
-      if (result.canceled) return;
-      setAttachedDocs(prev => [...prev, ...result.assets]);
-    } catch {
-      Alert.alert('Error', 'Could not open document picker.');
-    }
-  };
+  const prevWeek  = () => { const d = new Date(calendarBase);  d.setDate(d.getDate() - 7); setCalendarBase(d);  };
+  const nextWeek  = () => { const d = new Date(calendarBase);  d.setDate(d.getDate() + 7); setCalendarBase(d);  };
+  const prevWeek2 = () => { const d = new Date(calendarBase2); d.setDate(d.getDate() - 7); setCalendarBase2(d); };
+  const nextWeek2 = () => { const d = new Date(calendarBase2); d.setDate(d.getDate() + 7); setCalendarBase2(d); };
+  const prevWeek3 = () => { const d = new Date(calendarBase3); d.setDate(d.getDate() - 7); setCalendarBase3(d); };
+  const nextWeek3 = () => { const d = new Date(calendarBase3); d.setDate(d.getDate() + 7); setCalendarBase3(d); };
 
   // ── Submit ──
   const handleCreateCase = async () => {
@@ -268,28 +267,28 @@ export default function AddCaseScreen({ navigation }) {
     setLoading(true);
     try {
       const created = await casesAPI.create({
-        title:           form.title,
-        case_number:     `CASE-${Date.now()}`,
-        case_type:       CASE_TYPE_MAP[form.caseType] || 'CIVIL',
-        priority:        form.priority?.toUpperCase() || 'NORMAL',
-        description:     form.description,
-        court_name:      form.court,
-        judge_name:      form.judge,
-        filing_date:     form.filingDate || null,
-        ...(form.billingType    ? { billing_type:     form.billingType }                    : {}),
-        ...(form.estimatedValue ? { estimated_value:  parseFloat(form.estimatedValue) }     : {}),
-        ...(selectedClientId    ? { client_id:        selectedClientId }                    : {}),
-        ...(selectedAttorneyId  ? { attorney_id:      selectedAttorneyId }                  : {}),
+        title:                  form.title,
+        case_number:            `CASE-${Date.now()}`,
+        case_type:              CASE_TYPE_MAP[form.caseType] || 'CIVIL',
+        priority:               form.priority?.toUpperCase() || 'NORMAL',
+        description:            form.description,
+        court_name:             form.court          || null,
+        court_location:         form.courtLocation  || null,
+        judge_name:             form.judge          || null,
+        prosecutor_name:        form.prosecutorName || null,
+        opposing_party:         form.opposingParty  || null,
+        opposing_counsel:       form.opposingCounsel|| null,
+        practice_area:          form.practiceArea   || null,
+        filing_date:            form.filingDate              || null,
+        first_hearing_date:     form.firstHearingDate        || null,
+        statute_of_limitations: form.statuteOfLimitations    || null,
+        ...(form.billingType    ? { billing_type:    form.billingType }                : {}),
+        ...(form.estimatedValue ? { estimated_value: parseFloat(form.estimatedValue) } : {}),
+        ...(selectedClientId    ? { client_id:       selectedClientId }                : {}),
+        ...(isAdmin
+          ? (selectedAttorneyId ? { attorney_id: selectedAttorneyId } : {})
+          : { attorney_id: user?.id }),
       });
-      if (attachedDocs.length > 0 && created?.id) {
-        try {
-          await Promise.all(
-            attachedDocs.map(doc =>
-              documentsAPI.upload({ uri: doc.uri, name: doc.name, mimeType: doc.mimeType }, created.id)
-            )
-          );
-        } catch { /* docs are optional — case was still created */ }
-      }
       Alert.alert('Success', 'Case created successfully!', [
         { text: 'OK', onPress: () => navigation?.goBack() }
       ]);
@@ -311,7 +310,7 @@ export default function AddCaseScreen({ navigation }) {
             <FontAwesome5 name="arrow-left" size={16} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Add New Case</Text>
-          <View style={s.backBtn} />
+          <View style={[s.backBtn, { backgroundColor: 'transparent' }]} />
         </View>
       </View>
 
@@ -357,6 +356,15 @@ export default function AddCaseScreen({ navigation }) {
               ))}
             </View>
 
+            <Text style={s.label}>Practice Area</Text>
+            <View style={s.typeGrid}>
+              {PRACTICE_AREAS.map(a => (
+                <TouchableOpacity key={a} style={[s.typeBtn, form.practiceArea === a && s.typeBtnActive]} onPress={() => update('practiceArea', form.practiceArea === a ? '' : a)}>
+                  <Text style={[s.typeBtnText, form.practiceArea === a && s.typeBtnTextActive]}>{a}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <Text style={s.label}>Priority Level *</Text>
             <View style={s.priorityRow}>
               {PRIORITIES.map(p => (
@@ -396,19 +404,25 @@ export default function AddCaseScreen({ navigation }) {
               icon="user"
             />
 
-            <AutocompleteField
-              label="Assigned Attorney"
-              placeholder="Search attorney by name..."
-              value={attorneySearch}
-              onChange={onAttorneyChange}
-              results={attorneyResults}
-              onSelect={selectAttorney}
-              showDrop={showAttorneyDrop}
-              icon="user-tie"
-            />
+            {isAdmin && (
+              <AutocompleteField
+                label="Assigned Attorney"
+                placeholder="Search attorney by name..."
+                value={attorneySearch}
+                onChange={onAttorneyChange}
+                results={attorneyResults}
+                onSelect={selectAttorney}
+                showDrop={showAttorneyDrop}
+                icon="user-tie"
+              />
+            )}
 
             <Field label="Court / Jurisdiction" placeholder="e.g., Superior Court" value={form.court} onChange={v => update('court', v)} icon="landmark" />
+            <Field label="Court Location" placeholder="e.g., 12 Justice Ave, Tunis" value={form.courtLocation} onChange={v => update('courtLocation', v)} icon="map-marker-alt" />
             <Field label="Judge Name" placeholder="Honorable..." value={form.judge} onChange={v => update('judge', v)} icon="gavel" />
+            <Field label="Prosecutor Name" placeholder="e.g., Mr. Smith" value={form.prosecutorName} onChange={v => update('prosecutorName', v)} icon="user-shield" />
+            <Field label="Opposing Party" placeholder="e.g., ABC Corp / John Doe" value={form.opposingParty} onChange={v => update('opposingParty', v)} icon="user-times" />
+            <Field label="Opposing Counsel" placeholder="e.g., Attorney Jane Smith" value={form.opposingCounsel} onChange={v => update('opposingCounsel', v)} icon="user-tie" />
 
             {/* Filing Date — calendar strip */}
             <CalendarStrip
@@ -454,6 +468,25 @@ export default function AddCaseScreen({ navigation }) {
               })}
             </View>
 
+            {/* Billing Type */}
+            <Text style={s.label}>Billing Type</Text>
+            <View style={s.billingGrid}>
+              {BILLING_TYPES.map(bt => {
+                const active = form.billingType === bt.value;
+                return (
+                  <TouchableOpacity
+                    key={bt.value}
+                    style={[s.billingBtn, { backgroundColor: active ? bt.color : bt.bg, borderColor: active ? bt.color : bt.color + '40' }]}
+                    onPress={() => update('billingType', active ? '' : bt.value)}
+                    activeOpacity={0.8}
+                  >
+                    <FontAwesome5 name={bt.icon} size={15} color={active ? COLORS.white : bt.color} />
+                    <Text style={[s.billingLabel, { color: active ? COLORS.white : bt.color }]}>{bt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {/* Estimated Value */}
             <Field
               label="Estimated Case Value ($)"
@@ -461,6 +494,24 @@ export default function AddCaseScreen({ navigation }) {
               value={form.estimatedValue}
               onChange={v => update('estimatedValue', v.replace(/[^0-9.]/g, ''))}
               icon="dollar-sign"
+            />
+
+            <CalendarStrip
+              label="First Hearing Date"
+              selectedDate={form.firstHearingDate}
+              onSelect={v => update('firstHearingDate', v)}
+              calendarBase={calendarBase2}
+              onPrev={prevWeek2}
+              onNext={nextWeek2}
+            />
+
+            <CalendarStrip
+              label="Statute of Limitations"
+              selectedDate={form.statuteOfLimitations}
+              onSelect={v => update('statuteOfLimitations', v)}
+              calendarBase={calendarBase3}
+              onPrev={prevWeek3}
+              onNext={nextWeek3}
             />
 
             <Text style={s.label}>Case Description</Text>
@@ -473,47 +524,26 @@ export default function AddCaseScreen({ navigation }) {
               multiline numberOfLines={5}
             />
 
-            <Text style={s.label}>Internal Notes</Text>
-            <TextInput
-              style={[s.input, s.textarea]}
-              placeholder="Private notes for legal team only..."
-              placeholderTextColor={COLORS.gray400}
-              value={form.notes}
-              onChangeText={v => update('notes', v)}
-              multiline numberOfLines={4}
-            />
-
-            {/* Attach Documents */}
-            <Text style={s.label}>Attach Documents (Optional)</Text>
-            <TouchableOpacity style={s.attachBtn} onPress={handlePickDocument} activeOpacity={0.8}>
-              <FontAwesome5 name="paperclip" size={14} color={COLORS.primary} />
-              <Text style={s.attachBtnTxt}>Attach Files</Text>
-            </TouchableOpacity>
-            {attachedDocs.length > 0 && (
-              <View style={{ gap: 6, marginBottom: 16 }}>
-                {attachedDocs.map((doc, idx) => (
-                  <View key={idx} style={s.attachedItem}>
-                    <FontAwesome5 name="file-alt" size={12} color={COLORS.gray500} />
-                    <Text style={s.attachedName} numberOfLines={1}>{doc.name}</Text>
-                    <TouchableOpacity onPress={() => setAttachedDocs(prev => prev.filter((_, i) => i !== idx))}>
-                      <FontAwesome5 name="times" size={12} color="#DC2626" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-
             <View style={s.summaryCard}>
               <Text style={s.summaryTitle}>Case Summary</Text>
               {[
-                ['Title',           form.title],
-                ['Type',            form.caseType],
-                ['Priority',        form.priority],
-                ['Billing',         BILLING_TYPES.find(b => b.value === form.billingType)?.label],
-                ['Estimated Value', form.estimatedValue ? `$${form.estimatedValue}` : null],
-                ['Client',          clientSearch],
-                ['Attorney',        attorneySearch],
-                ['Filing',          form.filingDate],
+                ['Title',                  form.title],
+                ['Type',                   form.caseType],
+                ['Practice Area',          form.practiceArea],
+                ['Priority',               form.priority],
+                ['Client',                 clientSearch],
+                ['Attorney',               attorneySearch],
+                ['Opposing Party',         form.opposingParty],
+                ['Opposing Counsel',       form.opposingCounsel],
+                ['Court',                  form.court],
+                ['Court Location',         form.courtLocation],
+                ['Judge',                  form.judge],
+                ['Prosecutor',             form.prosecutorName],
+                ['Filing Date',            form.filingDate],
+                ['First Hearing',          form.firstHearingDate],
+                ['Statute of Limitations', form.statuteOfLimitations],
+                ['Billing',                BILLING_TYPES.find(b => b.value === form.billingType)?.label],
+                ['Estimated Value',        form.estimatedValue ? `$${form.estimatedValue}` : null],
               ].map(([k, v]) => v ? (
                 <View key={k} style={s.summaryRow}>
                   <Text style={s.summaryKey}>{k}</Text>
@@ -632,6 +662,10 @@ const s = StyleSheet.create({
   billingBtn:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, width: '47%' },
   billingLabel: { fontSize: 13, fontWeight: '700' },
 
+  // Billing type
+  billingGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  billingBtn:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, width: '47%' },
+  billingLabel: { fontSize: 13, fontWeight: '700' },
   // Summary
   summaryCard:      { backgroundColor: COLORS.blue50, borderRadius: 16, padding: 14, marginTop: 8 },
   summaryTitle:     { fontSize: 14, fontWeight: '700', color: COLORS.primary, marginBottom: 10 },
@@ -645,8 +679,4 @@ const s = StyleSheet.create({
   btnPrimaryText:   { color: COLORS.white, fontWeight: '700', fontSize: 15 },
   btnSecondary:     { paddingHorizontal: 20, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.gray200, alignItems: 'center', justifyContent: 'center' },
   btnSecondaryText: { fontSize: 15, fontWeight: '600', color: COLORS.gray600 },
-  attachBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: COLORS.primary, borderStyle: 'dashed', borderRadius: 12, paddingVertical: 12, marginBottom: 10, backgroundColor: '#EFF6FF' },
-  attachBtnTxt:     { fontSize: 13, fontWeight: '700', color: COLORS.primary },
-  attachedItem:     { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.gray50, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.gray200 },
-  attachedName:     { flex: 1, fontSize: 12, color: COLORS.dark },
 });

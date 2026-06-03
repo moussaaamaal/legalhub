@@ -254,7 +254,7 @@ export default function InvoiceScreen({ navigation, route }) {
             <Text style={s.headerTitle}>Create Invoice</Text>
             <Text style={s.headerSub}>Track payments & billing</Text>
           </View>
-          <View style={s.backBtn} />
+          <View style={[s.backBtn, { backgroundColor: 'transparent' }]} />
         </View>
       </View>
 

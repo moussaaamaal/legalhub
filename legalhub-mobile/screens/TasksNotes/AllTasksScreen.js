@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
-  Alert, RefreshControl,
+  Alert, RefreshControl, Image,
 } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { tasksAPI } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 const C = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B', white: '#FFFFFF',
@@ -47,6 +48,7 @@ const formatDue = (dateStr) => {
 };
 
 export default function AllTasksScreen({ navigation }) {
+  const { user } = useAuth();
   const [tasks,         setTasks]         = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [refreshing,    setRefreshing]    = useState(false);
@@ -71,6 +73,10 @@ export default function AllTasksScreen({ navigation }) {
   };
 
   const handleComplete = (task) => {
+    if (task.assigned_to !== user?.id) {
+      Alert.alert('Not Allowed', 'Only the assigned lawyer can complete this task.');
+      return;
+    }
     Alert.alert(
       'Complete Task',
       `Mark "${task.title}" as completed?`,
@@ -84,6 +90,32 @@ export default function AllTasksScreen({ navigation }) {
               setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'COMPLETED' } : t));
             } catch {
               Alert.alert('Error', 'Could not update task.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDelete = (task) => {
+    if (task.created_by !== user?.id) {
+      Alert.alert('Not Allowed', 'Only the task creator can delete this task.');
+      return;
+    }
+    Alert.alert(
+      'Delete Task',
+      `Delete "${task.title}" permanently?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await tasksAPI.delete(task.id);
+              setTasks(prev => prev.filter(t => t.id !== task.id));
+            } catch {
+              Alert.alert('Error', 'Could not delete task.');
             }
           },
         },
@@ -209,7 +241,7 @@ export default function AllTasksScreen({ navigation }) {
                 <Text style={s.sectionLabel}>Pending ({pending.length})</Text>
               </View>
               {pending.map(task => (
-                <TaskCard key={task.id} task={task} onComplete={() => handleComplete(task)} />
+                <TaskCard key={task.id} task={task} onComplete={() => handleComplete(task)} onDelete={() => handleDelete(task)} currentUserId={user?.id} />
               ))}
             </View>
           )}
@@ -221,7 +253,7 @@ export default function AllTasksScreen({ navigation }) {
                 <Text style={s.sectionLabel}>Completed ({completed.length})</Text>
               </View>
               {completed.map(task => (
-                <TaskCard key={task.id} task={task} onComplete={null} />
+                <TaskCard key={task.id} task={task} onComplete={null} onDelete={() => handleDelete(task)} currentUserId={user?.id} />
               ))}
             </View>
           )}
@@ -231,16 +263,35 @@ export default function AllTasksScreen({ navigation }) {
   );
 }
 
-function TaskCard({ task, onComplete }) {
+function TaskCard({ task, onComplete, onDelete, currentUserId }) {
   const prioMeta   = PRIORITY_META[(task.priority || 'NORMAL').toUpperCase()] || PRIORITY_META.NORMAL;
   const statusMeta = STATUS_META[(task.status || 'PENDING').toUpperCase()] || STATUS_META.PENDING;
   const dueBadge   = formatDue(task.due_date);
   const isDone     = ['COMPLETED', 'CANCELLED'].includes((task.status || '').toUpperCase());
-  const caseName   = task.case_file?.title || task.case_file?.case_number || null;
-  const lawyerName = task.app_user?.full_name || null;
+  const caseName     = task.case_file?.title || task.case_file?.case_number || null;
+  const lawyerName   = task.app_user?.full_name || null;
+  const creatorName  = task.created_user?.full_name || null;
+  const creatorAvatar= task.created_user?.avatar_url || null;
+  const isCreator    = task.created_by === currentUserId;
 
   return (
     <View style={[s.card, { borderLeftColor: prioMeta.border, opacity: isDone ? 0.72 : 1 }]}>
+
+      {/* Créateur en haut */}
+      {creatorName ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+          {creatorAvatar
+            ? <Image source={{ uri: creatorAvatar }} style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: C.g200 }} />
+            : (
+              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }}>
+                <FontAwesome5 name="user" size={11} color={C.primary} />
+              </View>
+            )
+          }
+          <Text style={[s.infoTxt, { fontWeight: '700', color: C.dark }]} numberOfLines={1}>{creatorName}</Text>
+        </View>
+      ) : null}
+
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
 
         {/* Checkbox */}
@@ -274,16 +325,14 @@ function TaskCard({ task, onComplete }) {
             </View>
           ) : null}
 
-          {/* Avocat + statut + échéance */}
-          <View style={[s.infoRow, { marginTop: 4, justifyContent: 'space-between' }]}>
-            <View style={s.infoRow}>
-              {lawyerName ? (
-                <>
-                  <FontAwesome5 name="user-tie" size={10} color={C.g400} />
-                  <Text style={[s.infoTxt, { marginLeft: 5 }]} numberOfLines={1}>{lawyerName}</Text>
-                </>
-              ) : null}
-            </View>
+          {/* Avocat assigné + échéance */}
+          <View style={[s.infoRow, { marginTop: 6, justifyContent: 'space-between' }]}>
+            {lawyerName ? (
+              <View style={s.infoRow}>
+                <FontAwesome5 name="user-check" size={10} color={C.blue600} />
+                <Text style={[s.infoTxt, { marginLeft: 4, color: C.blue600, fontWeight: '600' }]} numberOfLines={1}>{lawyerName}</Text>
+              </View>
+            ) : <View />}
             <View style={s.infoRow}>
               <View style={[s.pill, { backgroundColor: statusMeta.bg, marginRight: 6 }]}>
                 <Text style={[s.pillTxt, { color: statusMeta.color }]}>{statusMeta.label}</Text>
@@ -296,6 +345,13 @@ function TaskCard({ task, onComplete }) {
             </View>
           </View>
         </View>
+
+        {/* Delete button — creator only */}
+        {isCreator && (
+          <TouchableOpacity style={{ padding: 6, alignSelf: 'flex-start' }} onPress={onDelete}>
+            <FontAwesome5 name="trash-alt" size={13} color={C.red500} />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

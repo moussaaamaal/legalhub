@@ -393,7 +393,7 @@ export default function VoiceNoteScreen({ navigation, route }) {
           <FontAwesome5 name="arrow-left" size={16} color={C.white} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Voice Notes</Text>
-        <View style={s.backBtn} />
+        <View style={[s.backBtn, { backgroundColor: 'transparent' }]} />
       </View>
 
       {/* Recorder area */}

@@ -645,6 +645,19 @@ export default function AllDocumentsScreen({ navigation }) {
 function DocCard({ doc, onView }) {
   const [summarizing,  setSummarizing]  = useState(false);
   const [summaryModal, setSummaryModal] = useState(null);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const result = await documentsAPI.summarize(doc.id, true);
+      setSummaryModal(prev => ({ ...prev, summary: result.summary }));
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not regenerate summary.');
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   const fs        = getFileStyle(doc.file_type);
   const caseName  = doc.case_file?.title || doc.case_file?.case_number || null;
@@ -689,6 +702,17 @@ function DocCard({ doc, onView }) {
             <ScrollView showsVerticalScrollIndicator={false}>
               <MarkdownText text={summaryModal?.summary || ''} style={s.summaryBody} />
             </ScrollView>
+            <TouchableOpacity
+              style={[s.regenBtn, regenerating && { opacity: 0.6 }]}
+              onPress={handleRegenerate}
+              disabled={regenerating}
+              activeOpacity={0.7}
+            >
+              {regenerating
+                ? <ActivityIndicator size={12} color="#6366F1" />
+                : <FontAwesome5 name="sync" size={12} color="#6366F1" />}
+              <Text style={s.regenBtnTxt}>{regenerating ? 'Regenerating…' : 'Regenerate'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -789,6 +813,8 @@ const s = StyleSheet.create({
   viewBtnTxt:        { fontSize: 12, fontWeight: '700', color: C.purple600 },
   summarizeBtn:      { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#EEF2FF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   summarizeBtnTxt:   { fontSize: 12, fontWeight: '700', color: '#6366F1' },
+  regenBtn:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: '#EEF2FF' },
+  regenBtnTxt:       { fontSize: 13, fontWeight: '600', color: '#6366F1' },
   summarySheet:      { backgroundColor: C.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: '85%' },
   summaryHandle:     { width: 40, height: 4, backgroundColor: C.g200, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   summaryHeader:     { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },

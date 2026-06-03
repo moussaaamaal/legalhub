@@ -5,7 +5,10 @@ from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel, EmailStr
 from app.core.database import supabase, supabase_admin
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, create_2fa_pending_token, decode_token
-from app.core.dependencies import get_current_user, get_firm_admin, get_lawyer
+from app.core.dependencies import get_current_user, get_firm_admin, get_lawyer, bearer_scheme
+from app.core.config import settings
+from app.core.cache import blacklist_token, cache_delete, check_rate_limit
+from app.core.email import send_password_reset_email, send_lawyer_invite_email
 from app.models.enums import UserRole
 import pyotp
 import httpx
@@ -69,6 +72,11 @@ class AcceptInviteRequest(BaseModel):
     full_name: str
     phone: str | None = None
 
+class AcceptLawyerInviteRequest(BaseModel):
+    invite_token: str
+    email: EmailStr
+    new_password: str
+
 class UpdateMeRequest(BaseModel):
     full_name: str | None = None
     phone: str | None = None
@@ -76,6 +84,9 @@ class UpdateMeRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+class BiometricLoginRequest(BaseModel):
+    biometric_token: str
 
 class NotificationPreferencesRequest(BaseModel):
     hearing_reminders: bool | None = None
@@ -135,20 +146,17 @@ async def register_firm(body: RegisterFirmRequest):
 
     admin_user = user_result.data[0]
 
-    supabase.table("lawyer").insert({
-        "user_id": admin_user["id"],
-        "firm_id": firm_id,
-        "title": "Firm Admin",
-    }).execute()
-
-    supabase.table("subscription").insert({
-        "firm_id": firm_id,
-        "plan_name": "Free",
-        "ai_credits_limit": 100,
-        "max_lawyers": 3,
-        "max_storage_gb": 10,
-        "start_date": datetime.now(timezone.utc).date().isoformat(),
-    }).execute()
+    try:
+        supabase.table("subscription").insert({
+            "firm_id": firm_id,
+            "plan_name": "Free",
+            "ai_credits_limit": 100,
+            "max_lawyers": 3,
+            "max_storage_gb": 10,
+            "start_date": datetime.now(timezone.utc).date().isoformat(),
+        }).execute()
+    except Exception:
+        pass  # subscription table may not exist yet — non-blocking
 
     token_data = {"sub": admin_user["id"], "firm_id": firm_id, "role": admin_user["role"]}
     return {
@@ -174,6 +182,9 @@ async def register_firm(body: RegisterFirmRequest):
 
 @router.post("/login")
 async def login(body: LoginRequest):
+    if await check_rate_limit(f"ratelimit:login:{body.email.lower()}", max_requests=5, window=60):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in 1 minute.")
+
     result = supabase.table("app_user").select("*").eq("email", body.email).execute()
     if not result.data:
         raise HTTPException(status_code=401, detail="User not found")
@@ -427,7 +438,15 @@ async def login_2fa(body: Login2FARequest):
 # ─── POST /api/auth/logout ─────────────────────────────
 
 @router.post("/logout")
-async def logout(_=Depends(get_current_user)):
+async def logout(
+    credentials=Depends(bearer_scheme),
+    current_user=Depends(get_current_user),
+):
+    token = credentials.credentials
+    payload = decode_token(token)
+    if payload and payload.get("exp"):
+        await blacklist_token(token, payload["exp"])
+    await cache_delete(f"user:{current_user['id']}")
     return {"message": "Logged out successfully"}
 
 # ─── GET /api/auth/me ──────────────────────────────────
@@ -465,6 +484,7 @@ async def update_me(body: UpdateMeRequest, current_user=Depends(get_current_user
         raise HTTPException(status_code=400, detail="No fields to update")
     result = supabase.table("app_user").update(data).eq("id", current_user["id"]).execute()
     updated = result.data[0]
+    await cache_delete(f"user:{current_user['id']}")
     firm_res = supabase.table("firm").select("name").eq("id", updated["firm_id"]).single().execute()
     firm_name = firm_res.data["name"] if firm_res.data else None
     return {
@@ -493,6 +513,7 @@ async def delete_account(current_user=Depends(get_current_user)):
         "avatar_url": None,
         "password_hash": "",
     }).eq("id", user_id).execute()
+    await cache_delete(f"user:{user_id}")
     return {"detail": "Account deleted"}
 
 # ─── PUT /api/auth/change-password ─────────────────────
@@ -505,6 +526,7 @@ async def change_password(body: ChangePasswordRequest, current_user=Depends(get_
     supabase.table("app_user").update({
         "password_hash": hash_password(body.new_password)
     }).eq("id", current_user["id"]).execute()
+    await cache_delete(f"user:{current_user['id']}")
     return {"message": "Password changed successfully"}
 
 # ─── POST /api/auth/avatar ─────────────────────────────
@@ -539,6 +561,70 @@ async def upload_avatar(file: UploadFile = File(...), current_user=Depends(get_c
     supabase.table("app_user").update({"avatar_url": avatar_url}).eq("id", current_user["id"]).execute()
 
     return {"avatar_url": avatar_url}
+
+# ─── POST /api/auth/biometric/register ────────────────
+# Requires Supabase migration:
+# ALTER TABLE app_user ADD COLUMN IF NOT EXISTS biometric_token TEXT UNIQUE;
+
+@router.post("/biometric/register")
+async def register_biometric(current_user=Depends(get_current_user)):
+    """Generate a biometric token and store it in the user row."""
+    token = secrets.token_urlsafe(48)
+    try:
+        result = supabase.table("app_user").update({"biometric_token": token}).eq("id", current_user["id"]).execute()
+        if not result.data:
+            raise HTTPException(status_code=500, detail="biometric_token column missing — run: ALTER TABLE app_user ADD COLUMN IF NOT EXISTS biometric_token TEXT UNIQUE;")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not save biometric token: {str(e)}")
+    return {"biometric_token": token}
+
+@router.delete("/biometric/revoke", status_code=200)
+async def revoke_biometric(current_user=Depends(get_current_user)):
+    """Clear the biometric token (user disabling biometric login)."""
+    supabase.table("app_user").update({"biometric_token": None}).eq("id", current_user["id"]).execute()
+    return {"detail": "Biometric token revoked"}
+
+@router.post("/biometric/login")
+async def biometric_login(body: BiometricLoginRequest):
+    """Exchange a biometric token for access + refresh tokens."""
+    try:
+        result = supabase.table("app_user").select("*").eq("biometric_token", body.biometric_token).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Biometric login unavailable: {str(e)}")
+    if not result.data:
+        raise HTTPException(status_code=401, detail="Invalid biometric token")
+    user = result.data[0]
+    if not user["is_active"]:
+        raise HTTPException(status_code=403, detail="Account is deactivated")
+
+    try:
+        supabase.table("login_history").insert({"user_id": user["id"]}).execute()
+    except Exception:
+        pass
+
+    firm_res = supabase.table("firm").select("name").eq("id", user["firm_id"]).single().execute()
+    firm_name = firm_res.data["name"] if firm_res.data else None
+
+    access_token  = create_access_token({"sub": user["id"]})
+    refresh_token = create_refresh_token({"sub": user["id"]})
+
+    return {
+        "access_token":  access_token,
+        "refresh_token": refresh_token,
+        "user": {
+            "id":            user["id"],
+            "email":         user["email"],
+            "full_name":     user["full_name"],
+            "role":          user["role"],
+            "firm_id":       user["firm_id"],
+            "firm_name":     firm_name,
+            "avatar_url":    user.get("avatar_url"),
+            "phone":         user.get("phone"),
+            "two_fa_enabled":user["two_fa_enabled"],
+        },
+    }
 
 # ─── GET /api/auth/login-history ───────────────────────
 # Requires Supabase migration:
@@ -658,31 +744,36 @@ async def verify_2fa(body: Verify2FARequest, current_user=Depends(get_current_us
 
 @router.post("/forgot-password")
 async def forgot_password(body: ForgotPasswordRequest):
-    result = supabase.table("app_user").select("id,email,full_name").eq("email", body.email).execute()
+    if await check_rate_limit(f"ratelimit:forgot:{body.email.lower()}", max_requests=3, window=900):
+        raise HTTPException(status_code=429, detail="Too many requests. Try again in 15 minutes.")
+
+    result = supabase_admin.table("app_user").select("id,email,full_name").eq("email", body.email).execute()
     if not result.data:
         # Return same response to avoid email enumeration
         return {"message": "If this email exists, a reset link has been sent"}
 
-    reset_token = secrets.token_urlsafe(32)
+    reset_token = str(secrets.randbelow(900000) + 100000)  # 6-digit code
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
 
-    # Store token in dedicated password_reset_token column
-    # NOTE: Ensure columns `password_reset_token` and `password_reset_expires_at`
-    # exist in the app_user table (run migration in Supabase dashboard).
-    supabase.table("app_user").update({
+    supabase_admin.table("app_user").update({
         "password_reset_token": reset_token,
         "password_reset_expires_at": expires_at,
     }).eq("email", body.email).execute()
 
-    # TODO: Send email via SendGrid with link:
-    # f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
+    user = result.data[0]
+    send_password_reset_email(
+        to_email=user["email"],
+        full_name=user.get("full_name") or "User",
+        reset_token=reset_token,
+        frontend_url=settings.FRONTEND_URL,
+    )
     return {"message": "If this email exists, a reset link has been sent"}
 
 # ─── POST /api/auth/reset-password ─────────────────────
 
 @router.post("/reset-password")
 async def reset_password(body: ResetPasswordRequest):
-    result = supabase.table("app_user").select("*").eq("password_reset_token", body.token).execute()
+    result = supabase_admin.table("app_user").select("*").eq("password_reset_token", body.token).execute()
     if not result.data:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
 
@@ -693,7 +784,7 @@ async def reset_password(body: ResetPasswordRequest):
         if datetime.now(timezone.utc) > expires_at:
             raise HTTPException(status_code=400, detail="Reset token has expired")
 
-    supabase.table("app_user").update({
+    supabase_admin.table("app_user").update({
         "password_hash": hash_password(body.new_password),
         "password_reset_token": None,
         "password_reset_expires_at": None,
@@ -720,7 +811,16 @@ async def invite_lawyer(body: InviteLawyerRequest, current_user=Depends(get_firm
         "is_active": False,
     }).execute()
 
-    # TODO: Send invitation email via SendGrid
+    firm_result = supabase.table("firm").select("name").eq("id", current_user["firm_id"]).single().execute()
+    firm_name = firm_result.data["name"] if firm_result.data else "Your Firm"
+
+    send_lawyer_invite_email(
+        to_email=body.email,
+        full_name=body.full_name,
+        firm_name=firm_name,
+        invite_token=invite_token,
+    )
+
     return {"message": f"Invitation sent to {body.email}", "invite_token": invite_token}
 
 # ─── POST /api/auth/invite/client ──────────────────────
@@ -757,16 +857,17 @@ async def invite_client(body: InviteClientRequest, current_user=Depends(get_lawy
 
 @router.post("/office-code/validate")
 async def validate_office_code(body: ValidateOfficeCodeRequest):
-    firm = supabase.table("firm").select("*").eq("office_code", body.code).single().execute()
-    if not firm.data:
+    firm_result = supabase.table("firm").select("*").eq("office_code", body.code).execute()
+    if not firm_result.data:
         raise HTTPException(status_code=404, detail="Invalid office code")
+    firm = firm_result.data[0]
 
     existing = supabase.table("app_user").select("id").eq("email", body.email).execute()
     if existing.data:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     user_result = supabase.table("app_user").insert({
-        "firm_id": firm.data["id"],
+        "firm_id": firm["id"],
         "email": body.email,
         "password_hash": hash_password(body.password),
         "role": UserRole.LAWYER,
@@ -778,13 +879,13 @@ async def validate_office_code(body: ValidateOfficeCodeRequest):
     # Create lawyer profile
     supabase.table("lawyer").insert({
         "user_id": user["id"],
-        "firm_id": firm.data["id"],
+        "firm_id": firm["id"],
     }).execute()
 
     token_data = {"sub": user["id"], "firm_id": user["firm_id"], "role": user["role"]}
     return {
         "message": "Account created and linked to firm",
-        "firm_name": firm.data["name"],
+        "firm_name": firm["name"],
         "access_token": create_access_token(token_data),
         "refresh_token": create_refresh_token(token_data),
         "token_type": "bearer",
@@ -794,7 +895,7 @@ async def validate_office_code(body: ValidateOfficeCodeRequest):
             "full_name": user["full_name"],
             "role": user["role"],
             "firm_id": user["firm_id"],
-            "firm_name": firm.data["name"],
+            "firm_name": firm["name"],
             "avatar_url": user.get("avatar_url"),
             "two_fa_enabled": user["two_fa_enabled"],
         }
@@ -819,28 +920,28 @@ async def accept_invite(body: AcceptInviteRequest):
     if client["email"].lower() != body.email.lower():
         raise HTTPException(status_code=400, detail="Email does not match the invitation")
 
-    # Check no existing user with this email
-    existing = supabase.table("app_user").select("id").eq("email", body.email).execute()
+    # Check no active account already exists for this email
+    existing = supabase_admin.table("app_user").select("id").eq("email", body.email).execute()
     if existing.data:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Create app_user for the client
-    user_result = supabase.table("app_user").insert({
-        "firm_id": client["firm_id"],
-        "email": body.email,
+    user_result = supabase_admin.table("app_user").insert({
+        "firm_id":       client["firm_id"],
+        "email":         body.email,
         "password_hash": hash_password(body.password),
-        "role": UserRole.CLIENT,
-        "full_name": body.full_name,
-        "phone": body.phone,
+        "role":          UserRole.CLIENT,
+        "full_name":     body.full_name,
+        "phone":         body.phone,
+        "is_active":     True,
     }).execute()
-
     user = user_result.data[0]
 
-    # Link client record to user account
-    supabase.table("client").update({
-        "user_id": user["id"],
-        "invite_status": "ACCEPTED",
-        "invite_token": None,
+    # Link client record to user account and activate
+    supabase_admin.table("client").update({
+        "user_id":        user["id"],
+        "invite_status":  "ACCEPTED",
+        "invite_token":   None,
+        "tag":            "ACTIVE",
     }).eq("id", client["id"]).execute()
 
     # Fetch firm name
@@ -864,4 +965,62 @@ async def accept_invite(body: AcceptInviteRequest):
             "avatar_url": user.get("avatar_url"),
             "two_fa_enabled": user["two_fa_enabled"],
         }
+    }
+
+
+# ─── POST /api/auth/accept-invite/lawyer ───────────────
+
+@router.post("/accept-invite/lawyer")
+async def accept_lawyer_invite(body: AcceptLawyerInviteRequest):
+    """Invited lawyer activates their account by verifying the invite token and setting a new password."""
+    result = (
+        supabase_admin.table("app_user")
+        .select("*")
+        .eq("email", body.email)
+        .eq("is_active", False)
+        .eq("role", "LAWYER")
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="No pending invitation found for this email")
+
+    user = result.data[0]
+
+    if not verify_password(body.invite_token, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="Invalid invitation token")
+
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    supabase_admin.table("app_user").update({
+        "password_hash": hash_password(body.new_password),
+        "is_active": True,
+    }).eq("id", user["id"]).execute()
+
+    existing_lawyer = supabase_admin.table("lawyer").select("id").eq("user_id", user["id"]).execute()
+    if not existing_lawyer.data:
+        supabase_admin.table("lawyer").insert({
+            "user_id": user["id"],
+            "firm_id": user["firm_id"],
+        }).execute()
+
+    firm_result = supabase.table("firm").select("name").eq("id", user["firm_id"]).single().execute()
+    firm_name = firm_result.data["name"] if firm_result.data else None
+
+    token_data = {"sub": user["id"], "firm_id": user["firm_id"], "role": user["role"]}
+    return {
+        "message": "Account activated successfully",
+        "access_token":  create_access_token(token_data),
+        "refresh_token": create_refresh_token(token_data),
+        "token_type": "bearer",
+        "user": {
+            "id":             user["id"],
+            "email":          user["email"],
+            "full_name":      user["full_name"],
+            "role":           user["role"],
+            "firm_id":        user["firm_id"],
+            "firm_name":      firm_name,
+            "avatar_url":     user.get("avatar_url"),
+            "two_fa_enabled": user.get("two_fa_enabled", False),
+        },
     }

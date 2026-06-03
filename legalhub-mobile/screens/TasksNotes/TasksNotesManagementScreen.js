@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
-  RefreshControl, Alert,
+  RefreshControl, Alert, Image,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { tasksAPI, notesAPI, casesAPI } from '../../services/api';
+import { tasksAPI, notesAPI, casesAPI, authAPI } from '../../services/api';
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -132,7 +132,9 @@ const toNoteDisplay = (note, idx) => {
     : '—';
   return {
     id: note.id, case_id: note.case_id,
-    author: note.app_user?.full_name || note.author_name || 'Team Member',
+    author:   note.app_user?.full_name || note.author_name || 'Team Member',
+    authorId: note.lawyer_id || note.app_user?.id || null,
+    avatar:   note.app_user?.avatar_url || null,
     content, time: dateLabel,
     borderColor: style.border, bg: style.bg,
   };
@@ -146,28 +148,34 @@ const STATUS_TABS = [
   { label: 'Notes',     key: 'NOTES'     },
 ];
 
-// ─── TaskCard (identique HomeScreen) ─────────────────────────────────────────
-function TaskCard({ item, onDone, onDelete }) {
-  const done = item.status === 'COMPLETED';
+// ─── TaskCard ─────────────────────────────────────────────────────────────────
+function TaskCard({ item, onDone, onDelete, currentUserId, currentUserAvatar }) {
+  const done       = item.status === 'COMPLETED';
+  const isOwner    = item.createdById === currentUserId;
+  const isAssignee = item.assignedToId === currentUserId;
+  const avatarUri  = item.createdById === currentUserId ? currentUserAvatar : item.creatorAvatar;
   return (
     <View style={[st.card, { borderLeftWidth: 4, borderLeftColor: done ? COLORS.gray200 : item.borderColor, opacity: done ? 0.75 : 1 }]}>
       <View style={st.row}>
         <TouchableOpacity
-          style={[st.checkbox, done && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
-          onPress={() => onDone && onDone(item)}
+          style={[st.checkbox, done && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }, !isAssignee && { opacity: 0.35 }]}
+          onPress={() => isAssignee && onDone && onDone(item)}
+          activeOpacity={isAssignee ? 0.7 : 1}
         >
           {done && <FontAwesome5 name="check" size={10} color={COLORS.white} />}
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          {/* Title + priority badge */}
+          {/* Title + priority badge + delete */}
           <View style={[st.row, { marginBottom: 6, flexWrap: 'wrap', gap: 6 }]}>
             <Text style={[st.cardTitle, { flex: 1 }, done && { textDecorationLine: 'line-through', color: COLORS.gray400 }]}>{item.title}</Text>
             <View style={[st.tag, { backgroundColor: item.prioBg }]}>
               <Text style={[st.tagText, { color: item.prioColor }]}>{item.prioLabel}</Text>
             </View>
-            <TouchableOpacity onPress={() => onDelete && onDelete(item)} style={{ padding: 2 }}>
-              <FontAwesome5 name="trash-alt" size={12} color={COLORS.gray400} />
-            </TouchableOpacity>
+            {isOwner && (
+              <TouchableOpacity onPress={() => onDelete && onDelete(item)} style={{ padding: 2 }}>
+                <FontAwesome5 name="trash-alt" size={12} color={COLORS.red500} />
+              </TouchableOpacity>
+            )}
           </View>
           {/* Description */}
           {!!item.description && (
@@ -180,18 +188,27 @@ function TaskCard({ item, onDone, onDelete }) {
               <Text style={[st.gray500Sm, { marginLeft: 5 }]} numberOfLines={1}>{item.caseName}</Text>
             </View>
           )}
-          {/* Lawyer + due date */}
-          <View style={st.row}>
-            {item.lawyerName ? (
-              <>
-                <FontAwesome5 name="user-tie" size={10} color={COLORS.gray400} />
-                <Text style={[st.gray500Sm, { marginLeft: 5, flex: 1 }]} numberOfLines={1}>{item.lawyerName}</Text>
-              </>
-            ) : <View style={{ flex: 1 }} />}
+          {/* Creator + Assigned to + due date */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 2 }}>
+            <View style={[st.row, { gap: 4 }]}>
+              {avatarUri
+                ? <Image source={{ uri: avatarUri }} style={{ width: 16, height: 16, borderRadius: 8 }} />
+                : <FontAwesome5 name="user-edit" size={10} color={COLORS.gray400} />
+              }
+              <Text style={st.gray500Sm} numberOfLines={1}>
+                {item.createdById === currentUserId ? 'You' : (item.creatorName || '')}
+              </Text>
+            </View>
+            {!!item.lawyerName && (
+              <View style={[st.row, { gap: 4 }]}>
+                <FontAwesome5 name="user-check" size={10} color={COLORS.primary} />
+                <Text style={[st.gray500Sm, { color: COLORS.primary }]} numberOfLines={1}>{item.lawyerName}</Text>
+              </View>
+            )}
             {!!item.timeLeft && (
-              <View style={st.row}>
+              <View style={[st.row, { gap: 4 }]}>
                 <FontAwesome5 name="clock" size={10} color={item.timeColor} />
-                <Text style={[st.gray500Sm, { color: item.timeColor, fontWeight: '600', marginLeft: 4 }]}>{item.timeLeft}</Text>
+                <Text style={[st.gray500Sm, { color: item.timeColor, fontWeight: '600' }]}>{item.timeLeft}</Text>
               </View>
             )}
           </View>
@@ -201,28 +218,33 @@ function TaskCard({ item, onDone, onDelete }) {
   );
 }
 
-// ─── NoteCard (identique CaseDetailsScreen + case label) ─────────────────────
-function NoteCard({ note, caseName, onDelete }) {
-  const [expanded, setExpanded] = useState(false);
+// ─── NoteCard ─────────────────────────────────────────────────────────────────
+function NoteCard({ note, caseName, onDelete, currentUserId, currentUserAvatar }) {
+  const isOwner   = note.authorId === currentUserId;
+  const avatarUri = note.authorId === currentUserId ? currentUserAvatar : note.avatar;
   return (
     <View style={[nt.card, { backgroundColor: note.bg, borderLeftColor: note.borderColor }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-        <View style={[nt.avatar, { backgroundColor: COLORS.blue100, alignItems: 'center', justifyContent: 'center' }]}>
-          <FontAwesome5 name="user" size={14} color={COLORS.primary} />
-        </View>
+        {avatarUri
+          ? <Image source={{ uri: avatarUri }} style={nt.avatar} />
+          : <View style={[nt.avatar, { backgroundColor: COLORS.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+              <FontAwesome5 name="user" size={14} color={COLORS.primary} />
+            </View>
+        }
         <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={nt.author}>{note.author}</Text>
+          <Text style={nt.author}>{isOwner ? 'You' : note.author}</Text>
           <Text style={nt.time}>{note.time}</Text>
         </View>
-        <TouchableOpacity onPress={() => onDelete && onDelete(note)} style={{ padding: 4 }}>
-          <FontAwesome5 name="trash-alt" size={13} color={COLORS.gray400} />
-        </TouchableOpacity>
+        {isOwner && (
+          <TouchableOpacity onPress={() => onDelete && onDelete(note)} style={{ padding: 4 }}>
+            <FontAwesome5 name="trash-alt" size={13} color={COLORS.red500} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <RichText
         text={note.content}
         style={{ fontSize: 13, color: COLORS.gray600, lineHeight: 20 }}
-        numberOfLines={expanded ? undefined : 4}
       />
 
       {/* Case badge */}
@@ -233,40 +255,37 @@ function NoteCard({ note, caseName, onDelete }) {
         </View>
       )}
 
-      <TouchableOpacity
-        style={[nt.readMore, { borderTopColor: note.borderColor + '40' }]}
-        onPress={() => setExpanded(e => !e)}
-      >
-        <Text style={[nt.readMoreTxt, { color: note.borderColor }]}>{expanded ? 'Show less' : 'Read more'}</Text>
-        <FontAwesome5 name={expanded ? 'chevron-up' : 'chevron-right'} size={10} color={note.borderColor} />
-      </TouchableOpacity>
     </View>
   );
 }
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export default function TasksNotesManagementScreen({ navigation }) {
-  const [activeTab,  setActiveTab]  = useState(0);
-  const [tasks,      setTasks]      = useState([]);
-  const [notes,      setNotes]      = useState([]);
-  const [caseMap,    setCaseMap]    = useState({});
-  const [loading,    setLoading]    = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [search,     setSearch]     = useState('');
+  const [activeTab,         setActiveTab]         = useState(0);
+  const [tasks,             setTasks]             = useState([]);
+  const [notes,             setNotes]             = useState([]);
+  const [caseMap,           setCaseMap]           = useState({});
+  const [loading,           setLoading]           = useState(true);
+  const [refreshing,        setRefreshing]        = useState(false);
+  const [search,            setSearch]            = useState('');
+  const [currentUserId,     setCurrentUserId]     = useState(null);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const [t, n, cases] = await Promise.all([
+      const [t, n, cases, me] = await Promise.all([
         tasksAPI.list(),
         notesAPI.list(),
         casesAPI.list().catch(() => []),
+        authAPI.me().catch(() => null),
       ]);
       setTasks(t || []);
       setNotes(n || []);
       const map = {};
       (cases || []).forEach(c => { map[c.id] = c.title || c.case_number || 'Case'; });
       setCaseMap(map);
+      if (me?.id) { setCurrentUserId(me.id); setCurrentUserAvatar(me.avatar_url || null); }
     } catch (e) {
       if (!isRefresh) Alert.alert('Error', e.message || 'Failed to load');
     } finally {
@@ -283,17 +302,21 @@ export default function TasksNotesManagementScreen({ navigation }) {
     const prioKey  = (task.priority || 'NORMAL').toUpperCase();
     const prioCfg  = TASK_PRIORITY[prioKey] || TASK_PRIORITY.NORMAL;
     return {
-      id:          task.id,
-      _raw:        task,
-      status:      task.status,
-      title:       task.title,
-      description: task.description || null,
-      caseName:    task.case_file?.title || task.case_file?.case_number || null,
-      lawyerName:  task.app_user?.full_name || null,
-      prioLabel:   prioCfg.label,
-      prioColor:   prioCfg.color,
-      prioBg:      prioCfg.bg,
-      timeLeft:    task.due_date ? formatRelativeDate(task.due_date) : null,
+      id:            task.id,
+      _raw:          task,
+      status:        task.status,
+      title:         task.title,
+      description:   task.description || null,
+      caseName:      task.case_file?.title || task.case_file?.case_number || null,
+      lawyerName:    task.app_user?.full_name || null,
+      assignedToId:  task.assigned_to || task.app_user?.id || null,
+      createdById:   task.created_by || task.created_user?.id || null,
+      creatorName:   task.created_user?.full_name || null,
+      creatorAvatar: task.created_user?.avatar_url || null,
+      prioLabel:     prioCfg.label,
+      prioColor:     prioCfg.color,
+      prioBg:        prioCfg.bg,
+      timeLeft:      task.due_date ? formatRelativeDate(task.due_date) : null,
       ...dueBadge,
     };
   };
@@ -494,6 +517,8 @@ export default function TasksNotesManagementScreen({ navigation }) {
                   note={toNoteDisplay(n, idx)}
                   caseName={n.case_id ? caseMap[n.case_id] : null}
                   onDelete={() => handleDeleteNote(n)}
+                  currentUserId={currentUserId}
+                  currentUserAvatar={currentUserAvatar}
                 />
               ))
             )}
@@ -524,6 +549,8 @@ export default function TasksNotesManagementScreen({ navigation }) {
                   item={mapTask(t)}
                   onDone={handleToggle}
                   onDelete={handleDeleteTask}
+                  currentUserId={currentUserId}
+                  currentUserAvatar={currentUserAvatar}
                 />
               ))
             )}
@@ -591,10 +618,8 @@ const st = StyleSheet.create({
 
 // ─── Note card styles (fidèles CaseDetailsScreen) ─────────────────────────────
 const nt = StyleSheet.create({
-  card:        { borderLeftWidth: 4, borderRadius: 16, padding: 14, marginBottom: 12 },
-  avatar:      { width: 36, height: 36, borderRadius: 10 },
-  author:      { fontSize: 13, fontWeight: '700', color: COLORS.dark },
-  time:        { fontSize: 10, color: COLORS.gray400, marginTop: 1 },
-  readMore:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, paddingTop: 8, borderTopWidth: 1 },
-  readMoreTxt: { fontSize: 12, fontWeight: '700' },
+  card:   { borderLeftWidth: 4, borderRadius: 16, padding: 14, marginBottom: 12 },
+  avatar: { width: 36, height: 36, borderRadius: 10 },
+  author: { fontSize: 13, fontWeight: '700', color: COLORS.dark },
+  time:   { fontSize: 10, color: COLORS.gray400, marginTop: 1 },
 });

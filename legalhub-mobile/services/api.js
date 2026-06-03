@@ -2,7 +2,7 @@
 import { getStoredToken, getStoredRefresh, storeTokens } from '../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'http://192.168.1.11:8000';
+const BASE_URL = 'http://192.168.1.13:8000';
 
 // ─── Offline Cache Helpers ────────────────────────────────────────────────────
 const _setCache = async (key, data) => {
@@ -91,7 +91,8 @@ export const authAPI = {
   validateOfficeCode: (body)                 => request('POST', '/api/auth/office-code/validate', body),
   inviteLawyer:       (body)                 => request('POST', '/api/auth/invite/lawyer',        body),
   inviteClient:       (body)                 => request('POST', '/api/auth/invite/client',        body),
-  acceptInvite:       (body)                 => request('POST', '/api/auth/accept-invite',        body),
+  acceptInvite:       (body)                 => request('POST', '/api/auth/accept-invite',         body),
+  acceptLawyerInvite: (body)                 => request('POST', '/api/auth/accept-invite/lawyer',  body),
   setup2FA:           ()                     => request('POST', '/api/auth/2fa/setup',            {}),
   verify2FA:          (code)                 => request('POST', '/api/auth/2fa/verify',           { code }),
   login2FA:           (temp_token, code)     => request('POST', '/api/auth/2fa/login',            { temp_token, code }),
@@ -99,9 +100,12 @@ export const authAPI = {
   uploadAvatar:              (formData) => requestForm('/api/auth/avatar', formData),
   changePassword:            (body) => request('PUT',  '/api/auth/change-password',             body),
   loginHistory:              ()     => request('GET',  '/api/auth/login-history'),
-  getNotifPreferences:       ()     => request('GET',    '/api/auth/notification-preferences'),
-  updateNotifPreferences:    (body) => request('PUT',    '/api/auth/notification-preferences',  body),
-  deleteAccount:             ()     => request('DELETE', '/api/auth/me'),
+  getNotifPreferences:       ()      => request('GET',    '/api/auth/notification-preferences'),
+  updateNotifPreferences:    (body)  => request('PUT',    '/api/auth/notification-preferences',  body),
+  deleteAccount:             ()      => request('DELETE', '/api/auth/me'),
+  registerBiometric:         ()      => request('POST',   '/api/auth/biometric/register', {}),
+  revokeBiometric:           ()      => request('DELETE', '/api/auth/biometric/revoke'),
+  biometricLogin:            (token) => request('POST',   '/api/auth/biometric/login', { biometric_token: token }),
 };
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────
@@ -163,7 +167,7 @@ export const documentsAPI = {
   delete:       (id)           => request('DELETE', `/api/documents/${id}`),
   updateStatus: (id, status)   => request('PATCH',  `/api/documents/${id}/status?status=${encodeURIComponent(status)}`),
   share:        (id)           => request('POST',   `/api/documents/${id}/share`,  {}),
-  summarize:    (id)           => request('POST',   `/api/documents/${id}/ai-summarize`, {}),
+  summarize:    (id, force = false) => request('POST', `/api/documents/${id}/ai-summarize${force ? '?force=true' : ''}`, {}),
   createRequest:(body)         => request('POST',   '/api/documents/request',      body),
   listRequests: (caseId)       => request('GET',    `/api/documents/requests${caseId ? `?case_id=${caseId}` : ''}`),
   cancelRequest:(id)           => request('DELETE', `/api/documents/requests/${id}`),
@@ -302,15 +306,16 @@ export const notesAPI = {
 
 // ─── FIRM ─────────────────────────────────────────────────────────────────
 export const firmAPI = {
-  getProfile:      ()         => request('GET', '/api/firm/profile'),
-  updateProfile:   (body)     => request('PUT', '/api/firm/profile',        body),
-  getTeam:         ()         => request('GET', '/api/firm/team'),
-  updateMemberRole:(uid, role)=> request('PUT', `/api/firm/team/${uid}/role`, { role }),
-  removeMember:    (uid)      => request('DELETE', `/api/firm/team/${uid}`),
-  getSubscription: ()         => request('GET', '/api/firm/subscription'),
-  getBranding:     ()         => request('GET', '/api/firm/branding'),
-  updateBranding:  (body)     => request('PUT', '/api/firm/branding',       body),
-  getOfficeCode:   ()         => request('GET', '/api/firm/office-code'),
+  getProfile:       ()          => request('GET',    '/api/firm/profile'),
+  updateProfile:    (body)      => request('PUT',    '/api/firm/profile',          body),
+  getTeam:          ()          => request('GET',    '/api/firm/team'),
+  updateMemberRole: (uid, role) => request('PUT',    `/api/firm/team/${uid}/role`, { role }),
+  deactivateMember: (uid)       => request('DELETE', `/api/firm/team/${uid}`),
+  getBranding:      ()          => request('GET',    '/api/firm/branding'),
+  updateBranding:   (body)      => request('PUT',    '/api/firm/branding',         body),
+  uploadLogo:       (formData)  => requestForm('/api/firm/branding/logo',           formData),
+  getOfficeCode:    ()          => request('GET',    '/api/firm/office-code'),
+  getStats:         ()          => request('GET',    '/api/firm/stats'),
 };
 
 // ─── PAYMENTS ─────────────────────────────────────────────────────────────

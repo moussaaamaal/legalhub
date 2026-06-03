@@ -278,13 +278,7 @@ export default function AddNoteScreen({ navigation }) {
             <FontAwesome5 name="arrow-left" size={16} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>New Note</Text>
-          <TouchableOpacity style={s.pinBtn} onPress={() => setIsPinned(!isPinned)}>
-            <FontAwesome5
-              name="thumbtack"
-              size={16}
-              color={isPinned ? '#FDE68A' : 'rgba(255,255,255,0.6)'}
-            />
-          </TouchableOpacity>
+          <View style={[s.pinBtn, { backgroundColor: 'transparent' }]} />
         </View>
       </View>
 

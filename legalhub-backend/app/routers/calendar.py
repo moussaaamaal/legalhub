@@ -11,7 +11,7 @@ from app.core.config import settings
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
 from app.models.enums import EventType
-from app.services.case_ingestion import ingest_case, ingest_standalone_events
+from app.services.case_ingestion import ingest_case_events, ingest_standalone_events
 from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -382,6 +382,22 @@ async def create_event(body: CreateEventRequest, background_tasks: BackgroundTas
             "performed_by": current_user["id"],
         }).execute()
 
+        # If this is a hearing, update first_hearing_date on the case (only if not already set)
+        if body.event_type == "HEARING":
+            try:
+                case_check = (
+                    supabase.table("case_file")
+                    .select("first_hearing_date")
+                    .eq("id", body.case_id)
+                    .maybe_single()
+                    .execute()
+                )
+                if case_check and case_check.data and not case_check.data.get("first_hearing_date"):
+                    hearing_date = body.start_datetime[:10]  # keep only YYYY-MM-DD
+                    supabase.table("case_file").update({"first_hearing_date": hearing_date}).eq("id", body.case_id).execute()
+            except Exception as e:
+                _log.warning(f"[create_event] first_hearing_date update skipped: {e}")
+
         # Notify the client linked to this case
         try:
             case_res = (
@@ -445,7 +461,7 @@ async def create_event(body: CreateEventRequest, background_tasks: BackgroundTas
 
     firm_id = current_user["firm_id"]
     if body.case_id:
-        background_tasks.add_task(ingest_case, body.case_id, firm_id)
+        background_tasks.add_task(ingest_case_events, body.case_id, firm_id)
     else:
         background_tasks.add_task(ingest_standalone_events, firm_id)
         if current_user["role"] not in ("FIRM_ADMIN", "SUPER_ADMIN"):
@@ -507,7 +523,7 @@ async def update_event(event_id: str, body: CreateEventRequest, background_tasks
 
     firm_id = current_user["firm_id"]
     if case_id := updated.get("case_id"):
-        background_tasks.add_task(ingest_case, case_id, firm_id)
+        background_tasks.add_task(ingest_case_events, case_id, firm_id)
     else:
         background_tasks.add_task(ingest_standalone_events, firm_id)
         if current_user["role"] not in ("FIRM_ADMIN", "SUPER_ADMIN"):
@@ -537,7 +553,7 @@ async def delete_event(event_id: str, background_tasks: BackgroundTasks, current
             }).execute()
         except Exception:
             pass
-        background_tasks.add_task(ingest_case, case_id, firm_id)
+        background_tasks.add_task(ingest_case_events, case_id, firm_id)
     else:
         background_tasks.add_task(ingest_standalone_events, firm_id)
         lawyer_to_update = created_by if created_by else current_user["id"]

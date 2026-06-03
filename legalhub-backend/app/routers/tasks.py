@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from app.core.dependencies import get_lawyer
 from app.core.database import supabase
-from app.services.case_ingestion import ingest_case
+from app.core.cache import cache_get, cache_set, cache_delete_pattern
+from app.services.case_ingestion import ingest_tasks, ingest_notes
 from pydantic import BaseModel
 from typing import Optional
 from app.models.enums import CasePriority
@@ -52,11 +53,17 @@ async def list_tasks(
     limit: Optional[int] = None,
     current_user=Depends(get_lawyer)
 ):
+    cache_key = f"case:{case_id}:tasks:{status}" if case_id else None
+    if cache_key:
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
     is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
 
     query = (
         supabase.table("task")
-        .select("*, case_file(id, title, case_number), app_user!task_assigned_to_fkey(id, full_name), created_user:app_user!task_created_by_fkey(id, full_name)")
+        .select("*, case_file(id, title, case_number), app_user!task_assigned_to_fkey(id, full_name), created_user:app_user!task_created_by_fkey(id, full_name, avatar_url)")
         .eq("firm_id", current_user["firm_id"])
     )
 
@@ -86,7 +93,11 @@ async def list_tasks(
     if limit:
         query = query.limit(limit)
     result = query.execute()
-    return result.data
+    data = result.data
+
+    if cache_key:
+        await cache_set(cache_key, data, ttl=60)
+    return data
 
 # ─── POST /api/tasks ────────────────────────────────────
 
@@ -107,7 +118,8 @@ async def create_task(body: CreateTaskRequest, background_tasks: BackgroundTasks
             "action":       f"Task created: {body.title}",
             "performed_by": current_user["id"],
         }).execute()
-        background_tasks.add_task(ingest_case, body.case_id, current_user["firm_id"])
+        await cache_delete_pattern(f"case:{body.case_id}:tasks:*")
+        background_tasks.add_task(ingest_tasks, body.case_id, current_user["firm_id"])
 
     assigned_to = data.get("assigned_to", current_user["id"])
     due_suffix  = f" — Due: {body.due_date}" if body.due_date else ""
@@ -134,7 +146,8 @@ async def update_task_status(task_id: str, body: UpdateTaskStatusRequest, backgr
     if not result.data:
         raise HTTPException(status_code=404, detail="Task not found")
     if case_id := result.data[0].get("case_id"):
-        background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+        await cache_delete_pattern(f"case:{case_id}:tasks:*")
+        background_tasks.add_task(ingest_tasks, case_id, current_user["firm_id"])
     return result.data[0]
 
 # ─── PUT /api/tasks/:id ─────────────────────────────────
@@ -154,7 +167,8 @@ async def update_task(task_id: str, body: UpdateTaskRequest, background_tasks: B
     if not result.data:
         raise HTTPException(status_code=404, detail="Task not found")
     if case_id := result.data[0].get("case_id"):
-        background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+        await cache_delete_pattern(f"case:{case_id}:tasks:*")
+        background_tasks.add_task(ingest_tasks, case_id, current_user["firm_id"])
     return result.data[0]
 
 # ─── DELETE /api/tasks/:id ──────────────────────────────
@@ -179,7 +193,8 @@ async def delete_task(task_id: str, background_tasks: BackgroundTasks, current_u
             }).execute()
         except Exception:
             pass
-        background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+        await cache_delete_pattern(f"case:{case_id}:tasks:*")
+        background_tasks.add_task(ingest_tasks, case_id, current_user["firm_id"])
 
     return {"message": "Task deleted"}
 
@@ -194,6 +209,12 @@ async def list_notes(
     case_id: Optional[str] = None,
     current_user=Depends(get_lawyer)
 ):
+    cache_key = f"case:{case_id}:notes" if case_id else None
+    if cache_key:
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
     query = (
         supabase.table("note")
         .select("*, app_user!note_lawyer_id_fkey(id, full_name, avatar_url)")
@@ -202,7 +223,11 @@ async def list_notes(
     if case_id:
         query = query.eq("case_id", case_id)
     result = query.order("created_at", desc=True).execute()
-    return result.data
+    data = result.data
+
+    if cache_key:
+        await cache_set(cache_key, data, ttl=120)
+    return data
 
 # ─── POST /api/notes ────────────────────────────────────
 
@@ -222,7 +247,8 @@ async def create_note(body: CreateNoteRequest, background_tasks: BackgroundTasks
         "performed_by": current_user["id"],
     }).execute()
     if body.case_id:
-        background_tasks.add_task(ingest_case, body.case_id, current_user["firm_id"])
+        await cache_delete_pattern(f"case:{body.case_id}:notes")
+        background_tasks.add_task(ingest_notes, body.case_id, current_user["firm_id"])
 
     return result.data[0]
 
@@ -240,7 +266,8 @@ async def update_note(note_id: str, body: UpdateNoteRequest, background_tasks: B
     if not result.data:
         raise HTTPException(status_code=404, detail="Note not found")
     if case_id := result.data[0].get("case_id"):
-        background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+        await cache_delete_pattern(f"case:{case_id}:notes")
+        background_tasks.add_task(ingest_notes, case_id, current_user["firm_id"])
     return result.data[0]
 
 # ─── DELETE /api/notes/:id ──────────────────────────────
@@ -266,6 +293,7 @@ async def delete_note(note_id: str, background_tasks: BackgroundTasks, current_u
             }).execute()
         except Exception:
             pass
-        background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
+        await cache_delete_pattern(f"case:{case_id}:notes")
+        background_tasks.add_task(ingest_notes, case_id, current_user["firm_id"])
 
     return {"message": "Note deleted"}
