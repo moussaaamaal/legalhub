@@ -134,7 +134,13 @@ export default function AuthScreen() {
         const supabaseToken = params.access_token;
         if (!supabaseToken) throw new Error('Token absent de la réponse OAuth');
 
-        const lhData = await authAPI.oauthLogin('supabase', supabaseToken, 'access_token');
+        const lhData = await authAPI.oauthLogin('supabase', supabaseToken, 'access_token', supabaseProvider);
+        if (lhData.requires_2fa) {
+          setTwoFATempToken(lhData.temp_token);
+          setTwoFACode('');
+          setTwoFAModal(true);
+          return;
+        }
         await signIn(lhData.access_token, lhData.refresh_token, lhData.user);
       }
     } catch (err) {
@@ -990,18 +996,6 @@ export default function AuthScreen() {
               color: C.red600,
               label: 'Continue with Google',
               handler: () => handleOAuthLogin('google'),
-            },
-            {
-              icon: 'windows',
-              color: C.primary,
-              label: 'Continue with Microsoft',
-              handler: () => handleOAuthLogin('azure'),
-            },
-            {
-              icon: 'apple',
-              color: C.dark,
-              label: 'Continue with Apple',
-              handler: () => handleOAuthLogin('apple'),
             },
           ].map((social, i) => (
             <TouchableOpacity

@@ -195,16 +195,24 @@ async def draft_contract(body: DraftContractRequest, current_user=Depends(get_la
         temperature=0.3,
     )
 
-    session = supabase.table("ai_session").insert({
+    row = {
         "lawyer_id":    current_user["id"],
         "firm_id":      current_user["firm_id"],
-        "case_id":      body.case_id,
         "prompt":       f"Draft {body.template_type} contract",
         "output":       contract,
         "session_type": "CONTRACT_DRAFT",
-    }).execute()
+    }
+    if body.case_id:
+        row["case_id"] = body.case_id
 
-    return {"contract": contract, "session_id": session.data[0]["id"]}
+    session_id = None
+    try:
+        res = supabase.table("ai_session").insert(row).execute()
+        session_id = res.data[0]["id"] if res.data else None
+    except Exception as e:
+        logger.warning(f"ai_session insert failed (non-blocking): {e}")
+
+    return {"contract": contract, "session_id": session_id}
 
 
 @router.post("/suggest-actions")
@@ -274,3 +282,191 @@ async def ai_history(current_user=Depends(get_lawyer)):
         .order("created_at", desc=True) \
         .limit(50).execute()
     return result.data
+
+
+# ─── Extract deadlines & dates ────────────────────────────────────────────────
+
+class ExtractRequest(BaseModel):
+    document_id: str
+
+@router.post("/extract")
+async def extract_deadlines(body: ExtractRequest, current_user=Depends(get_lawyer)):
+    doc_res = supabase_admin.table("document") \
+        .select("*, case_file!inner(firm_id)") \
+        .eq("id", body.document_id) \
+        .single().execute()
+    doc = doc_res.data
+    if not doc or (doc.get("case_file") or {}).get("firm_id") != current_user["firm_id"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    url       = doc.get("storage_url", "")
+    file_type = doc.get("file_type", "")
+    file_name = doc.get("file_name", "")
+    doc_text  = ""
+
+    if url:
+        try:
+            bucket, path = _parse_storage_url(url)
+            file_bytes   = supabase_admin.storage.from_(bucket).download(path)
+            doc_text     = _extract_text(file_bytes, file_type)
+            if not doc_text.strip():
+                doc_text = await ocr_by_url(url, file_name, file_type)
+        except Exception as e:
+            logger.warning(f"Document extraction failed for {body.document_id}: {e}")
+
+    if not doc_text.strip():
+        raise HTTPException(status_code=422, detail="Could not extract text from this document.")
+
+    result = await _mistral_chat(
+        messages=[
+            {
+                "role":    "system",
+                "content": "You are a legal assistant specialized in extracting key dates and deadlines from legal documents.",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Extract all important dates, deadlines, and time-sensitive obligations "
+                    f"from this legal document: '{file_name}'.\n\n"
+                    "## Key Dates & Deadlines\n"
+                    "For each date or deadline found, list:\n"
+                    "- **Date**: [the date or period]\n"
+                    "- **Event / Obligation**: [what must happen on or by that date]\n"
+                    "- **Party**: [who is responsible, if stated]\n\n"
+                    "## Notice Periods & Durations\n"
+                    "List any notice periods, contract durations, or time limits.\n\n"
+                    "Only include sections where you found relevant content. "
+                    "Never write N/A, None, or placeholder text.\n\n"
+                    f"DOCUMENT:\n{doc_text[:15000]}"
+                ),
+            },
+        ],
+        max_tokens=1500,
+    )
+
+    supabase.table("ai_summary").insert({
+        "document_id": body.document_id,
+        "summary":     result,
+        "lawyer_id":   current_user["id"],
+    }).execute()
+
+    return {"result": result, "document_name": file_name}
+
+
+# ─── Deep document analysis ───────────────────────────────────────────────────
+
+class AnalyzeRequest(BaseModel):
+    document_id: str
+
+@router.post("/analyze")
+async def analyze_document(body: AnalyzeRequest, current_user=Depends(get_lawyer)):
+    doc_res = supabase_admin.table("document") \
+        .select("*, case_file!inner(firm_id)") \
+        .eq("id", body.document_id) \
+        .single().execute()
+    doc = doc_res.data
+    if not doc or (doc.get("case_file") or {}).get("firm_id") != current_user["firm_id"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    url       = doc.get("storage_url", "")
+    file_type = doc.get("file_type", "")
+    file_name = doc.get("file_name", "")
+    doc_text  = ""
+
+    if url:
+        try:
+            bucket, path = _parse_storage_url(url)
+            file_bytes   = supabase_admin.storage.from_(bucket).download(path)
+            doc_text     = _extract_text(file_bytes, file_type)
+            if not doc_text.strip():
+                doc_text = await ocr_by_url(url, file_name, file_type)
+        except Exception as e:
+            logger.warning(f"Document extraction failed for {body.document_id}: {e}")
+
+    if not doc_text.strip():
+        raise HTTPException(status_code=422, detail="Could not extract text from this document.")
+
+    detected_lang = _detect_doc_language(doc_text)
+    if detected_lang == "Arabic":
+        lang_rule = "اكتب التحليل كاملاً باللغة العربية."
+    elif detected_lang == "French":
+        lang_rule = "Rédigez l'analyse entièrement en français."
+    else:
+        lang_rule = "Write the analysis in English."
+
+    result = await _mistral_chat(
+        messages=[
+            {
+                "role":    "system",
+                "content": "You are a senior legal analyst. Provide deep, professional analysis of legal documents.",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Perform a deep legal analysis of this document: '{file_name}'.\n\n"
+                    f"LANGUAGE RULE (mandatory): {lang_rule}\n\n"
+                    "Structure your analysis as follows:\n"
+                    "## Document Overview\n"
+                    "Type, purpose, parties involved.\n\n"
+                    "## Key Clauses\n"
+                    "Critical provisions and their legal implications.\n\n"
+                    "## Legal Risks\n"
+                    "Potential issues, gaps, or unfavorable terms.\n\n"
+                    "## Obligations\n"
+                    "What each party must do.\n\n"
+                    "## Recommendations\n"
+                    "Suggested changes or points to negotiate.\n\n"
+                    "Include a section only if you found relevant content. "
+                    "Never write N/A, None, or placeholder text.\n\n"
+                    f"DOCUMENT:\n{doc_text[:15000]}"
+                ),
+            },
+        ],
+        max_tokens=2000,
+    )
+
+    supabase.table("ai_summary").insert({
+        "document_id": body.document_id,
+        "summary":     result,
+        "lawyer_id":   current_user["id"],
+    }).execute()
+
+    return {"result": result, "document_name": file_name}
+
+
+# ─── AI usage meter ───────────────────────────────────────────────────────────
+
+@router.get("/usage")
+async def get_ai_usage(current_user=Depends(get_lawyer)):
+    from datetime import datetime, timezone
+    now         = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    summaries_res = supabase.table("ai_summary").select("id", count="exact") \
+        .eq("lawyer_id", current_user["id"]) \
+        .gte("created_at", month_start).execute()
+
+    sessions_res = supabase.table("ai_session").select("id", count="exact") \
+        .eq("lawyer_id", current_user["id"]) \
+        .gte("created_at", month_start).execute()
+
+    used = (summaries_res.count or 0) + (sessions_res.count or 0)
+
+    # Contract template usage for this firm (all time)
+    contract_res = supabase.table("ai_session").select("prompt") \
+        .eq("firm_id", current_user["firm_id"]) \
+        .eq("session_type", "CONTRACT_DRAFT").execute()
+
+    template_stats: dict[str, int] = {}
+    for s in (contract_res.data or []):
+        prompt = (s.get("prompt") or "").lower()
+        for t in ["Employment", "Service Agreement", "NDA", "Lease"]:
+            if t.lower() in prompt:
+                template_stats[t] = template_stats.get(t, 0) + 1
+
+    return {
+        "used":           used,
+        "limit":          100,
+        "period":         now.strftime("%B %Y"),
+        "template_stats": template_stats,
+    }

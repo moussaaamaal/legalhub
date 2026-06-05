@@ -24,7 +24,6 @@ class UpdateFirmProfileRequest(BaseModel):
 
 class UpdateBrandingRequest(BaseModel):
     logo_url: Optional[str] = None
-    primary_color: Optional[str] = None
     display_name: Optional[str] = None
 
 class UpdateTeamRoleRequest(BaseModel):
@@ -67,7 +66,7 @@ async def update_firm_profile(body: UpdateFirmProfileRequest, current_user=Depen
 async def list_team(current_user=Depends(get_lawyer)):
     result = (
         supabase.table("app_user")
-        .select("id, full_name, email, role, phone, avatar_url, is_active, last_login_at, created_at")
+        .select("id, full_name, email, role, phone, avatar_url, is_active, last_login_at, created_at, lawyer(title, bar_license_number, bar_license_state, specializations, years_experience, office_location)")
         .eq("firm_id", current_user["firm_id"])
         .neq("role", "CLIENT")
         .order("created_at")

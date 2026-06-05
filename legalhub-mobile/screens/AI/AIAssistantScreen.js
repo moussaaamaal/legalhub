@@ -399,11 +399,7 @@ export default function AIAssistantScreen({ navigation }) {
         const raw = await AsyncStorage.getItem(SESSIONS_KEY);
         const list = raw ? JSON.parse(raw) : [];
         setSessions(list);
-        if (list.length > 0) {
-          await openSession(list[0].id);
-        } else {
-          await createSession();
-        }
+        await createSession(); // always open a fresh session on entry
       } catch {}
     })();
   }, []);

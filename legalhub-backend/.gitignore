@@ -62,6 +62,21 @@ media/
 # 🔹 Milvus data
 milvus_data/
 
+# 🔹 Dataset / data collection (fichiers lourds RAG)
+dataset/
+data_collection/
+
+# 🔹 Fichiers de sortie / résultats de tests
+probe_results.json
+*.json.bak
+
+# 🔹 Fichiers accidentels pip install (ex: pip install pkg=2.0 au lieu de ==)
+=*/
+=*.*
+
+# 🔹 Supabase migrations
+supabase_migrations/
+
 # 🔹 Rapports / docs générés
 LEGALHUB_RAPPORT_COMPLET.md
 REDIS_INTEGRATION.md

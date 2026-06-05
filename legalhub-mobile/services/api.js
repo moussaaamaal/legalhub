@@ -2,7 +2,7 @@
 import { getStoredToken, getStoredRefresh, storeTokens } from '../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'http://192.168.1.13:8000';
+const BASE_URL = 'http://192.168.1.12:8000';
 
 // ─── Offline Cache Helpers ────────────────────────────────────────────────────
 const _setCache = async (key, data) => {
@@ -80,8 +80,8 @@ const request = async (method, endpoint, body = null, retry = true) => {
 // ─── AUTH ─────────────────────────────────────────────────────────────────
 export const authAPI = {
   login:              (email, password)      => request('POST', '/api/auth/login',               { email, password }),
-  oauthLogin:         (provider, token, token_type = 'id_token') =>
-                                               request('POST', '/api/auth/oauth/token',          { provider, token, token_type }),
+  oauthLogin:         (provider, token, token_type = 'id_token', source_provider = null) =>
+                                               request('POST', '/api/auth/oauth/token',          { provider, token, token_type, ...(source_provider && { source_provider }) }),
   registerFirm:       (body)                 => request('POST', '/api/auth/register-firm',        body),
   refresh:            (refresh_token)        => request('POST', '/api/auth/refresh',              { refresh_token }),
   logout:             ()                     => request('POST', '/api/auth/logout',               {}),
@@ -106,6 +106,8 @@ export const authAPI = {
   registerBiometric:         ()      => request('POST',   '/api/auth/biometric/register', {}),
   revokeBiometric:           ()      => request('DELETE', '/api/auth/biometric/revoke'),
   biometricLogin:            (token) => request('POST',   '/api/auth/biometric/login', { biometric_token: token }),
+  getLawyerProfile:          ()      => request('GET',    '/api/auth/lawyer-profile'),
+  updateLawyerProfile:       (body)  => request('PUT',    '/api/auth/lawyer-profile', body),
 };
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────
@@ -333,10 +335,13 @@ export const paymentsAPI = {
 // ─── AI ───────────────────────────────────────────────────────────────────
 export const aiAPI = {
   summarize:      (document_id)        => request('POST', '/api/ai/summarize',       { document_id }),
+  extract:        (document_id)        => request('POST', '/api/ai/extract',         { document_id }),
+  analyze:        (document_id)        => request('POST', '/api/ai/analyze',         { document_id }),
   draftContract:  (body)               => request('POST', '/api/ai/draft-contract',  body),
   suggestActions: (case_id)            => request('POST', '/api/ai/suggest-actions', { case_id }),
   caseAssistant:  (case_id, question)  => request('POST', '/api/ai/case-assistant',  { case_id, question }),
-  getHistory:     ()                   => request('GET',  '/api/ai/history'),
+  getHistory:     ()     => request('GET',  '/api/ai/history'),
+  getUsage:       ()     => request('GET',  '/api/ai/usage'),
 };
 
 // ─── RAG / CASE AI ────────────────────────────────────────────────────────
@@ -351,6 +356,21 @@ export const ragAPI = {
   firmIngest:    ()                               => request('POST',   '/api/rag/firm/ingest'),
   firmAsk:       (question, chat_history)         => request('POST',   '/api/rag/firm/ask',          { question, chat_history: chat_history || [] }),
   firmStatus:    ()                               => request('GET',    '/api/rag/firm/status'),
+};
+
+// ─── CONTRACTS (AI Contract Drafting) ────────────────────────────────────
+export const contractsAPI = {
+  // Metadata
+  getTypes:       ()                       => request('GET',  '/api/contracts/types'),
+  list:           ()                       => request('GET',  '/api/contracts/'),
+  getDraft:       (id)                     => request('GET',  `/api/contracts/${id}`),
+
+  // Workflow
+  startSession:   (body)                   => request('POST', '/api/contracts/session/start',  body),
+  answerQuestions:(session_id, answers)    => request('POST', '/api/contracts/session/answer', { session_id, answers }),
+  generate:       (session_id)             => request('POST', '/api/contracts/generate',       { session_id }),
+  analyzeRisks:   (session_id)             => request('POST', `/api/contracts/${session_id}/risks`),
+  exportPdf:      (session_id)             => request('POST', `/api/contracts/${session_id}/export-pdf`),
 };
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ const C = {
 };
 
 const ROLES = ['FIRM_ADMIN', 'LAWYER'];
-const ROLE_LABELS = { FIRM_ADMIN: 'Admin du Cabinet', LAWYER: 'Avocat' };
+const ROLE_LABELS = { FIRM_ADMIN: 'Firm Admin', LAWYER: 'Lawyer' };
 const ROLE_COLORS = {
   FIRM_ADMIN: { bg: C.purple100, color: C.purple600 },
   LAWYER:     { bg: C.blue100,   color: C.blue600   },
@@ -90,6 +90,9 @@ export default function CabinetManagementScreen({ navigation }) {
   const [selectedMember, setSelectedMember] = useState(null);
   const [newRole, setNewRole]             = useState('');
   const [savingRole, setSavingRole]       = useState(false);
+
+  // Member detail modal
+  const [detailMember, setDetailMember]   = useState(null);
 
   // ── Load data ─────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -155,9 +158,9 @@ export default function CabinetManagementScreen({ navigation }) {
       const updated = await firmAPI.updateProfile(payload);
       setFirmProfile(updated);
       setEditingProfile(false);
-      Alert.alert('Succès', 'Profil du cabinet mis à jour.');
+      Alert.alert('Success', 'Firm profile updated.');
     } catch (e) {
-      Alert.alert('Erreur', e.message);
+      Alert.alert('Error', e.message);
     } finally {
       setSavingProfile(false);
     }
@@ -184,9 +187,9 @@ export default function CabinetManagementScreen({ navigation }) {
     try {
       const res = await firmAPI.uploadLogo(formData);
       setBranding(prev => ({ ...prev, logo_url: res.logo_url || res.url }));
-      Alert.alert('Succès', 'Logo mis à jour.');
+      Alert.alert('Success', 'Logo updated.');
     } catch (e) {
-      Alert.alert('Erreur', e.message);
+      Alert.alert('Error', e.message);
     } finally {
       setUploadingLogo(false);
     }
@@ -194,17 +197,17 @@ export default function CabinetManagementScreen({ navigation }) {
 
   // ── Invite lawyer ──────────────────────────────────────────────────────────
   const handleInvite = async () => {
-    if (!inviteFullName.trim()) { Alert.alert('Erreur', 'Entrez le nom complet.'); return; }
-    if (!inviteEmail.trim())    { Alert.alert('Erreur', 'Entrez un email.'); return; }
+    if (!inviteFullName.trim()) { Alert.alert('Error', 'Please enter the full name.'); return; }
+    if (!inviteEmail.trim())    { Alert.alert('Error', 'Please enter an email address.'); return; }
     setInviting(true);
     try {
       await authAPI.inviteLawyer({ email: inviteEmail.trim(), full_name: inviteFullName.trim() });
-      Alert.alert('Invitation envoyée', `Invitation envoyée à ${inviteEmail.trim()}.`);
+      Alert.alert('Invitation sent', `Invitation sent to ${inviteEmail.trim()}.`);
       setInviteModal(false);
       setInviteEmail('');
       setInviteFullName('');
     } catch (e) {
-      Alert.alert('Erreur', e.message);
+      Alert.alert('Error', e.message);
     } finally {
       setInviting(false);
     }
@@ -224,9 +227,9 @@ export default function CabinetManagementScreen({ navigation }) {
       await firmAPI.updateMemberRole(selectedMember.id, newRole);
       setTeam(prev => prev.map(m => m.id === selectedMember.id ? { ...m, role: newRole } : m));
       setRoleModal(false);
-      Alert.alert('Succès', `Rôle de ${selectedMember.full_name} mis à jour.`);
+      Alert.alert('Success', `${selectedMember.full_name}'s role updated.`);
     } catch (e) {
-      Alert.alert('Erreur', e.message);
+      Alert.alert('Error', e.message);
     } finally {
       setSavingRole(false);
     }
@@ -235,19 +238,19 @@ export default function CabinetManagementScreen({ navigation }) {
   // ── Deactivate member ──────────────────────────────────────────────────────
   const handleDeactivate = (member) => {
     Alert.alert(
-      'Désactiver le membre',
-      `Voulez-vous désactiver ${member.full_name} ? Il ne pourra plus accéder au cabinet.`,
+      'Deactivate member',
+      `Deactivate ${member.full_name}? They will no longer have access to the firm.`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
-          text: 'Désactiver', style: 'destructive',
+          text: 'Deactivate', style: 'destructive',
           onPress: async () => {
             try {
               await firmAPI.deactivateMember(member.id);
               setTeam(prev => prev.map(m => m.id === member.id ? { ...m, is_active: false } : m));
-              Alert.alert('Succès', `${member.full_name} a été désactivé.`);
+              Alert.alert('Success', `${member.full_name} has been deactivated.`);
             } catch (e) {
-              Alert.alert('Erreur', e.message);
+              Alert.alert('Error', e.message);
             }
           },
         },
@@ -259,7 +262,7 @@ export default function CabinetManagementScreen({ navigation }) {
   const handleCopyCode = () => {
     if (officeCode) {
       Clipboard.setString(officeCode);
-      Alert.alert('Copié', 'Code du cabinet copié dans le presse-papiers.');
+      Alert.alert('Copied', 'Firm code copied to clipboard.');
     }
   };
 
@@ -286,7 +289,7 @@ export default function CabinetManagementScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color={C.white} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Gestion du Cabinet</Text>
+        <Text style={s.headerTitle}>Firm Management</Text>
         <TouchableOpacity onPress={load} style={s.backBtn}>
           <Ionicons name="refresh" size={20} color={C.white} />
         </TouchableOpacity>
@@ -315,38 +318,38 @@ export default function CabinetManagementScreen({ navigation }) {
             </TouchableOpacity>
             <View style={{ marginLeft: 16, flex: 1 }}>
               <Text style={s.mdBold}>{branding?.display_name || firmProfile?.name || 'Cabinet'}</Text>
-              <Text style={[s.xs, { color: C.primary, marginTop: 2 }]}>Appuyer sur le logo pour modifier</Text>
+              <Text style={[s.xs, { color: C.primary, marginTop: 2 }]}>Tap logo to change</Text>
             </View>
           </View>
 
         </View>
 
         {/* ── Statistiques ────────────────────────────────────────────── */}
-        <SectionHeader icon="chart-bar" title="Statistiques du Cabinet" color={C.blue600} />
+        <SectionHeader icon="chart-bar" title="Firm Statistics" color={C.blue600} />
         <View style={s.statsRow}>
-          <StatCard icon="briefcase"    label="Dossiers actifs" value={stats?.active_cases}    color={C.primary} />
-          <StatCard icon="users"        label="Membres"         value={stats?.total_members ?? team.length} color={C.secondary} />
-          <StatCard icon="address-book" label="Clients"         value={stats?.total_clients}   color={C.green600} />
-          <StatCard icon="file-alt"     label="Documents"       value={stats?.total_documents} color={C.amber600} />
+          <StatCard icon="briefcase"    label="Active Cases" value={stats?.active_cases}    color={C.primary} />
+          <StatCard icon="users"        label="Members"      value={stats?.total_members ?? team.length} color={C.secondary} />
+          <StatCard icon="address-book" label="Clients"      value={stats?.total_clients}   color={C.green600} />
+          <StatCard icon="file-alt"     label="Documents"    value={stats?.total_documents} color={C.amber600} />
         </View>
 
         {/* ── Profil du cabinet ────────────────────────────────────────── */}
-        <SectionHeader icon="building" title="Profil du Cabinet" color={C.indigo600} />
+        <SectionHeader icon="building" title="Firm Profile" color={C.indigo600} />
         <View style={s.card}>
           {editingProfile ? (
             <>
               {[
-                { key: 'name',                label: 'Nom du cabinet',        placeholder: 'Ex: Cabinet Benali'       },
-                { key: 'legal_entity_type',   label: 'Forme juridique',       placeholder: 'SARL, SNC, Cabinet…'     },
-                { key: 'registration_number', label: "N° d'immatriculation",  placeholder: 'RC 12345'                 },
-                { key: 'tax_id',              label: 'NIF / Identifiant fiscal', placeholder: '000000000000000'       },
-                { key: 'email',               label: 'Email',                 placeholder: 'contact@cabinet.dz'       },
-                { key: 'phone',               label: 'Téléphone',             placeholder: '+213 ...'                 },
-                { key: 'address',             label: 'Adresse',               placeholder: 'Rue, quartier…'           },
-                { key: 'city',                label: 'Ville',                 placeholder: 'Alger'                    },
-                { key: 'country',             label: 'Pays',                  placeholder: 'DZ'                       },
-                { key: 'practice_areas',      label: 'Domaines (séparés par ,)', placeholder: 'Droit civil, Pénal…'  },
-                { key: 'description',         label: 'Description',           placeholder: 'Présentation du cabinet', multiline: true },
+                { key: 'name',                label: 'Firm Name',              placeholder: 'e.g. Benali Law Firm'    },
+                { key: 'legal_entity_type',   label: 'Legal Entity Type',      placeholder: 'LLC, Partnership…'       },
+                { key: 'registration_number', label: 'Registration Number',    placeholder: 'RC 12345'                 },
+                { key: 'tax_id',              label: 'Tax ID',                 placeholder: '000000000000000'          },
+                { key: 'email',               label: 'Email',                  placeholder: 'contact@firm.com'         },
+                { key: 'phone',               label: 'Phone',                  placeholder: '+213 ...'                 },
+                { key: 'address',             label: 'Address',                placeholder: 'Street, district…'        },
+                { key: 'city',                label: 'City',                   placeholder: 'Algiers'                  },
+                { key: 'country',             label: 'Country',                placeholder: 'DZ'                       },
+                { key: 'practice_areas',      label: 'Practice Areas (comma-separated)', placeholder: 'Civil, Criminal…' },
+                { key: 'description',         label: 'Description',            placeholder: 'Firm overview…', multiline: true },
               ].map(f => (
                 <View key={f.key} style={s.inputGroup}>
                   <Text style={s.inputLabel}>{f.label}</Text>
@@ -362,25 +365,25 @@ export default function CabinetManagementScreen({ navigation }) {
               ))}
               <View style={s.rowBtns}>
                 <TouchableOpacity style={[s.btn, s.btnOutline]} onPress={() => setEditingProfile(false)}>
-                  <Text style={s.btnOutlineText}>Annuler</Text>
+                  <Text style={s.btnOutlineText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.btn, s.btnPrimary]} onPress={handleSaveProfile} disabled={savingProfile}>
-                  {savingProfile ? <ActivityIndicator size="small" color={C.white} /> : <Text style={s.btnPrimaryText}>Enregistrer</Text>}
+                  {savingProfile ? <ActivityIndicator size="small" color={C.white} /> : <Text style={s.btnPrimaryText}>Save</Text>}
                 </TouchableOpacity>
               </View>
             </>
           ) : (
             <>
               {[
-                { icon: 'building',         iconBg: C.indigo50,  iconColor: C.indigo600, label: 'Nom',               value: firmProfile?.name                },
-                { icon: 'balance-scale',    iconBg: C.purple50,  iconColor: C.purple600, label: 'Forme juridique',   value: firmProfile?.legal_entity_type   },
-                { icon: 'id-card',          iconBg: C.blue50,    iconColor: C.blue600,   label: 'N° immatriculation',value: firmProfile?.registration_number },
-                { icon: 'file-invoice',     iconBg: C.amber50,   iconColor: C.amber600,  label: 'NIF fiscal',        value: firmProfile?.tax_id              },
+                { icon: 'building',         iconBg: C.indigo50,  iconColor: C.indigo600, label: 'Name',                value: firmProfile?.name                },
+                { icon: 'balance-scale',    iconBg: C.purple50,  iconColor: C.purple600, label: 'Legal Entity Type',  value: firmProfile?.legal_entity_type   },
+                { icon: 'id-card',          iconBg: C.blue50,    iconColor: C.blue600,   label: 'Registration No.',   value: firmProfile?.registration_number },
+                { icon: 'file-invoice',     iconBg: C.amber50,   iconColor: C.amber600,  label: 'Tax ID',             value: firmProfile?.tax_id              },
                 { icon: 'envelope',         iconBg: C.purple50,  iconColor: C.purple600, label: 'Firm Email',        value: firmProfile?.email               },
                 { icon: 'phone',            iconBg: C.green50,   iconColor: C.green600,  label: 'Firm Phone',        value: firmProfile?.phone               },
-                { icon: 'map-marker-alt',   iconBg: C.red50,     iconColor: C.red600,    label: 'Adresse',           value: firmProfile?.address             },
-                { icon: 'city',             iconBg: C.indigo50,  iconColor: C.indigo600, label: 'Ville',             value: firmProfile?.city                },
-                { icon: 'globe',            iconBg: C.teal50,    iconColor: C.teal600,   label: 'Pays',              value: firmProfile?.country             },
+                { icon: 'map-marker-alt',   iconBg: C.red50,     iconColor: C.red600,    label: 'Address',            value: firmProfile?.address             },
+                { icon: 'city',             iconBg: C.indigo50,  iconColor: C.indigo600, label: 'City',               value: firmProfile?.city                },
+                { icon: 'globe',            iconBg: C.teal50,    iconColor: C.teal600,   label: 'Country',            value: firmProfile?.country             },
               ].map(item => (
                 <View key={item.label} style={s.infoRow}>
                   <View style={[s.infoIcon, { backgroundColor: item.iconBg }]}>
@@ -400,7 +403,7 @@ export default function CabinetManagementScreen({ navigation }) {
                     <FontAwesome5 name="gavel" size={13} color={C.blue600} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={s.xs}>Domaines d'activité</Text>
+                    <Text style={s.xs}>Practice Areas</Text>
                     <View style={[s.row, { flexWrap: 'wrap', gap: 6, marginTop: 4 }]}>
                       {firmProfile.practice_areas.map((area, i) => (
                         <View key={i} style={s.areaTag}>
@@ -427,36 +430,36 @@ export default function CabinetManagementScreen({ navigation }) {
 
               <TouchableOpacity style={[s.btn, s.btnPrimary, { marginTop: 14 }]} onPress={() => setEditingProfile(true)}>
                 <FontAwesome5 name="edit" size={13} color={C.white} style={{ marginRight: 8 }} />
-                <Text style={s.btnPrimaryText}>Modifier le profil</Text>
+                <Text style={s.btnPrimaryText}>Edit Profile</Text>
               </TouchableOpacity>
             </>
           )}
         </View>
 
         {/* ── Code du cabinet ─────────────────────────────────────────── */}
-        <SectionHeader icon="qrcode" title="Code du Cabinet" color={C.green600} />
+        <SectionHeader icon="qrcode" title="Firm Office Code" color={C.green600} />
         <View style={s.card}>
-          <Text style={s.xs}>Partagez ce code pour inviter des avocats à rejoindre votre cabinet.</Text>
+          <Text style={s.xs}>Share this code to invite lawyers to join your firm.</Text>
           <View style={s.codeBox}>
             <Text style={s.codeText}>{officeCode || '—'}</Text>
             <TouchableOpacity onPress={handleCopyCode} style={s.copyBtn}>
               <FontAwesome5 name="copy" size={14} color={C.primary} />
-              <Text style={[s.xs, { color: C.primary, marginLeft: 4 }]}>Copier</Text>
+              <Text style={[s.xs, { color: C.primary, marginLeft: 4 }]}>Copy</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* ── Membres de l'équipe ──────────────────────────────────────── */}
-        <SectionHeader icon="users" title="Membres de l'Équipe" color={C.secondary} />
+        <SectionHeader icon="users" title="Team Members" color={C.secondary} />
         <View style={s.card}>
-          <TouchableOpacity style={[s.btn, s.btnSuccess, { marginBottom: 16 }]} onPress={() => setInviteModal(true)}>
+          <TouchableOpacity style={[s.btn, s.btnSuccess, { marginBottom: 16 }]} onPress={() => setInviteModal(true)} activeOpacity={0.8}>
             <FontAwesome5 name="user-plus" size={13} color={C.white} style={{ marginRight: 8 }} />
-            <Text style={s.btnPrimaryText}>Inviter un Avocat</Text>
+            <Text style={s.btnPrimaryText}>Invite a Lawyer</Text>
           </TouchableOpacity>
 
           {activeMembers.length === 0 ? (
             <Text style={[s.sm, { color: C.gray500, textAlign: 'center', paddingVertical: 16 }]}>
-              Aucun membre actif
+              No active members
             </Text>
           ) : (
             activeMembers.map(member => (
@@ -464,6 +467,7 @@ export default function CabinetManagementScreen({ navigation }) {
                 key={member.id}
                 member={member}
                 currentUserId={user?.id}
+                onPress={() => setDetailMember(member)}
                 onChangeRole={() => openRoleModal(member)}
                 onDeactivate={() => handleDeactivate(member)}
               />
@@ -473,10 +477,10 @@ export default function CabinetManagementScreen({ navigation }) {
           {inactiveMembers.length > 0 && (
             <>
               <Text style={[s.xs, { color: C.gray500, marginTop: 12, marginBottom: 8 }]}>
-                Membres désactivés ({inactiveMembers.length})
+                Deactivated members ({inactiveMembers.length})
               </Text>
               {inactiveMembers.map(member => (
-                <MemberCard key={member.id} member={member} inactive />
+                <MemberCard key={member.id} member={member} inactive onPress={() => setDetailMember(member)} />
               ))}
             </>
           )}
@@ -494,24 +498,24 @@ export default function CabinetManagementScreen({ navigation }) {
           <View style={s.modalOverlay}>
             <View style={s.modalBox}>
               <View style={s.modalHeader}>
-                <Text style={s.modalTitle}>Inviter un Avocat</Text>
+                <Text style={s.modalTitle}>Invite a Lawyer</Text>
                 <TouchableOpacity onPress={() => { setInviteModal(false); setInviteEmail(''); setInviteFullName(''); }}>
                   <Ionicons name="close" size={22} color={C.gray600} />
                 </TouchableOpacity>
               </View>
 
-              <Text style={s.inputLabel}>Nom complet</Text>
+              <Text style={s.inputLabel}>Full Name</Text>
               <TextInput
                 style={s.input}
                 value={inviteFullName}
                 onChangeText={setInviteFullName}
-                placeholder="Prénom Nom"
+                placeholder="First Last"
                 placeholderTextColor={C.gray400}
                 autoCorrect={false}
                 returnKeyType="next"
               />
 
-              <Text style={[s.inputLabel, { marginTop: 12 }]}>Adresse email</Text>
+              <Text style={[s.inputLabel, { marginTop: 12 }]}>Email Address</Text>
               <TextInput
                 style={s.input}
                 value={inviteEmail}
@@ -525,15 +529,86 @@ export default function CabinetManagementScreen({ navigation }) {
                 onSubmitEditing={handleInvite}
               />
 
-              <TouchableOpacity style={[s.btn, s.btnPrimary, { marginTop: 20 }]} onPress={handleInvite} disabled={inviting}>
+              <TouchableOpacity style={[s.btn, s.modalBtn, { marginTop: 20 }]} onPress={handleInvite} disabled={inviting}>
                 {inviting
                   ? <ActivityIndicator size="small" color={C.white} />
-                  : <Text style={s.btnPrimaryText}>Envoyer l'invitation</Text>
+                  : <Text style={s.btnPrimaryText}>Send Invitation</Text>
                 }
               </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Modal: Member Detail ─────────────────────────────────────── */}
+      <Modal visible={!!detailMember} animationType="slide" transparent onRequestClose={() => setDetailMember(null)}>
+        <View style={s.modalOverlay}>
+          <View style={[s.modalBox, { paddingBottom: 32 }]}>
+            {detailMember && (() => {
+              const lp = detailMember.lawyer || {};
+              const initials = (detailMember.full_name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+              return (
+                <>
+                  {/* Header */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                    <Text style={s.modalTitle}>Member Profile</Text>
+                    <TouchableOpacity onPress={() => setDetailMember(null)} style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: C.gray100, alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="close" size={18} color={C.gray600} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Avatar + name */}
+                  <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                    <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                      {detailMember.avatar_url
+                        ? <Image source={{ uri: detailMember.avatar_url }} style={{ width: 72, height: 72, borderRadius: 36 }} />
+                        : <Text style={{ color: C.white, fontSize: 24, fontWeight: '700' }}>{initials}</Text>
+                      }
+                    </View>
+                    <Text style={[s.smBold, { fontSize: 17 }]}>{detailMember.full_name}</Text>
+                    {lp.title && <Text style={[s.xs, { color: C.primary, marginTop: 2, fontWeight: '600' }]}>{lp.title}</Text>}
+                    <RoleBadge role={detailMember.role} />
+                  </View>
+
+                  {/* Info rows */}
+                  {[
+                    { icon: 'envelope',         color: C.purple600, bg: C.purple50, label: 'Email',               value: detailMember.email },
+                    { icon: 'phone',             color: C.green600,  bg: C.green50,  label: 'Phone',               value: detailMember.phone },
+                    { icon: 'id-badge',          color: C.indigo600, bg: C.indigo50, label: 'Bar License Number',  value: lp.bar_license_number },
+                    { icon: 'map-marker-alt',    color: C.red600,    bg: C.red50,    label: 'Bar License State',   value: lp.bar_license_state },
+                    { icon: 'star',              color: C.amber600,  bg: C.amber50,  label: 'Years of Experience', value: lp.years_experience != null ? `${lp.years_experience} years` : null },
+                    { icon: 'building',          color: C.teal600,   bg: C.teal50,   label: 'Office Location',     value: lp.office_location },
+                    { icon: 'clock',             color: C.gray600,   bg: C.gray100,  label: 'Member Since',        value: detailMember.created_at ? new Date(detailMember.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null },
+                  ].filter(f => f.value).map((f, i) => (
+                    <View key={i} style={[s.infoRow, { marginBottom: 10 }]}>
+                      <View style={[s.infoIcon, { backgroundColor: f.bg }]}>
+                        <FontAwesome5 name={f.icon} size={13} color={f.color} />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={s.xs}>{f.label}</Text>
+                        <Text style={s.smBold}>{f.value}</Text>
+                      </View>
+                    </View>
+                  ))}
+
+                  {/* Specializations */}
+                  {lp.specializations?.length > 0 && (
+                    <View style={{ marginTop: 4 }}>
+                      <Text style={[s.xs, { marginBottom: 8 }]}>Specializations</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                        {lp.specializations.map((sp, i) => (
+                          <View key={i} style={{ backgroundColor: C.blue100, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 11, color: C.primary, fontWeight: '600' }}>{sp.replace(/_/g, ' ')}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                </>
+              );
+            })()}
+          </View>
+        </View>
       </Modal>
 
       {/* ── Modal: Changer le rôle ────────────────────────────────────── */}
@@ -542,7 +617,7 @@ export default function CabinetManagementScreen({ navigation }) {
         <View style={s.modalOverlay}>
           <View style={s.modalBox}>
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Modifier le Rôle</Text>
+              <Text style={s.modalTitle}>Change Role</Text>
               <TouchableOpacity onPress={() => setRoleModal(false)}>
                 <Ionicons name="close" size={22} color={C.gray600} />
               </TouchableOpacity>
@@ -550,7 +625,7 @@ export default function CabinetManagementScreen({ navigation }) {
 
             {selectedMember && (
               <Text style={[s.sm, { marginBottom: 16, color: C.gray600 }]}>
-                Changer le rôle de {selectedMember.full_name}
+                Change role for {selectedMember.full_name}
               </Text>
             )}
 
@@ -570,10 +645,10 @@ export default function CabinetManagementScreen({ navigation }) {
               </TouchableOpacity>
             ))}
 
-            <TouchableOpacity style={[s.btn, s.btnPrimary, { marginTop: 20 }]} onPress={handleSaveRole} disabled={savingRole}>
+            <TouchableOpacity style={[s.btn, s.modalBtn, { marginTop: 20 }]} onPress={handleSaveRole} disabled={savingRole}>
               {savingRole
                 ? <ActivityIndicator size="small" color={C.white} />
-                : <Text style={s.btnPrimaryText}>Enregistrer</Text>
+                : <Text style={s.btnPrimaryText}>Save</Text>
               }
             </TouchableOpacity>
           </View>
@@ -585,10 +660,10 @@ export default function CabinetManagementScreen({ navigation }) {
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────
-function MemberCard({ member, currentUserId, onChangeRole, onDeactivate, inactive }) {
+function MemberCard({ member, currentUserId, onPress, onChangeRole, onDeactivate, inactive }) {
   const isMe = member.id === currentUserId;
   return (
-    <View style={[s.memberCard, inactive && s.memberCardInactive]}>
+    <TouchableOpacity style={[s.memberCard, inactive && s.memberCardInactive]} onPress={onPress} activeOpacity={0.75}>
       <View style={[s.avatar, inactive && { opacity: 0.5 }]}>
         {member.avatar_url
           ? <Image source={{ uri: member.avatar_url }} style={s.avatarImg} />
@@ -598,7 +673,7 @@ function MemberCard({ member, currentUserId, onChangeRole, onDeactivate, inactiv
       <View style={{ flex: 1, marginLeft: 12 }}>
         <View style={s.row}>
           <Text style={[s.smBold, inactive && { color: C.gray400 }]}>{member.full_name}</Text>
-          {isMe && <View style={s.meBadge}><Text style={s.meBadgeText}>Moi</Text></View>}
+          {isMe && <View style={s.meBadge}><Text style={s.meBadgeText}>Me</Text></View>}
         </View>
         <Text style={s.xs}>{member.email}</Text>
         <RoleBadge role={member.role} />
@@ -615,18 +690,18 @@ function MemberCard({ member, currentUserId, onChangeRole, onDeactivate, inactiv
       )}
       {inactive && (
         <View style={s.inactiveBadge}>
-          <Text style={s.inactiveBadgeText}>Désactivé</Text>
+          <Text style={s.inactiveBadgeText}>Deactivated</Text>
         </View>
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
 
 function roleDescription(role) {
   switch (role) {
-    case 'FIRM_ADMIN': return 'Accès complet, gestion du cabinet';
-    case 'LAWYER':     return 'Gestion des dossiers et clients';
+    case 'FIRM_ADMIN': return 'Full access, firm management';
+    case 'LAWYER':     return 'Manage cases and clients';
     default:           return '';
   }
 }
@@ -719,6 +794,7 @@ const s = StyleSheet.create({
   rowBtns:     { flexDirection: 'row', gap: 10, marginTop: 4 },
   btn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16 },
   btnPrimary:  { backgroundColor: C.primary, flex: 1 },
+  modalBtn:    { backgroundColor: C.primary, width: '100%', paddingVertical: 14 },
   btnOutline:  { borderWidth: 1.5, borderColor: C.gray200, flex: 1 },
   btnSuccess:  { backgroundColor: C.green600 },
   btnPrimaryText: { fontSize: 14, fontWeight: '700', color: C.white },

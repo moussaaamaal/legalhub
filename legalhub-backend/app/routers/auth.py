@@ -99,9 +99,10 @@ class NotificationPreferencesRequest(BaseModel):
     whatsapp_updates: bool | None = None
 
 class OAuthLoginRequest(BaseModel):
-    provider: str       # "google" | "microsoft" | "apple"
-    token: str          # id_token or access_token from the provider
-    token_type: str = "id_token"  # "id_token" | "access_token"
+    provider: str                    # "supabase" | "google" | "apple"
+    token: str                       # id_token or access_token from the provider
+    token_type: str = "id_token"     # "id_token" | "access_token"
+    source_provider: str | None = None  # vrai provider : "google" | "azure"
     hearing_reminders: bool | None = None
     hearing_reminder_offset: str | None = None
     task_reminders: bool | None = None
@@ -199,11 +200,11 @@ async def login(body: LoginRequest):
     now = datetime.now(timezone.utc).isoformat()
     supabase.table("app_user").update({"last_login_at": now}).eq("id", user["id"]).execute()
 
-    # Record login history (requires login_history table — see SQL migration)
     try:
         supabase.table("login_history").insert({
             "user_id": user["id"],
             "logged_in_at": now,
+            "login_method": "password",
         }).execute()
     except Exception:
         pass
@@ -345,10 +346,16 @@ async def oauth_token_login(body: OAuthLoginRequest):
         supabase.table("login_history").insert({
             "user_id": user["id"],
             "logged_in_at": now,
-            "login_method": body.provider,
+            "login_method": body.source_provider or body.provider,
         }).execute()
     except Exception:
         pass
+
+    if user.get("two_fa_enabled"):
+        return {
+            "requires_2fa": True,
+            "temp_token": create_2fa_pending_token(user["id"]),
+        }
 
     firm_result = supabase.table("firm").select("name").eq("id", user["firm_id"]).single().execute()
     firm_name = firm_result.data["name"] if firm_result.data else None
@@ -499,6 +506,31 @@ async def update_me(body: UpdateMeRequest, current_user=Depends(get_current_user
         "two_fa_enabled": updated["two_fa_enabled"],
     }
 
+# ─── GET/PUT /api/auth/lawyer-profile ─────────────────
+
+class LawyerProfileUpdate(BaseModel):
+    title:              str | None = None
+    bar_license_number: str | None = None
+    bar_license_state:  str | None = None
+    specializations:    list[str] | None = None
+    years_experience:   int | None = None
+    office_location:    str | None = None
+
+@router.get("/lawyer-profile")
+async def get_lawyer_profile(current_user=Depends(get_lawyer)):
+    res = supabase.table("lawyer").select(
+        "title, bar_license_number, bar_license_state, specializations, years_experience, office_location"
+    ).eq("user_id", current_user["id"]).single().execute()
+    return res.data or {}
+
+@router.put("/lawyer-profile")
+async def update_lawyer_profile(body: LawyerProfileUpdate, current_user=Depends(get_lawyer)):
+    data = body.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    res = supabase.table("lawyer").update(data).eq("user_id", current_user["id"]).execute()
+    return res.data[0] if res.data else {}
+
 # ─── DELETE /api/auth/me ───────────────────────────────
 
 @router.delete("/me", status_code=200)
@@ -600,9 +632,18 @@ async def biometric_login(body: BiometricLoginRequest):
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
     try:
-        supabase.table("login_history").insert({"user_id": user["id"]}).execute()
+        supabase.table("login_history").insert({
+            "user_id": user["id"],
+            "login_method": "biometric",
+        }).execute()
     except Exception:
         pass
+
+    if user.get("two_fa_enabled"):
+        return {
+            "requires_2fa": True,
+            "temp_token": create_2fa_pending_token(user["id"]),
+        }
 
     firm_res = supabase.table("firm").select("name").eq("id", user["firm_id"]).single().execute()
     firm_name = firm_res.data["name"] if firm_res.data else None
@@ -639,9 +680,10 @@ async def get_login_history(current_user=Depends(get_current_user)):
     try:
         result = (
             supabase.table("login_history")
-            .select("id, logged_in_at")
+            .select("id, logged_in_at, login_method")
             .eq("user_id", current_user["id"])
             .order("logged_in_at", desc=True)
+            .limit(20)
             .execute()
         )
         return result.data or []

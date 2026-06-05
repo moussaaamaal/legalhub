@@ -20,6 +20,8 @@ import ClientDetailsScreen        from './Clients/ClientDetailsScreen';
 import UploadDocumentScreen       from './Documents/UploadDocumentScreen';
 import AddNoteScreen              from './TasksNotes/AddNoteScreen';
 import AIAssistantScreen          from './AI/AIAssistantScreen';
+import AIQuickActionsScreen       from './AI/AIQuickActionsScreen';
+import ContractDraftScreen        from './AI/ContractDraftScreen';
 import ScheduleScreen             from './Schedule/ScheduleScreen';
 import InvoiceScreen              from './Invoices/InvoiceScreen';
 import VoiceNoteScreen            from './TasksNotes/VoiceNoteScreen';
@@ -755,8 +757,8 @@ export default function HomeScreen() {
       badgeLabel: '', badgeColor: COLORS.red600, badgeBg: COLORS.red50,
     },
     {
-      screen: 'AIAssistant', icon: 'robot', iconLib: 'FA5',
-      label: 'AI Assistant', sublabel: 'Legal AI',
+      screen: 'AIQuickActions', icon: 'magic', iconLib: 'FA5',
+      label: 'AI Tools', sublabel: 'Legal AI',
       color: COLORS.indigo600, bg: '#EEF2FF', accent: '#C7D2FE',
       badge: 'Online', badgeLabel: '', badgeColor: COLORS.green600, badgeBg: COLORS.green50,
     },
@@ -913,6 +915,20 @@ export default function HomeScreen() {
     },
   };
 
+  const aiToolsNav = {
+    goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); },
+    navigate: (screen) => {
+      if (screen === 'ContractDraft' || screen === 'AIAssistant') {
+        setPreviousScreen('AIQuickActions');
+        setCurrentScreen(screen);
+      }
+    },
+  };
+
+  const contractDraftNav = {
+    goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); },
+  };
+
   const firstName = user?.full_name?.split(' ')[0] || 'there';
   const firmName  = user?.firm_name || 'Your Firm';
 
@@ -943,6 +959,8 @@ export default function HomeScreen() {
   if (currentScreen === 'UploadDoc')            return <UploadDocumentScreen {...screenProps} />;
   if (currentScreen === 'AddNote')              return <AddNoteScreen navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); } }} />;
   if (currentScreen === 'AIAssistant')          return <AIAssistantScreen {...screenProps} />;
+  if (currentScreen === 'AIQuickActions')       return <AIQuickActionsScreen navigation={aiToolsNav} />;
+  if (currentScreen === 'ContractDraft')        return <ContractDraftScreen navigation={contractDraftNav} />;
   if (currentScreen === 'Schedule')             return <ScheduleScreen {...screenProps} />;
   if (currentScreen === 'Invoice')              return <InvoiceScreen navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); } }} />;
   if (currentScreen === 'VoiceNote')            return <VoiceNoteScreen navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); } }} />;
@@ -1104,14 +1122,14 @@ export default function HomeScreen() {
 
         {/* ── AI Card ── */}
         <View style={[styles.section, { backgroundColor: '#EEF2FF' }]}>
-          <TouchableOpacity style={styles.aiCard} onPress={() => navigateTo('AIAssistant')}>
+          <TouchableOpacity style={styles.aiCard} onPress={() => navigateTo('AIQuickActions')}>
             <View style={styles.row}>
               <View style={styles.aiIconWrap}>
-                <Icon lib="FA5" name="robot" size={24} color={COLORS.white} />
+                <Icon lib="FA5" name="magic" size={22} color={COLORS.white} />
               </View>
               <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={styles.aiTitle}>AI Legal Assistant</Text>
-                <Text style={styles.aiSub}>Tap to open your intelligent legal companion</Text>
+                <Text style={styles.aiTitle}>AI Legal Tools</Text>
+                <Text style={styles.aiSub}>Summarize, draft, extract & analyze documents</Text>
               </View>
               <Icon lib="FA5" name="chevron-right" size={14} color={COLORS.white} />
             </View>
@@ -1239,6 +1257,8 @@ const styles = StyleSheet.create({
   aiIconWrap:         { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   aiTitle:            { fontSize: 16, fontWeight: '700', color: COLORS.white },
   aiSub:              { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
+  aiChatRow:          { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)' },
+  aiChatTxt:          { flex: 1, fontSize: 13, color: COLORS.white, fontWeight: '600', opacity: 0.9 },
   addTaskBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: COLORS.amber600, marginTop: 4 },
   addTaskBtnText:     { fontSize: 13, fontWeight: '700', color: COLORS.amber600 },
 });
