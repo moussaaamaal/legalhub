@@ -434,10 +434,13 @@ export default function ProfileScreen({ navigation }) {
   const [confirmPwd, setConfirmPwd]       = useState('');
   const [savingPwd, setSavingPwd]         = useState(false);
   // 2FA modal
-  const [twoFAModal, setTwoFAModal]       = useState(false);
-  const [twoFAData, setTwoFAData]         = useState(null);   // { secret, qr_code_url }
-  const [twoFACode, setTwoFACode]         = useState('');
-  const [twoFALoading, setTwoFALoading]   = useState(false);
+  const [twoFAModal, setTwoFAModal]           = useState(false);
+  const [twoFAData, setTwoFAData]             = useState(null);   // { secret, qr_code_url }
+  const [twoFACode, setTwoFACode]             = useState('');
+  const [twoFALoading, setTwoFALoading]       = useState(false);
+  // Disable 2FA modal
+  const [disable2FAModal, setDisable2FAModal] = useState(false);
+  const [disable2FACode, setDisable2FACode]   = useState('');
   // Biometric
   const [biometricEnabled, setBiometricEnabled]   = useState(false);
   const [biometricSupported, setBiometricSupported] = useState(false);
@@ -540,13 +543,8 @@ export default function ProfileScreen({ navigation }) {
   // ── 2FA ────────────────────────────────────────────────
   const handleToggle2FA = useCallback(async () => {
     if (twoFaEnabled) {
-      Alert.alert('Disable 2FA', 'Are you sure you want to disable Two-Factor Authentication?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Disable', style: 'destructive', onPress: async () => {
-          // No disable endpoint yet — show info
-          Alert.alert('Info', 'Contact support to disable 2FA.');
-        }},
-      ]);
+      setDisable2FACode('');
+      setDisable2FAModal(true);
       return;
     }
     setTwoFALoading(true);
@@ -560,6 +558,22 @@ export default function ProfileScreen({ navigation }) {
       setTwoFALoading(false);
     }
   }, [twoFaEnabled]);
+
+  const handleDisable2FA = useCallback(async () => {
+    if (!disable2FACode.trim()) return;
+    setTwoFALoading(true);
+    try {
+      await authAPI.disable2FA(disable2FACode.trim());
+      setProfile(prev => ({ ...prev, two_fa_enabled: false }));
+      setDisable2FAModal(false);
+      setDisable2FACode('');
+      Alert.alert('Success', '2FA has been disabled on your account.');
+    } catch (err) {
+      Alert.alert('Invalid Code', err.message || 'The code you entered is incorrect.');
+    } finally {
+      setTwoFALoading(false);
+    }
+  }, [disable2FACode]);
 
   const handleVerify2FA = useCallback(async () => {
     if (!twoFACode.trim()) return;
@@ -1493,6 +1507,44 @@ export default function ProfileScreen({ navigation }) {
               </TouchableOpacity>
             </ScrollView>
           </View>
+      </Modal>
+
+      {/* ── DISABLE 2FA MODAL ── */}
+      <Modal visible={disable2FAModal} transparent animationType="slide" onRequestClose={() => setDisable2FAModal(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalBox}>
+            <View style={[s.row, { justifyContent: 'space-between', marginBottom: 16 }]}>
+              <Text style={s.sectionTitle}>Disable 2FA</Text>
+              <TouchableOpacity onPress={() => { setDisable2FAModal(false); setDisable2FACode(''); }}>
+                <Icon lib="FA5" name="times" size={18} color={C.gray500} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[s.xs, { color: C.gray500, marginBottom: 16 }]}>
+              Enter the 6-digit code from your authenticator app to confirm.
+            </Text>
+            <TextInput
+              style={s.input}
+              placeholder="6-digit code"
+              placeholderTextColor={C.gray400}
+              keyboardType="number-pad"
+              maxLength={6}
+              value={disable2FACode}
+              onChangeText={setDisable2FACode}
+              returnKeyType="done"
+              onSubmitEditing={handleDisable2FA}
+            />
+            <TouchableOpacity
+              style={[s.actionBtn, { backgroundColor: C.red600, alignItems: 'center', paddingVertical: 14, marginTop: 8 }]}
+              onPress={handleDisable2FA}
+              disabled={twoFALoading}
+            >
+              {twoFALoading
+                ? <ActivityIndicator color={C.white} />
+                : <Text style={[s.smBold, { color: C.white }]}>Confirm & Disable 2FA</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* ── LOGIN HISTORY MODAL ── */}

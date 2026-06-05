@@ -782,6 +782,33 @@ async def verify_2fa(body: Verify2FARequest, current_user=Depends(get_current_us
     supabase.table("app_user").update({"two_fa_enabled": True}).eq("id", current_user["id"]).execute()
     return {"message": "2FA enabled successfully"}
 
+# ─── DELETE /api/auth/2fa/disable ──────────────────────
+
+class Disable2FARequest(BaseModel):
+    code: str
+
+@router.delete("/2fa/disable")
+async def disable_2fa(body: Disable2FARequest, current_user=Depends(get_current_user)):
+    user_res = supabase.table("app_user").select("two_fa_secret, two_fa_enabled").eq("id", current_user["id"]).single().execute()
+    user = user_res.data if user_res.data else None
+
+    if not user or not user.get("two_fa_enabled"):
+        raise HTTPException(status_code=400, detail="2FA is not enabled on this account.")
+
+    secret = user.get("two_fa_secret")
+    if not secret:
+        raise HTTPException(status_code=400, detail="2FA secret not found.")
+
+    if not pyotp.TOTP(secret).verify(body.code, valid_window=3):
+        raise HTTPException(status_code=400, detail="Invalid 2FA code.")
+
+    supabase.table("app_user").update({
+        "two_fa_enabled": False,
+        "two_fa_secret": None,
+    }).eq("id", current_user["id"]).execute()
+
+    return {"message": "2FA disabled successfully"}
+
 # ─── POST /api/auth/forgot-password ────────────────────
 
 @router.post("/forgot-password")
