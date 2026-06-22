@@ -1,16 +1,36 @@
-import { Component, signal, inject, OnInit } from '@angular/core';
+import { Component, signal, computed, inject, OnInit } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { StaffService, StaffMember } from '../../../services/staff.service';
+import { AuthService } from '../../../services/auth.service';
+import { CaseService } from '../../../services/case.service';
+import { SettingsService } from '../../../services/settings.service';
+import { HighlightPipe } from '../../../shared/pipes/highlight.pipe';
+import { SearchNavigatorService } from '../../../shared/services/search-navigator.service';
 
 @Component({
   selector: 'app-staff',
   standalone: true,
-  imports: [NgClass, FormsModule],
+  imports: [NgClass, FormsModule, HighlightPipe],
   templateUrl: './staff.html',
 })
 export class Staff implements OnInit {
-  private staffService = inject(StaffService);
+  private staffService    = inject(StaffService);
+  private authService     = inject(AuthService);
+  private caseService     = inject(CaseService);
+  private settingsService = inject(SettingsService);
+  searchNav               = inject(SearchNavigatorService);
+
+  currentUser = this.authService.currentUser;
+  isAdmin     = computed(() => this.currentUser()?.role === 'admin');
+
+  searchQuery = signal('');
+
+  onSearch(q: string): void {
+    this.searchQuery.set(q);
+    if (!q) { this.searchNav.reset(); return; }
+    setTimeout(() => this.searchNav.scan(), 50);
+  }
 
   readonly countryCodes = [
     { code: '+216', flag: '🇹🇳', name: 'Tunisie' },
@@ -39,7 +59,13 @@ export class Staff implements OnInit {
     return { code: '+216', number: full ?? '' };
   }
 
-  get staffMembers(): StaffMember[] { return this.staffService.staff(); }
+  get staffMembers(): StaffMember[] {
+    const countMap = new Map<string, number>();
+    for (const c of this.caseService.cases()) {
+      if (c.assignedTo) countMap.set(c.assignedTo, (countMap.get(c.assignedTo) ?? 0) + 1);
+    }
+    return this.staffService.staff().map(m => ({ ...m, cases: countMap.get(m.id) ?? 0 }));
+  }
 
   get stats() {
     const members    = this.staffMembers;
@@ -58,13 +84,24 @@ export class Staff implements OnInit {
   }
 
   // ── Filters ───────────────────────────────────────────
-  activeFilter = signal('All');
-  filters      = ['All', 'Active', 'Pending', 'Inactive'];
-  deptFilter   = signal('');
-  roleFilter   = signal('');
-  sortBy       = signal('Name A–Z');
+  showFilterPanel = signal(false);
+  filterStatus    = signal('');
+  deptFilter      = signal('');
+  roleFilter      = signal('');
+  sortBy          = signal('Name A–Z');
+  tableFilters    = ['All', 'Active', 'Pending', 'Inactive'];
 
-  setFilter(f: string) { this.activeFilter.set(f); }
+  setTableFilter(f: string) { this.filterStatus.set(f === 'All' ? '' : f); }
+
+  get hasActiveFilters(): boolean {
+    return !!(this.filterStatus() || this.deptFilter() || this.roleFilter());
+  }
+
+  clearFilters() {
+    this.filterStatus.set('');
+    this.deptFilter.set('');
+    this.roleFilter.set('');
+  }
 
   get availableDepts(): string[] {
     return [...new Set(this.staffMembers.map(m => m.dept))].sort();
@@ -75,12 +112,19 @@ export class Staff implements OnInit {
 
   get filteredStaff(): StaffMember[] {
     let list = this.staffMembers;
-    if (this.activeFilter() !== 'All')  list = list.filter(s => s.status === this.activeFilter());
-    if (this.deptFilter())              list = list.filter(s => s.dept === this.deptFilter());
-    if (this.roleFilter())              list = list.filter(s => s.roleLabel === this.roleFilter());
+    if (this.filterStatus()) list = list.filter(s => s.status === this.filterStatus());
+    if (this.deptFilter())   list = list.filter(s => s.dept === this.deptFilter());
+    if (this.roleFilter())   list = list.filter(s => s.roleLabel === this.roleFilter());
+    const q = this.searchQuery().toLowerCase().trim();
+    if (q) list = list.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.email.toLowerCase().includes(q) ||
+      s.dept.toLowerCase().includes(q) ||
+      s.roleLabel.toLowerCase().includes(q)
+    );
     const sort = this.sortBy();
-    if      (sort === 'Name A–Z')    list = [...list].sort((a, b) => a.name.localeCompare(b.name));
-    else if (sort === 'Name Z–A')    list = [...list].sort((a, b) => b.name.localeCompare(a.name));
+    if      (sort === 'Name A–Z')     list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    else if (sort === 'Name Z–A')     list = [...list].sort((a, b) => b.name.localeCompare(a.name));
     else if (sort === 'Newest First') list = [...list].reverse();
     return list;
   }
@@ -119,7 +163,8 @@ export class Staff implements OnInit {
     this.editError.set('');
     try {
       const f = this.editForm();
-      await this.staffService.updateMember(m.id, f.fullName, `${f.phoneCode} ${f.phone}`.trim(), f.role);
+      // Only role updates are supported by the backend (no general updateMember endpoint)
+      await this.staffService.updateRole(m.id, f.role);
       this._showEdit.set(false);
     } catch (err: unknown) {
       const detail = (err as { error?: { detail?: string } })?.error?.detail;
@@ -159,86 +204,78 @@ export class Staff implements OnInit {
     }
   }
 
-  // ── ADD STAFF modal ───────────────────────────────────
-  showModal    = signal(false);
-  modalStep    = signal<1|2|3|4>(1);
-  isSubmitting = signal(false);
-  errorMsg     = signal('');
+  // ── Office code ────────────────────────────────────────
+  officeCode      = signal('');
+  codeCopied      = signal(false);
+  showShareModal  = signal(false);
 
-  departments = ['Leadership','Civil Litigation','Estate Law','Corporate Law','Real Estate','Employment Law','Administration'];
-  roles       = ['Senior Partner','Associate','Junior Associate','Paralegal','Secretary','Of Counsel','Management','Intern'];
-  titles      = ['Managing Partner','Partner','Senior Associate','Junior Associate','Of Counsel','Paralegal','Legal Secretary','Office Manager'];
+  openShareModal()  { this.showShareModal.set(true); }
+  closeShareModal() { this.showShareModal.set(false); }
 
-  f1 = signal({ firstName:'', lastName:'', dob:'', gender:'', phoneCode:'+216', phone:'', email:'', address:'', city:'' });
-  f2 = signal({ title:'', role:'', dept:'', startDate:'', employeeId:'', barNumber:'', practiceAreas:'' });
-  f3 = signal({ status:'Active', systemAccess:true, caseAccess:true, billingAccess:false, emergencyName:'', emergencyPhone:'', notes:'' });
-
-  get step1Valid() {
-    const f = this.f1();
-    return f.firstName.trim().length > 0 && f.lastName.trim().length > 0 && f.email.trim().length > 0;
-  }
-  get step2Valid() {
-    const f = this.f2();
-    return f.role.length > 0 && f.dept.length > 0;
-  }
-  get progressPct() { return ((this.modalStep() - 1) / 3) * 100; }
-
-  get stepLabels() {
-    const s = this.modalStep();
-    return [
-      { label:'Personal Info',     active:s===1, done:s>1 },
-      { label:'Professional',      active:s===2, done:s>2 },
-      { label:'Access & Settings', active:s===3, done:s>3 },
-    ];
+  async copyCode() {
+    const code = this.officeCode();
+    if (!code) return;
+    await navigator.clipboard.writeText(code);
+    this.codeCopied.set(true);
+    setTimeout(() => this.codeCopied.set(false), 2000);
   }
 
-  setGender(g: string) { this.f1.update(v => ({ ...v, gender: g })); }
-
-  getF3Bool(key: string): boolean {
-    const f = this.f3();
-    return !!f[key as 'systemAccess'|'caseAccess'|'billingAccess'];
-  }
-  setF3Bool(key: string, value: boolean) {
-    const k = key as 'systemAccess'|'caseAccess'|'billingAccess';
-    this.f3.update(v => ({ ...v, [k]: value }));
+  shareViaWhatsApp() {
+    const code = this.officeCode();
+    const text = encodeURIComponent(`Join our firm on LegalHub with the office code: ${code}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
   }
 
-  openModal() {
-    this.f1.set({ firstName:'', lastName:'', dob:'', gender:'', phoneCode:'+216', phone:'', email:'', address:'', city:'' });
-    this.f2.set({ title:'', role:'', dept:'', startDate:'', employeeId:'', barNumber:'', practiceAreas:'' });
-    this.f3.set({ status:'Active', systemAccess:true, caseAccess:true, billingAccess:false, emergencyName:'', emergencyPhone:'', notes:'' });
-    this.modalStep.set(1);
-    this.errorMsg.set('');
-    this.showModal.set(true);
-  }
-  closeModal() { this.showModal.set(false); }
-
-  nextStep() {
-    const s = this.modalStep();
-    if (s < 3) this.modalStep.set((s + 1) as 1|2|3|4);
-    else this.submitStaff();
-  }
-  prevStep() {
-    const s = this.modalStep();
-    if (s > 1) this.modalStep.set((s - 1) as 1|2|3|4);
+  shareViaGmail() {
+    const code = this.officeCode();
+    const subject = encodeURIComponent('LegalHub — Office Invitation');
+    const body = encodeURIComponent(
+      `Hi,\n\nYou have been invited to join our firm on LegalHub.\n\nUse the following office code to create your account:\n\nOffice Code: ${code}\n\nVisit the LegalHub platform or download the app and enter this code to get started.`
+    );
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`, '_blank');
   }
 
-  async submitStaff() {
-    this.isSubmitting.set(true);
-    this.errorMsg.set('');
+
+  // ── INVITE modal ───────────────────────────────────────
+  showInviteModal = signal(false);
+  inviteForm      = signal({ fullName: '', email: '' });
+  isInviting      = signal(false);
+  inviteError     = signal('');
+  inviteSuccess   = signal(false);
+
+  get inviteValid() {
+    const f = this.inviteForm();
+    return f.fullName.trim().length > 0 && f.email.trim().length > 0;
+  }
+
+  openInviteModal() {
+    this.inviteForm.set({ fullName: '', email: '' });
+    this.inviteError.set('');
+    this.inviteSuccess.set(false);
+    this.showInviteModal.set(true);
+  }
+  closeInviteModal() { this.showInviteModal.set(false); }
+
+  async submitInvite() {
+    this.isInviting.set(true);
+    this.inviteError.set('');
     try {
-      const f1 = this.f1();
-      await this.staffService.inviteStaff(f1.email, `${f1.firstName} ${f1.lastName}`.trim());
-      this.modalStep.set(4);
+      const f = this.inviteForm();
+      await this.staffService.inviteStaff(f.email, f.fullName.trim());
+      this.inviteSuccess.set(true);
     } catch (err: unknown) {
       const detail = (err as { error?: { detail?: string } })?.error?.detail;
-      this.errorMsg.set(detail ?? 'Failed to invite staff member. Please try again.');
+      this.inviteError.set(detail ?? 'Failed to send invitation. Please try again.');
     } finally {
-      this.isSubmitting.set(false);
+      this.isInviting.set(false);
     }
   }
 
   async ngOnInit() {
-    await this.staffService.loadStaff();
+    await Promise.all([
+      this.staffService.loadStaff(),
+      this.caseService.cases().length === 0 ? this.caseService.loadCases() : Promise.resolve(),
+      this.settingsService.getOfficeCode().then(c => this.officeCode.set(c ?? '')).catch(() => {}),
+    ]);
   }
 }

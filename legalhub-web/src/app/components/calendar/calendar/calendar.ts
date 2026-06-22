@@ -1,8 +1,28 @@
-import { Component, signal, computed, effect, OnInit, inject } from '@angular/core';
+import { Component, signal, computed, effect, OnInit, OnDestroy, inject } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CalendarService, CreateEventPayload } from '../../../services/calendar.service';
 import { NotificationService } from '../../../services/notification.service';
+import { CaseService } from '../../../services/case.service';
+import { StaffService } from '../../../services/staff.service';
+import { ClientService } from '../../../services/client.service';
+import { AuthService } from '../../../services/auth.service';
+import { HighlightPipe } from '../../../shared/pipes/highlight.pipe';
+import { SearchNavigatorService } from '../../../shared/services/search-navigator.service';
+
+export interface MeetingRequest {
+  id: string;
+  client_name: string;
+  email: string;
+  preferred_date: string;
+  preferred_time: string;
+  message: string;
+  status: string;
+  meeting_type?: string;
+  video_call_url?: string;
+  client?: { id: string; first_name: string; last_name: string; email: string };
+  case_file?: { id: string; title: string; case_number: string };
+}
 
 export type EventType      = 'hearing' | 'meeting' | 'deadline' | 'consultation' | 'court_date';
 export type RecurrenceType = 'none' | 'weekly' | 'biweekly' | 'monthly';
@@ -18,10 +38,13 @@ export interface CalEvent {
   locationType: 'physical' | 'video' | 'phone' | '';
   location: string;
   caseRef: string;
-  participants: string[];
+  caseTitle: string;
+  createdBy: string;
+  participants: { id: string; name: string; type: string }[];
   notes: string;
   reminder: string;
   day: number;         // day-of-week Mon=0…Sun=6 (derived)
+  isParticipant: boolean;
 }
 
 interface NewEventForm {
@@ -34,7 +57,7 @@ interface NewEventForm {
   locationType: 'physical' | 'video' | 'phone' | '';
   location: string;
   caseRef: string;
-  participants: string[];
+  participants: { id: string; name: string }[];
   notes: string;
   reminder: string;
   recurrence: RecurrenceType;
@@ -46,13 +69,26 @@ interface NewEventForm {
 @Component({
   selector: 'app-calendar',
   standalone: true,
-  imports: [NgClass, FormsModule],
+  imports: [NgClass, FormsModule, HighlightPipe],
   templateUrl: './calendar.html'
 })
-export class Calendar implements OnInit {
+export class Calendar implements OnInit, OnDestroy {
 
-  private calendarSvc = inject(CalendarService);
+  private calendarSvc  = inject(CalendarService);
+  private _tokenTimer?: ReturnType<typeof setInterval>;
   private notifSvc    = inject(NotificationService);
+  private caseSvc     = inject(CaseService);
+  private staffSvc    = inject(StaffService);
+  private clientSvc   = inject(ClientService);
+  private authSvc     = inject(AuthService);
+  searchNav           = inject(SearchNavigatorService);
+
+  canModifyEvent(ev: CalEvent): boolean {
+    return ev.createdBy === this.authSvc.currentUser()?.id;
+  }
+
+  private _defaultParticipants: { id: string; name: string }[] = [];
+  private _participantTypeMap = new Map<string, string>(); // userId → 'CLIENT' | 'TEAM_MEMBER'
 
   constructor() {
     // Keep sidebar calendar badge in sync with real upcoming-events count
@@ -71,7 +107,7 @@ export class Calendar implements OnInit {
   private readonly _today7Str   = this._isoDate(new Date(this._todayRef.getTime() + 6 * 86_400_000));
 
   // ── View + Navigation ─────────────────────────────────────
-  currentView = signal<'day' | 'week' | 'month' | 'agenda'>('week');
+  currentView = signal<'day' | 'week' | 'month'>('week');
   navDate     = signal<Date>(new Date(this._todayRef));
 
   setView(v: string) { this.currentView.set(v.toLowerCase() as any); }
@@ -82,7 +118,6 @@ export class Calendar implements OnInit {
       case 'day':    d.setDate(d.getDate() - 1);   break;
       case 'week':   d.setDate(d.getDate() - 7);   break;
       case 'month':  d.setMonth(d.getMonth() - 1); break;
-      case 'agenda': d.setDate(d.getDate() - 7);   break;
     }
     this.navDate.set(d);
   }
@@ -93,7 +128,6 @@ export class Calendar implements OnInit {
       case 'day':    d.setDate(d.getDate() + 1);   break;
       case 'week':   d.setDate(d.getDate() + 7);   break;
       case 'month':  d.setMonth(d.getMonth() + 1); break;
-      case 'agenda': d.setDate(d.getDate() + 7);   break;
     }
     this.navDate.set(d);
   }
@@ -186,23 +220,7 @@ export class Calendar implements OnInit {
         && nav.getMonth()    === this._todayRef.getMonth();
   });
 
-  /** Agenda: 7 days from navDate */
-  agendaDays = computed(() =>
-    Array.from({ length: 7 }, (_, i) => {
-      const d       = new Date(this.navDate());
-      d.setDate(d.getDate() + i);
-      const dateStr = this._isoDate(d);
-      const label   = dateStr === this.todayStr ? 'Today'
-                    : dateStr === this._tomorrowStr ? 'Tomorrow' : '';
-      return {
-        label,
-        date:    d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-        dateStr,
-      };
-    })
-  );
-
-  hours = Array.from({ length: 12 }, (_, i) => {
+  hours = Array.from({ length: 17 }, (_, i) => {
     const h = i + 7;
     return { label: `${h > 12 ? h - 12 : h}:00 ${h < 12 ? 'AM' : 'PM'}`, hour: h };
   });
@@ -251,8 +269,13 @@ export class Calendar implements OnInit {
   activeFilters = signal<Set<EventType>>(new Set(this.typeKeys));
 
   private _searchSig = signal('');
-  get searchStr()              { return this._searchSig(); }
-  set searchStr(v: string)     { this._searchSig.set(v); }
+  get searchStr()          { return this._searchSig(); }
+  set searchStr(v: string) {
+    this._searchSig.set(v);
+    if (!v) { this.searchNav.reset(); return; }
+    setTimeout(() => this.searchNav.scan(), 50);
+  }
+  clearSearch() { this.searchStr = ''; }
 
   isFilterActive(type: EventType): boolean { return this.activeFilters().has(type); }
   toggleFilter(type: EventType) {
@@ -275,7 +298,7 @@ export class Calendar implements OnInit {
     return ev.filter(e =>
       e.title.toLowerCase().includes(q) ||
       e.location.toLowerCase().includes(q) ||
-      e.caseRef.toLowerCase().includes(q)
+      e.caseTitle.toLowerCase().includes(q)
     );
   });
 
@@ -311,8 +334,42 @@ export class Calendar implements OnInit {
     ) ?? null;
   }
 
+  private visibleDateRange = computed<{ start: string; end: string }>(() => {
+    switch (this.currentView()) {
+      case 'day':
+        return { start: this.navDateISO(), end: this.navDateISO() };
+      case 'week': {
+        const dates = this.weekDatesISO();
+        return { start: dates[0], end: dates[6] };
+      }
+      case 'month': {
+        const d = this.navDate();
+        const y = d.getFullYear();
+        const m = d.getMonth();
+        const lastDay = new Date(y, m + 1, 0).getDate();
+        return {
+          start: `${y}-${String(m + 1).padStart(2, '0')}-01`,
+          end:   `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+        };
+      }
+      default:
+        return { start: this.navDateISO(), end: this.navDateISO() };
+    }
+  });
+
+  typeCounts = computed(() => {
+    const { start, end } = this.visibleDateRange();
+    const counts = Object.fromEntries(this.typeKeys.map(t => [t, 0])) as Record<EventType, number>;
+    for (const e of this.allEvents()) {
+      if (e.date >= start && e.date <= end && (e.type in counts)) {
+        counts[e.type]++;
+      }
+    }
+    return counts;
+  });
+
   countByType(type: EventType): number {
-    return this.allEvents().filter(e => e.type === type).length;
+    return this.typeCounts()[type] ?? 0;
   }
 
   // ── Upcoming sidebar ──────────────────────────────────────
@@ -366,7 +423,47 @@ export class Calendar implements OnInit {
   isLoading = signal(false);
   loadError = signal<string | null>(null);
 
-  ngOnInit(): void { this.loadEvents(); }
+  ngOnInit(): void {
+    // Handle return from Google OAuth (popup or same-tab redirect)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google_connected') === 'true') {
+      window.history.replaceState({}, '', window.location.pathname);
+      if (window.opener) {
+        window.close();
+        return;
+      }
+      this.googleSynced.set(true);
+      this.calendarSvc.setStoredGoogleStatus(true);
+      this.triggerSync();
+    }
+    this.loadEvents();
+    this._loadCases();
+    this._loadStaff();
+    this.loadMeetingRequests();
+
+    // Refresh the JWT every 9 minutes so it never expires mid-session
+    this._tokenTimer = setInterval(() => this._silentRefresh(), 9 * 60 * 1000);
+  }
+
+  ngOnDestroy(): void {
+    clearInterval(this._tokenTimer);
+  }
+
+  private async _silentRefresh(): Promise<void> {
+    const refresh = localStorage.getItem('refresh_token');
+    if (!refresh) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refresh }),
+      });
+      if (res.ok) {
+        const data: { access_token: string } = await res.json();
+        localStorage.setItem('access_token', data.access_token);
+      }
+    } catch { /* ignore — interceptor handles real failures */ }
+  }
 
   private async loadEvents(): Promise<void> {
     this.isLoading.set(true);
@@ -381,20 +478,165 @@ export class Calendar implements OnInit {
   }
 
   // ── Sync ──────────────────────────────────────────────────
-  googleSynced  = signal(true);
-  outlookSynced = signal(false);
-  isSyncing     = signal(false);
+  googleSynced     = signal(this.calendarSvc.getStoredGoogleStatus());
+  isSyncing        = signal(false);
+  isConnecting     = signal(false);
+  googleSyncResult = signal<{ synced: number; failed: number; total: number } | null>(null);
+  googleSyncError  = signal<string | null>(null);
+
+  async connectGoogle(): Promise<void> {
+    this.isConnecting.set(true);
+    this.googleSyncError.set(null);
+    try {
+      const { auth_url } = await this.calendarSvc.getGoogleAuthUrl();
+
+      // Open OAuth in a popup so the user stays on this page
+      const popup = window.open(auth_url, 'google_oauth', 'width=600,height=700,scrollbars=yes,resizable=yes');
+
+      if (!popup) {
+        // Popup blocked — fall back to same-tab redirect
+        window.location.href = auth_url;
+        return;
+      }
+
+      // When the popup closes, attempt a sync to confirm the connection
+      const poll = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(poll);
+          this.isConnecting.set(false);
+          this.triggerSync();
+        }
+      }, 500);
+
+    } catch (err: any) {
+      if (err?.status === 503) {
+        this.googleSyncError.set('Google OAuth2 not configured. Add GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET to the backend .env.');
+      } else {
+        this.googleSyncError.set(err?.error?.detail ?? 'Failed to initiate Google connection.');
+      }
+      this.isConnecting.set(false);
+    }
+  }
+
+  onGoogleToggle(): void {
+    if (!this.googleSynced()) {
+      this.connectGoogle();
+    }
+  }
 
   triggerSync() {
     this.isSyncing.set(true);
-    this.loadEvents().finally(() => this.isSyncing.set(false));
+    this.googleSyncResult.set(null);
+    this.googleSyncError.set(null);
+    const doSync = async () => {
+      try {
+        const result = await this.calendarSvc.syncToGoogle();
+        this.googleSynced.set(true);
+        this.calendarSvc.setStoredGoogleStatus(true);
+        this.googleSyncResult.set(result);
+        if (result.failed > 0 && result.synced === 0) {
+          this.googleSyncError.set(
+            `Sync partiel : ${result.synced}/${result.total} événements synchronisés. Vérifiez les permissions Google.`
+          );
+        }
+      } catch (err: any) {
+        const detail: string = err?.error?.detail ?? err?.message ?? 'Sync failed';
+        if (err?.status === 401) {
+          this.googleSynced.set(false);
+          this.calendarSvc.setStoredGoogleStatus(false);
+          this.googleSyncError.set('Connexion Google Calendar expirée. Veuillez reconnecter Google Calendar.');
+        } else if (err?.status === 400 && detail.toLowerCase().includes('not connected')) {
+          this.googleSynced.set(false);
+          this.calendarSvc.setStoredGoogleStatus(false);
+          this.googleSyncError.set('Google Calendar not connected. Clic on "Connect Google".');
+        } else {
+          this.googleSyncError.set(detail);
+        }
+      }
+      await this.loadEvents();
+    };
+    doSync().finally(() => this.isSyncing.set(false));
+  }
+
+  // ── Meeting Requests panel ────────────────────────────────
+  showMeetingRequests  = signal(false);
+  meetingRequests      = signal<MeetingRequest[]>([]);
+  requestsLoading      = signal(false);
+  acceptingId          = signal<string | null>(null);
+  rejectingId          = signal<string | null>(null);
+  requestError         = signal<string | null>(null);
+  videoLinkPrompt      = signal<MeetingRequest | null>(null);
+  videoLinkInput       = signal('');
+
+  get pendingRequestCount() {
+    return this.meetingRequests().filter(r => r.status === 'PENDING').length;
+  }
+
+  async loadMeetingRequests(): Promise<void> {
+    this.requestsLoading.set(true);
+    try {
+      const raw = await this.calendarSvc.listMeetingRequests();
+      this.meetingRequests.set(raw as unknown as MeetingRequest[]);
+    } catch { /* non-blocking */ } finally {
+      this.requestsLoading.set(false);
+    }
+  }
+
+  acceptRequest(id: string): void {
+    const req = this.meetingRequests().find(r => r.id === id);
+    if (req?.meeting_type === 'VIDEO') {
+      this.videoLinkInput.set('');
+      this.videoLinkPrompt.set(req);
+    } else {
+      this._doAccept(id, {});
+    }
+  }
+
+  async confirmAcceptWithLink(): Promise<void> {
+    const req = this.videoLinkPrompt();
+    if (!req) return;
+    this.videoLinkPrompt.set(null);
+    const link = this.videoLinkInput().trim();
+    await this._doAccept(req.id, link ? { video_call_url: link } : {});
+  }
+
+  private async _doAccept(id: string, body: object): Promise<void> {
+    this.acceptingId.set(id);
+    this.requestError.set(null);
+    try {
+      await this.calendarSvc.acceptMeetingRequest(id, body);
+      this.meetingRequests.update(list =>
+        list.map(r => r.id === id ? { ...r, status: 'ACCEPTED' } : r)
+      );
+      await this.loadEvents();
+    } catch (e: any) {
+      this.requestError.set(e?.error?.detail ?? 'Failed to accept request.');
+    } finally {
+      this.acceptingId.set(null);
+    }
+  }
+
+  async rejectRequest(id: string): Promise<void> {
+    this.rejectingId.set(id);
+    this.requestError.set(null);
+    try {
+      await this.calendarSvc.rejectMeetingRequest(id);
+      this.meetingRequests.update(list =>
+        list.map(r => r.id === id ? { ...r, status: 'REJECTED' } : r)
+      );
+    } catch (e: any) {
+      this.requestError.set(e?.error?.detail ?? 'Failed to reject request.');
+    } finally {
+      this.rejectingId.set(null);
+    }
   }
 
   // ── Event detail panel ────────────────────────────────────
   selectedEvent    = signal<CalEvent | null>(null);
-  showEventDetail  = signal(false);
-  isDeletingEvent  = signal(false);
-  deleteEventError = signal<string | null>(null);
+  showEventDetail   = signal(false);
+  isDeletingEvent   = signal(false);
+  deleteEventError  = signal<string | null>(null);
+  confirmDeleteEvent = signal(false);
 
   openEventDetail(ev: CalEvent, domEvent?: MouseEvent) {
     domEvent?.stopPropagation();
@@ -406,6 +648,7 @@ export class Calendar implements OnInit {
   closeEventDetail() {
     this.showEventDetail.set(false);
     this.selectedEvent.set(null);
+    this.confirmDeleteEvent.set(false);
   }
 
   async deleteSelectedEvent() {
@@ -419,17 +662,20 @@ export class Calendar implements OnInit {
       this.closeEventDetail();
     } catch (err: any) {
       this.deleteEventError.set(err?.error?.detail ?? err?.message ?? 'Failed to delete event.');
+      this.confirmDeleteEvent.set(false);
     } finally {
       this.isDeletingEvent.set(false);
     }
   }
 
-  // ── Modal: New Event ─────────────────────────────────────
+  // ── Modal: New / Edit Event ───────────────────────────────
   showModal        = signal(false);
   modalStep        = signal<1 | 2>(1);
   isSubmitting     = signal(false);
   submitError      = signal<string | null>(null);
   participantInput = signal('');
+  isEditMode       = signal(false);
+  editingEventId   = signal<string | null>(null);
 
   newEvent: NewEventForm = this.emptyForm();
 
@@ -447,16 +693,87 @@ export class Calendar implements OnInit {
     { value: 'monthly',  label: 'Monthly',   icon: 'fa-solid fa-calendar-days' },
   ];
 
-  cases = [
-    'CASE-2024-001 — Smith vs. Johnson',
-    'CASE-2024-003 — Martinez Family Trust',
-    'CASE-2024-005 — Anderson Filing',
-    'CASE-2024-007 — Thompson Real Estate',
-    'CASE-2024-009 — Wilson Medical Malpractice',
-    'CASE-2024-012 — Davis Employment',
-  ];
+  cases                = this.caseSvc.cases;
+  casesLoading         = signal(false);
+  availableParticipants = signal<{ id: string; name: string }[]>([]);
+  participantsLoading  = signal(false);
 
-  teamMembers = ['Sarah Williams', 'Michael Chen', 'Jennifer Lopez', 'Robert Taylor', 'Amanda Foster'];
+  getCaseLabel(caseId: string): string {
+    if (!caseId) return '';
+    const c = this.caseSvc.getCaseById(caseId);
+    return c ? `${c.caseNumber} — ${c.title}` : caseId;
+  }
+
+  onStartTimeChange(startTime: string) {
+    this.newEvent.startTime = startTime;
+    const [h, m] = startTime.split(':').map(Number);
+    this.newEvent.endTime = `${String(Math.min(h + 1, 23)).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  async onCaseRefChange(caseId: string) {
+    this.newEvent.caseRef      = caseId;
+    this.newEvent.participants = [];
+    this.participantsLoading.set(true);
+    try {
+      if (caseId) {
+        const raw = await this.calendarSvc.getAvailableParticipants(caseId);
+        for (const p of raw) this._participantTypeMap.set(p.user_id, p.participant_type);
+        this.availableParticipants.set(
+          raw
+            .map(p => ({ id: p.user_id, name: p.full_name || p.email || p.user_id }))
+            .filter(m => m.id && m.name)
+        );
+      } else {
+        this.availableParticipants.set([...this._defaultParticipants]);
+      }
+    } finally {
+      this.participantsLoading.set(false);
+    }
+  }
+
+  private async _loadCases() {
+    if (this.caseSvc.cases().length > 0) return;
+    this.casesLoading.set(true);
+    try { await this.caseSvc.loadCases(); } finally { this.casesLoading.set(false); }
+  }
+
+  private async _loadStaff() {
+    if (this.staffSvc.staff().length === 0) await this.staffSvc.loadStaff();
+    await this._loadDefaultParticipants();
+  }
+
+  private async _loadDefaultParticipants(): Promise<void> {
+    try {
+      const [members] = await Promise.all([
+        this.calendarSvc.getAvailableParticipants(),
+        this.clientSvc.clients().length === 0 ? this.clientSvc.loadClients() : Promise.resolve(),
+      ]);
+      const seen = new Set<string>();
+      const list: { id: string; name: string }[] = [];
+      for (const m of members) {
+        if (m.user_id && !seen.has(m.user_id)) {
+          seen.add(m.user_id);
+          this._participantTypeMap.set(m.user_id, m.participant_type);
+          list.push({ id: m.user_id, name: m.full_name || m.email || m.user_id });
+        }
+      }
+      for (const c of this.clientSvc.clients()) {
+        if (c.userId && !seen.has(c.userId)) {
+          seen.add(c.userId);
+          this._participantTypeMap.set(c.userId, 'CLIENT');
+          list.push({ id: c.userId, name: c.name });
+        }
+      }
+      this._defaultParticipants = list.filter(m => m.id && m.name);
+    } catch {
+      this._defaultParticipants = this.staffSvc.staff().map(s => ({ id: s.id, name: s.name }));
+    }
+    this.availableParticipants.set([...this._defaultParticipants]);
+  }
+
+  resolveParticipantType(p: { id: string; type: string }): string {
+    return this._participantTypeMap.get(p.id) ?? p.type;
+  }
 
   reminderOptions = [
     { value: '0',    label: 'No reminder' },
@@ -490,17 +807,58 @@ export class Calendar implements OnInit {
    */
   openModal(date?: string, hour?: number) {
     this.newEvent = this.emptyForm();
-    // Pre-fill from calendar cell click
     if (date) this.newEvent.date = date;
     if (hour !== undefined) {
       this.newEvent.startTime = String(hour).padStart(2, '0') + ':00';
       this.newEvent.endTime   = String(Math.min(hour + 1, 23)).padStart(2, '0') + ':00';
     }
-    this.participantInput.set('');
+    this.isEditMode.set(false);
+    this.editingEventId.set(null);
+    this.availableParticipants.set([...this._defaultParticipants]);
     this.modalStep.set(1);
     this.isSubmitting.set(false);
     this.submitError.set(null);
     this.showModal.set(true);
+  }
+
+  /** Open the modal pre-filled with an existing event for editing. */
+  async openEditModal(ev: CalEvent) {
+    const preSelected = ev.participants.map(p => ({ id: p.id, name: p.name }));
+
+    this.newEvent = {
+      title:               ev.title,
+      type:                ev.type,
+      date:                ev.date,
+      startTime:           ev.startTime,
+      endTime:             ev.endTime,
+      allDay:              ev.allDay,
+      locationType:        ev.locationType,
+      location:            ev.location,
+      caseRef:             ev.caseRef,
+      participants:        preSelected,
+      notes:               ev.notes,
+      reminder:            ev.reminder,
+      recurrence:          'none',
+      recurrenceLimitType: 'count',
+      recurrenceCount:     4,
+      recurrenceUntil:     this._isoDate(new Date(this._todayRef.getTime() + 30 * 86_400_000)),
+    };
+    this.isEditMode.set(true);
+    this.editingEventId.set(ev.id);
+    this.modalStep.set(1);
+    this.isSubmitting.set(false);
+    this.submitError.set(null);
+    this.closeEventDetail();
+    this.showModal.set(true);
+
+    // Load the case's available participants, then restore the pre-selected ones
+    // (onCaseRefChange resets participants to [], so we re-apply after it resolves)
+    if (ev.caseRef) {
+      await this.onCaseRefChange(ev.caseRef);
+      this.newEvent.participants = preSelected;
+    } else {
+      this.availableParticipants.set([...this._defaultParticipants]);
+    }
   }
 
   /** Returns the ISO date "YYYY-MM-DD" for a day-number in the current nav month,
@@ -510,19 +868,25 @@ export class Calendar implements OnInit {
     const d = this.navDate();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
   }
-  closeModal() { this.showModal.set(false); }
+  closeModal() {
+    this.showModal.set(false);
+    this.isEditMode.set(false);
+    this.editingEventId.set(null);
+  }
   addAnother() {
     this.newEvent = this.emptyForm();
-    this.participantInput.set('');
+    this.isEditMode.set(false);
+    this.editingEventId.set(null);
+    this.availableParticipants.set([...this._defaultParticipants]);
     this.modalStep.set(1);
     this.submitError.set(null);
   }
 
-  addParticipant(name: string) {
-    const n = name.trim();
-    if (n && !this.newEvent.participants.includes(n))
-      this.newEvent.participants = [...this.newEvent.participants, n];
-    this.participantInput.set('');
+  addParticipant(id: string) {
+    if (!id) return;
+    const member = this.availableParticipants().find(m => m.id === id);
+    if (member && !this.newEvent.participants.some(p => p.id === id))
+      this.newEvent.participants = [...this.newEvent.participants, member];
   }
 
   removeParticipant(i: number) {
@@ -535,8 +899,15 @@ export class Calendar implements OnInit {
     this.submitError.set(null);
     try {
       const payload = this._buildPayload(this.newEvent);
-      const created = await this.calendarSvc.createEvent(payload);
-      this.allEvents.update(list => [...list, created]);
+      if (this.isEditMode() && this.editingEventId()) {
+        const updated = await this.calendarSvc.updateEvent(this.editingEventId()!, payload);
+        this.allEvents.update(list => list.map(e => e.id === updated.id ? updated : e));
+      } else {
+        await this.calendarSvc.createEvent(payload);
+        // Reload all events: recurring creation generates N occurrences server-side
+        const fresh = await this.calendarSvc.getEvents();
+        this.allEvents.set(fresh);
+      }
       this.modalStep.set(2);
     } catch (err: any) {
       const raw = err?.error?.detail ?? err?.message ?? 'Failed to save event.';
@@ -564,6 +935,7 @@ export class Calendar implements OnInit {
       recurrence:     form.recurrence,
     };
 
+    if (form.caseRef) payload.case_id = form.caseRef;
     if (form.location) {
       payload.location = form.location;
       if (form.locationType === 'video') payload.video_call_url = form.location;
@@ -571,6 +943,9 @@ export class Calendar implements OnInit {
 
     if (form.reminder && form.reminder !== '0')
       payload.reminder_minutes = [parseInt(form.reminder, 10)];
+
+    if (form.participants.length > 0)
+      payload.participant_ids = form.participants.map(p => p.id);
 
     if (form.recurrence !== 'none') {
       if (form.recurrenceLimitType === 'count')

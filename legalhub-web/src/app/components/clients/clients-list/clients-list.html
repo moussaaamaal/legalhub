@@ -5,8 +5,32 @@
       <div class="relative w-96">
         <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
         <input type="text" placeholder="Search clients, companies..."
-          [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
-          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
+          [ngModel]="searchQuery()" (ngModelChange)="onSearch($event)"
+          class="w-full pl-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50"
+          [class.pr-4]="!searchQuery()"
+          [class.pr-10]="searchQuery() && searchNav.total() === 0"
+          [class.pr-32]="searchQuery() && searchNav.total() > 0">
+        @if (searchQuery()) {
+          <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+            @if (searchNav.total() > 0) {
+              <span class="text-xs text-gray-500 bg-white border border-gray-200 rounded px-1.5 py-0.5 font-medium tabular-nums whitespace-nowrap">
+                {{ searchNav.currentIndex() + 1 }}/{{ searchNav.total() }}
+              </span>
+              <button (click)="searchNav.prev()" title="PrÃ©cÃ©dent"
+                class="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-gray-500 transition-colors">
+                <i class="fa-solid fa-chevron-up text-[10px]"></i>
+              </button>
+              <button (click)="searchNav.next()" title="Suivant"
+                class="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-gray-500 transition-colors">
+                <i class="fa-solid fa-chevron-down text-[10px]"></i>
+              </button>
+            }
+            <button (click)="onSearch('')" title="Effacer"
+              class="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors">
+              <i class="fa-solid fa-circle-xmark text-sm"></i>
+            </button>
+          </div>
+        }
       </div>
       <button (click)="showFilterPanel.update(v => !v)"
               class="ml-4 px-4 py-2 text-sm rounded-lg transition-colors flex items-center"
@@ -21,55 +45,125 @@
     </div>
     <div class="flex items-center space-x-3">
       <div class="h-8 w-px bg-gray-300"></div>
-      <button (click)="openModal()"
+      <button (click)="clientModal.openModal()"
               class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
         <i class="fa-solid fa-plus"></i>
         <span class="font-medium">New Client</span>
-      </button>
-      <button (click)="exportCsv()"
-              class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-        <i class="fa-solid fa-file-export text-gray-600"></i>
-        <span class="text-sm text-gray-700">Export CSV</span>
       </button>
     </div>
   </div>
 
   <!-- Advanced Filter Panel -->
   @if (showFilterPanel()) {
-    <div class="px-8 pb-4 border-t border-gray-100 pt-3">
-      <div class="flex items-end gap-4">
-        <div class="flex-1">
-          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Status</label>
+    <div class="border-t border-gray-100 bg-gradient-to-b from-gray-50 to-white px-8 pt-5 pb-5">
+
+      <!-- Filter cards -->
+      <div class="grid grid-cols-3 gap-3 mb-4">
+
+        <!-- Status -->
+        <div class="bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:border-green-300 transition-colors"
+             [ngClass]="filterStatus() ? 'border-green-400 ring-1 ring-green-200' : ''">
+          <div class="flex items-center gap-2 mb-2.5">
+            <div class="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-circle-check text-green-600 text-xs"></i>
+            </div>
+            <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">Status</span>
+          </div>
           <select [ngModel]="filterStatus()" (ngModelChange)="filterStatus.set($event)"
-                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+                  class="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-gray-50 text-gray-800 transition-all">
             <option value="">All Statuses</option>
             <option value="Active">Active</option>
             <option value="Inactive">Inactive</option>
             <option value="Pending">Pending</option>
           </select>
         </div>
-        <div class="flex-1">
-          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Client Type</label>
+
+        <!-- Client Type -->
+        <div class="bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:border-amber-300 transition-colors"
+             [ngClass]="filterType() ? 'border-amber-400 ring-1 ring-amber-200' : ''">
+          <div class="flex items-center gap-2 mb-2.5">
+            <div class="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-user-tag text-amber-600 text-xs"></i>
+            </div>
+            <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">Client Type</span>
+          </div>
           <select [ngModel]="filterType()" (ngModelChange)="filterType.set($event)"
-                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+                  class="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-gray-50 text-gray-800 transition-all">
             <option value="">All Types</option>
             <option value="Standard Client">Standard Client</option>
             <option value="Corporate Client">Corporate Client</option>
           </select>
         </div>
-        <div class="flex items-center gap-2">
+
+        <!-- Practice Area -->
+        <div class="bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:border-purple-300 transition-colors"
+             [ngClass]="filterPracticeArea() ? 'border-purple-400 ring-1 ring-purple-200' : ''">
+          <div class="flex items-center gap-2 mb-2.5">
+            <div class="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-scale-balanced text-purple-600 text-xs"></i>
+            </div>
+            <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">Practice Area</span>
+          </div>
+          <select [ngModel]="filterPracticeArea()" (ngModelChange)="filterPracticeArea.set($event)"
+                  class="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-gray-50 text-gray-800 transition-all">
+            <option value="">All Areas</option>
+            @for (a of practiceAreas; track a) {
+              <option [value]="a">{{ a }}</option>
+            }
+          </select>
+        </div>
+
+      </div>
+
+      <!-- Active filter chips + actions -->
+      <div class="flex items-center justify-between gap-4">
+
+        <!-- Chips -->
+        <div class="flex items-center flex-wrap gap-1.5 min-h-[28px]">
+          @if (!hasActiveFilters) {
+            <span class="text-xs text-gray-400 italic">No active filters â€” select values above to filter clients</span>
+          }
+          @if (filterStatus()) {
+            <span class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full border border-green-200">
+              <i class="fa-solid fa-circle-check text-xs"></i>{{ filterStatus() }}
+              <button (click)="filterStatus.set('')" class="ml-0.5 w-4 h-4 flex items-center justify-center rounded-full hover:bg-green-200 transition-colors">
+                <i class="fa-solid fa-xmark text-xs"></i>
+              </button>
+            </span>
+          }
+          @if (filterType()) {
+            <span class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full border border-amber-200">
+              <i class="fa-solid fa-user-tag text-xs"></i>{{ filterType() }}
+              <button (click)="filterType.set('')" class="ml-0.5 w-4 h-4 flex items-center justify-center rounded-full hover:bg-amber-200 transition-colors">
+                <i class="fa-solid fa-xmark text-xs"></i>
+              </button>
+            </span>
+          }
+          @if (filterPracticeArea()) {
+            <span class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full border border-purple-200">
+              <i class="fa-solid fa-scale-balanced text-xs"></i>{{ filterPracticeArea() }}
+              <button (click)="filterPracticeArea.set('')" class="ml-0.5 w-4 h-4 flex items-center justify-center rounded-full hover:bg-purple-200 transition-colors">
+                <i class="fa-solid fa-xmark text-xs"></i>
+              </button>
+            </span>
+          }
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-2 flex-shrink-0">
           @if (hasActiveFilters) {
             <button (click)="clearFilters()"
-                    class="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-              <i class="fa-solid fa-xmark mr-1"></i>Clear
+                    class="px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-1">
+              <i class="fa-solid fa-xmark"></i>Clear all
             </button>
           }
           <button (click)="showFilterPanel.set(false)"
-                  class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            Close
+                  class="px-3 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1">
+            <i class="fa-solid fa-chevron-up"></i>Close
           </button>
         </div>
       </div>
+
     </div>
   }
 </header>
@@ -142,18 +236,7 @@
             </button>
           }
         </div>
-        <div class="flex items-center gap-4">
-          @if (selectedCount > 0) {
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-medium text-amber-700 bg-amber-50 px-3 py-1 rounded-lg">
-                {{ selectedCount }} selected
-              </span>
-              <button (click)="clearSelection()"
-                      class="text-xs text-gray-500 hover:text-gray-700 underline">Clear</button>
-            </div>
-          }
-          <p class="text-sm text-gray-500">{{ filteredClients.length }} clients found</p>
-        </div>
+        <p class="text-sm text-gray-500">{{ filteredClients.length }} clients found</p>
       </div>
 
       <!-- Loading -->
@@ -171,16 +254,12 @@
         </div>
       }
 
-      <!-- ══ LIST VIEW ══ -->
+      <!-- â•â• LIST VIEW â•â• -->
       @if (!isLoading()) {
         <div class="overflow-x-auto">
           <table class="w-full">
             <thead class="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th class="px-6 py-4 text-left">
-                  <input type="checkbox" class="rounded border-gray-300"
-                         [ngModel]="allSelected" (ngModelChange)="toggleSelectAll()">
-                </th>
                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Client</th>
                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Contact</th>
                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
@@ -193,22 +272,16 @@
             </thead>
             <tbody class="divide-y divide-gray-100">
               @for (c of filteredClients; track c.id) {
-                <tr class="hover:bg-gray-50 transition-colors"
-                    [ngClass]="isSelected(c.id) ? 'bg-amber-50' : ''">
-                  <td class="px-6 py-4">
-                    <input type="checkbox" class="rounded border-gray-300"
-                           [ngModel]="isSelected(c.id)" (ngModelChange)="toggleSelect(c.id)"
-                           (click)="$event.stopPropagation()">
-                  </td>
+                <tr class="hover:bg-amber-50 cursor-pointer transition-colors"
+                    (click)="goToDetail(c.id)">
 
                   <!-- Client -->
                   <td class="px-6 py-4">
                     <div class="flex items-center space-x-3">
                       <img [src]="c.avatar" [alt]="c.name" class="w-10 h-10 rounded-full border-2 border-gray-200 flex-shrink-0">
                       <div>
-                        <p class="text-sm font-semibold text-gray-900 cursor-pointer hover:text-amber-600 transition-colors"
-                           (click)="goToDetail(c.id)">{{ c.name }}</p>
-                        <p class="text-xs text-gray-500">{{ c.company }}</p>
+                        <p class="text-sm font-semibold text-gray-900" [innerHTML]="c.name | highlight: searchQuery()"></p>
+                        <p class="text-xs text-gray-500" [innerHTML]="c.company | highlight: searchQuery()"></p>
                         <span class="text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 inline-block"
                               [ngClass]="[c.typeBg, c.typeColor]">{{ c.type }}</span>
                       </div>
@@ -217,7 +290,7 @@
 
                   <!-- Contact -->
                   <td class="px-6 py-4">
-                    <p class="text-sm text-gray-900">{{ c.email }}</p>
+                    <p class="text-sm text-gray-900" [innerHTML]="c.email | highlight: searchQuery()"></p>
                     <p class="text-xs text-gray-500 mt-0.5">{{ c.phone }}</p>
                   </td>
 
@@ -233,12 +306,20 @@
                       <span class="text-sm font-semibold text-gray-900">{{ c.activeCases }}</span>
                       <span class="text-xs text-gray-500">active</span>
                     </div>
+                    @if (c.practiceArea) {
+                      <p class="text-xs text-gray-400 mt-0.5">{{ c.practiceArea }}</p>
+                    }
                   </td>
 
                   <!-- Billed -->
                   <td class="px-6 py-4">
-                    <p class="text-sm font-semibold text-gray-900">{{ c.totalBilled }}</p>
-                    <p class="text-xs text-gray-500">since {{ c.since }}</p>
+                    <div class="flex items-center space-x-1.5">
+                      <p class="text-sm font-semibold text-gray-900">{{ c.totalBilled }}</p>
+                      @if (c.hasUnpaidInvoices) {
+                        <span class="text-xs px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full font-medium leading-none">Unpaid</span>
+                      }
+                    </div>
+                    <p class="text-xs text-gray-500 mt-0.5">since {{ c.since }}</p>
                   </td>
 
                   <!-- Attorney -->
@@ -253,18 +334,13 @@
 
                   <!-- Actions -->
                   <td class="px-6 py-4 text-right">
-                    <div class="flex items-center justify-end space-x-1">
-                      <button (click)="goToDetail(c.id)"
-                        class="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors">
-                        <i class="fa-solid fa-eye"></i>
-                        <span>View</span>
-                      </button>
+                    <div class="flex items-center justify-end space-x-1" (click)="$event.stopPropagation()">
                       <button (click)="openEditModal(c)"
                         class="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors">
                         <i class="fa-solid fa-pen-to-square"></i>
                         <span>Edit</span>
                       </button>
-                      <button (click)="deleteClient(c.id)"
+                      <button (click)="confirmDelete(c.id)"
                         class="flex items-center space-x-1.5 px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition-colors">
                         <i class="fa-solid fa-trash"></i>
                         <span>Delete</span>
@@ -276,7 +352,7 @@
 
               @if (!isLoading() && filteredClients.length === 0) {
                 <tr>
-                  <td colspan="9" class="px-6 py-16 text-center text-gray-400">
+                  <td colspan="8" class="px-6 py-16 text-center text-gray-400">
                     <i class="fa-solid fa-users text-4xl mb-3 block"></i>
                     <p class="text-base font-medium">No clients found</p>
                     <p class="text-sm mt-1">Try adjusting your filters or add a new client.</p>
@@ -287,10 +363,6 @@
           </table>
         </div>
 
-        <!-- Footer -->
-        <div class="px-6 py-4 border-t border-gray-200">
-          <p class="text-sm text-gray-500">{{ filteredClients.length }} client(s) found</p>
-        </div>
       }
 
     </div>
@@ -298,511 +370,47 @@
 
 </main>
 
-<!-- ══════════════════════════════════════════════════════════
-     MODAL — NEW CLIENT  (3 steps)
-══════════════════════════════════════════════════════════ -->
-@if (showModal()) {
-<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
-     style="background-color: rgba(0,0,0,0.5)"
-     (click)="closeModal()">
+<app-new-client-modal #clientModal (saved)="onClientSaved()"></app-new-client-modal>
 
-  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
-       style="max-height:92vh"
+<!-- ── DELETE CONFIRMATION MODAL ── -->
+@if (pendingDeleteId()) {
+<div class="fixed inset-0 z-[60] flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.5)"
+     (click)="cancelDelete()">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
        (click)="$event.stopPropagation()">
 
-    <!-- ── Header ── -->
-    <div class="px-6 py-5 border-b border-gray-100 flex-shrink-0">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-            <i class="fa-solid fa-user-plus text-amber-600"></i>
-          </div>
-          <div>
-            <h2 class="text-lg font-bold text-gray-900">
-              @if (modalStep() === 4) { Client Created! }
-              @else { Add New Client }
-            </h2>
-            <p class="text-xs text-gray-500">Fill in client details to create a new profile</p>
-          </div>
-        </div>
-        <button (click)="closeModal()"
-                class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
-          <i class="fa-solid fa-times text-lg"></i>
-        </button>
-      </div>
-
-      @if (modalStep() < 4) {
-        <!-- Progress bar -->
-        <div class="flex items-center justify-between mb-2 text-xs font-semibold">
-          <span class="text-gray-500">Progress</span>
-          <span class="text-gray-700">Step {{ modalStep() }} of 3</span>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
-          <div class="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300"
-               [style.width]="progressPct + '%'"></div>
-        </div>
-        <div class="flex items-center justify-between mt-1">
-          @for (sl of stepLabels; track sl.label) {
-            <span class="text-xs font-medium transition-colors"
-                  [ngClass]="sl.active ? 'text-amber-600 font-bold' : sl.done ? 'text-green-500' : 'text-gray-400'">
-              @if (sl.done) { <i class="fa-solid fa-check mr-1"></i> }
-              {{ sl.label }}
-            </span>
-          }
-        </div>
-      }
+    <!-- Icon -->
+    <div class="flex items-center justify-center w-14 h-14 bg-red-100 rounded-full mx-auto mb-4">
+      <i class="fa-solid fa-trash text-red-600 text-xl"></i>
     </div>
 
-    <!-- ── Scrollable body ── -->
-    <div class="overflow-y-auto flex-1">
+    <!-- Text -->
+    <h3 class="text-lg font-bold text-gray-900 text-center">Delete Client</h3>
+    <p class="text-sm text-gray-500 text-center mt-2">
+      Are you sure you want to delete this client?<br>
+      <span class="font-semibold text-gray-700">This action cannot be undone.</span>
+    </p>
 
-      <!-- ════ STEP 1 — Personal Info ════ -->
-      @if (modalStep() === 1) {
-        <div class="px-6 py-5 space-y-5">
+    <!-- Buttons -->
+    <div class="flex gap-3 mt-6">
+      <button (click)="cancelDelete()"
+        class="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button (click)="deleteClient(pendingDeleteId()!)"
+        class="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">
+        <i class="fa-solid fa-trash mr-1.5"></i>Delete
+      </button>
+    </div>
 
-          <div class="flex items-center justify-between">
-            <h3 class="text-base font-bold text-gray-900">Personal Information</h3>
-            <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
-          </div>
-
-          <!-- Photo upload -->
-          <div class="flex items-center space-x-4">
-            <div class="w-20 h-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl flex items-center justify-center border-2 border-dashed border-amber-300 flex-shrink-0">
-              <i class="fa-solid fa-camera text-2xl text-amber-600"></i>
-            </div>
-            <div class="flex-1">
-              <button class="w-full bg-amber-50 text-amber-700 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center space-x-2 hover:bg-amber-100 transition-colors">
-                <i class="fa-solid fa-upload"></i><span>Upload Photo</span>
-              </button>
-              <p class="text-xs text-gray-500 text-center mt-1">JPG, PNG up to 5 MB</p>
-            </div>
-          </div>
-
-          <!-- Full Name -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Full Name <span class="text-red-500">*</span></label>
-            <div class="relative">
-              <input type="text" placeholder="Enter full legal name"
-                     [ngModel]="f1().fullName" (ngModelChange)="f1.update(v=>({...v,fullName:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-
-          <!-- Date of Birth -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Date of Birth</label>
-            <div class="relative">
-              <input type="date"
-                     [ngModel]="f1().dob" (ngModelChange)="f1.update(v=>({...v,dob:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-
-          <!-- Gender -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Gender</label>
-            <div class="grid grid-cols-3 gap-3">
-              @for (g of [['Male','fa-mars'],['Female','fa-venus'],['Other','fa-genderless']]; track g[0]) {
-                <button (click)="setGender(g[0])"
-                        class="border-2 rounded-xl py-3 text-sm font-medium transition-all"
-                        [ngClass]="f1().gender === g[0]
-                          ? 'border-blue-600 bg-amber-50 text-amber-700'
-                          : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-400 hover:bg-blue-50 hover:text-amber-600'">
-                  <i [ngClass]="'fa-solid ' + g[1]" class="mr-1.5"></i>{{ g[0] }}
-                </button>
-              }
-            </div>
-          </div>
-
-          <!-- ID Number -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">ID / Passport Number</label>
-            <div class="relative">
-              <input type="text" placeholder="Enter identification number"
-                     [ngModel]="f1().idNumber" (ngModelChange)="f1.update(v=>({...v,idNumber:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-
-          <!-- Nationality -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Nationality</label>
-            <div class="relative">
-              <select [ngModel]="f1().nationality" (ngModelChange)="f1.update(v=>({...v,nationality:$event}))"
-                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all appearance-none">
-                <option value="">Select nationality</option>
-                <option>United States</option><option>United Kingdom</option>
-                <option>Canada</option><option>Australia</option><option>Other</option>
-              </select>
-              <i class="fa-solid fa-globe absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-            </div>
-          </div>
-
-          <!-- Occupation -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Occupation / Company</label>
-            <div class="relative">
-              <input type="text" placeholder="Enter occupation or company name"
-                     [ngModel]="f1().occupation" (ngModelChange)="f1.update(v=>({...v,occupation:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-        </div>
-      }
-
-      <!-- ════ STEP 2 — Contact Info ════ -->
-      @if (modalStep() === 2) {
-        <div class="px-6 py-5 space-y-5">
-
-          <div class="flex items-center justify-between">
-            <h3 class="text-base font-bold text-gray-900">Contact Information</h3>
-            <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
-          </div>
-
-          <!-- Primary Phone -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Primary Phone <span class="text-red-500">*</span></label>
-            <div class="flex space-x-2">
-              <div class="relative w-32 flex-shrink-0">
-                <select [ngModel]="f2().phoneCode" (ngModelChange)="f2.update(v=>({...v,phoneCode:$event}))"
-                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
-                  @for (c of countryCodes; track c.code) {
-                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
-                  }
-                </select>
-                <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
-              </div>
-              <div class="relative flex-1">
-                <input type="tel" placeholder="(555) 123-4567"
-                       [ngModel]="f2().phone" (ngModelChange)="f2.update(v=>({...v,phone:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-          </div>
-
-          <!-- Secondary Phone -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Secondary Phone</label>
-            <div class="flex space-x-2">
-              <div class="relative w-32 flex-shrink-0">
-                <select [ngModel]="f2().phoneCode2" (ngModelChange)="f2.update(v=>({...v,phoneCode2:$event}))"
-                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
-                  @for (c of countryCodes; track c.code) {
-                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
-                  }
-                </select>
-                <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
-              </div>
-              <div class="relative flex-1">
-                <input type="tel" placeholder="(555) 987-6543"
-                       [ngModel]="f2().phone2" (ngModelChange)="f2.update(v=>({...v,phone2:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-          </div>
-
-          <!-- Email -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Email Address <span class="text-red-500">*</span></label>
-            <div class="relative">
-              <input type="email" placeholder="client@example.com"
-                     [ngModel]="f2().email" (ngModelChange)="f2.update(v=>({...v,email:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-
-          <!-- Preferred Contact -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Preferred Contact Method</label>
-            <div class="grid grid-cols-3 gap-3">
-              @for (p of [['Phone','fa-phone'],['Email','fa-envelope'],['WhatsApp','fa-brands fa-whatsapp']]; track p[0]) {
-                <button (click)="setContactPref(p[0])"
-                        class="border-2 rounded-xl py-3 text-sm font-medium transition-all flex flex-col items-center"
-                        [ngClass]="f2().contactPref === p[0]
-                          ? 'border-blue-600 bg-amber-50 text-amber-700'
-                          : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-400 hover:text-amber-600'">
-                  <i [ngClass]="p[1]" class="text-xl mb-1"></i>
-                  <span class="text-xs">{{ p[0] }}</span>
-                </button>
-              }
-            </div>
-          </div>
-
-          <!-- WhatsApp -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">WhatsApp Number</label>
-            <div class="flex space-x-2">
-              <div class="relative w-32 flex-shrink-0">
-                <select [ngModel]="f2().waCode" (ngModelChange)="f2.update(v=>({...v,waCode:$event}))"
-                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
-                  @for (c of countryCodes; track c.code) {
-                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
-                  }
-                </select>
-                <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
-              </div>
-              <div class="relative flex-1">
-                <input type="tel" placeholder="(555) 123-4567"
-                       [ngModel]="f2().whatsapp" (ngModelChange)="f2.update(v=>({...v,whatsapp:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-brands fa-whatsapp absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg"></i>
-              </div>
-            </div>
-          </div>
-        </div>
-      }
-
-      <!-- ════ STEP 3 — Address + Case + Additional ════ -->
-      @if (modalStep() === 3) {
-        <div class="px-6 py-5 space-y-6">
-
-          <!-- Address -->
-          <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <h3 class="text-base font-bold text-gray-900">Address Information</h3>
-              <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
-            </div>
-            <div class="relative">
-              <input type="text" placeholder="123 Main Street"
-                     [ngModel]="f3().address" (ngModelChange)="f3.update(v=>({...v,address:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <input type="text" placeholder="City"
-                     [ngModel]="f3().city" (ngModelChange)="f3.update(v=>({...v,city:$event}))"
-                     class="bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <input type="text" placeholder="State / Province"
-                     [ngModel]="f3().state" (ngModelChange)="f3.update(v=>({...v,state:$event}))"
-                     class="bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <input type="text" placeholder="ZIP / Postal Code"
-                     [ngModel]="f3().zip" (ngModelChange)="f3.update(v=>({...v,zip:$event}))"
-                     class="bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <div class="relative">
-                <select [ngModel]="f3().country" (ngModelChange)="f3.update(v=>({...v,country:$event}))"
-                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 appearance-none">
-                  <option>USA</option><option>UK</option><option>Canada</option><option>Australia</option>
-                </select>
-                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-              </div>
-            </div>
-          </div>
-
-          <!-- Case Info -->
-          <div class="space-y-4 pt-2 border-t border-gray-100">
-            <div class="flex items-center justify-between">
-              <h3 class="text-base font-bold text-gray-900">Case Information</h3>
-              <span class="text-xs bg-amber-50 text-amber-700 px-3 py-1 rounded-full font-semibold">Optional</span>
-            </div>
-            <div class="relative">
-              <select [ngModel]="f3().caseType" (ngModelChange)="f3.update(v=>({...v,caseType:$event}))"
-                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
-                <option value="">Select case type</option>
-                <option>Criminal Law</option><option>Civil Law</option><option>Corporate Law</option>
-                <option>Family Law</option><option>Real Estate Law</option><option>Personal Injury</option><option>Other</option>
-              </select>
-              <i class="fa-solid fa-gavel absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Priority Level</label>
-              <div class="grid grid-cols-3 gap-3">
-                @for (p of [['Normal','bg-green-50','border-green-200','text-green-700'],['Medium','bg-amber-50','border-amber-200','text-amber-700'],['High','bg-red-50','border-red-200','text-red-700']]; track p[0]) {
-                  <button (click)="setPriority(p[0])"
-                          class="border-2 rounded-xl py-3 text-sm font-medium transition-all"
-                          [ngClass]="f3().priority === p[0]
-                            ? [p[1], p[2], p[3], 'ring-2 ring-offset-1', p[2].replace('border-','ring-')]
-                            : [p[1], p[2], p[3]]">
-                    <i class="fa-solid fa-circle text-xs mr-1"></i>{{ p[0] }}
-                  </button>
-                }
-              </div>
-            </div>
-            <textarea placeholder="Brief description of the case..." rows="3"
-                      [ngModel]="f3().caseDesc" (ngModelChange)="f3.update(v=>({...v,caseDesc:$event}))"
-                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
-            <div class="relative">
-              <select [ngModel]="f3().referral" (ngModelChange)="f3.update(v=>({...v,referral:$event}))"
-                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
-                <option value="">How did they find us?</option>
-                <option>Website</option><option>Referral</option><option>Social Media</option>
-                <option>Advertisement</option><option>Walk-in</option><option>Other</option>
-              </select>
-              <i class="fa-solid fa-users absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-            </div>
-          </div>
-
-          <!-- Client Type + Attorney -->
-          <div class="space-y-4 pt-2 border-t border-gray-100">
-            <h3 class="text-base font-bold text-gray-900">Assignment</h3>
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-semibold text-gray-800 mb-2">Client Type</label>
-                <div class="relative">
-                  <select [ngModel]="f3().clientType" (ngModelChange)="f3.update(v=>({...v,clientType:$event}))"
-                          class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
-                    <option>Standard Client</option><option>Premium Client</option><option>VIP Client</option>
-                  </select>
-                  <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-                </div>
-              </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-800 mb-2">Assigned Attorney</label>
-                <div class="relative">
-                  <select [ngModel]="f3().attorney" (ngModelChange)="f3.update(v=>({...v,attorney:$event}))"
-                          class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
-                    <option value="">Select attorney</option>
-                    @for (a of attorneys; track a) { <option>{{ a }}</option> }
-                  </select>
-                  <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Additional Info -->
-          <div class="space-y-4 pt-2 border-t border-gray-100">
-            <div class="flex items-center justify-between">
-              <h3 class="text-base font-bold text-gray-900">Additional Information</h3>
-              <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-              <div class="relative">
-                <input type="text" placeholder="Emergency contact"
-                       [ngModel]="f3().emergencyName" (ngModelChange)="f3.update(v=>({...v,emergencyName:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-user-shield absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-              <div class="relative">
-                <input type="tel" placeholder="Emergency phone"
-                       [ngModel]="f3().emergencyPhone" (ngModelChange)="f3.update(v=>({...v,emergencyPhone:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-phone-volume absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-            <textarea placeholder="Internal notes about the client..." rows="3"
-                      [ngModel]="f3().notes" (ngModelChange)="f3.update(v=>({...v,notes:$event}))"
-                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
-            <div class="relative">
-              <input type="text" placeholder="Tags (comma separated)"
-                     [ngModel]="f3().tags" (ngModelChange)="f3.update(v=>({...v,tags:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-tags absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-
-          <!-- Consent -->
-          <div class="space-y-3 pt-2 border-t border-gray-100">
-            <h3 class="text-base font-bold text-gray-900">Consent &amp; Agreements</h3>
-            @for (consent of [
-              {key:'consentData', label:'Data Processing Consent',  desc:'I consent to the processing of my personal data for legal representation purposes'},
-              {key:'consentComm', label:'Communication Agreement',   desc:'I agree to receive case updates via my preferred contact method'},
-              {key:'consentTerms',label:'Terms of Service',          desc:'I have read and agree to the terms of service and client agreement'}
-            ]; track consent.key) {
-              <label class="flex items-start space-x-3 cursor-pointer bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-amber-300 transition-colors">
-                <input type="checkbox"
-                       [ngModel]="getF3Bool(consent.key)"
-                       (ngModelChange)="updateConsent(consent.key, $event)"
-                       class="mt-0.5 w-5 h-5 accent-blue-600 rounded">
-                <div class="flex-1">
-                  <p class="text-sm font-semibold text-gray-900">{{ consent.label }}</p>
-                  <p class="text-xs text-gray-500 mt-0.5">{{ consent.desc }}</p>
-                </div>
-              </label>
-            }
-          </div>
-
-        </div>
-      }
-
-      <!-- ════ STEP 4 — Success ════ -->
-      @if (modalStep() === 4) {
-        <div class="flex flex-col items-center justify-center py-14 px-8 text-center">
-          <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-5">
-            <i class="fa-solid fa-check text-green-500 text-4xl"></i>
-          </div>
-          <h3 class="text-2xl font-bold text-gray-900 mb-2">Client Created!</h3>
-          <p class="text-gray-500 mb-2">
-            <span class="font-semibold text-gray-800">{{ f1().fullName }}</span> has been added successfully.
-          </p>
-          <div class="flex items-center space-x-3 bg-gray-100 rounded-full px-5 py-2 mb-8 text-sm text-gray-600">
-            <i class="fa-solid fa-user text-amber-600"></i>
-            <span>{{ f2().email }}</span>
-            @if (f2().phone) { <span>·</span><span>{{ f2().phoneCode }} {{ f2().phone }}</span> }
-          </div>
-          <div class="flex items-center space-x-3 w-full max-w-xs">
-            <button (click)="openModal()"
-                    class="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors">
-              <i class="fa-solid fa-plus mr-2"></i>Add Another
-            </button>
-            <button (click)="goToNewClient()"
-                    class="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl text-sm font-semibold hover:shadow-md transition-all">
-              View Profile
-            </button>
-          </div>
-        </div>
-      }
-
-    </div><!-- /scrollable body -->
-
-    <!-- ── Sticky Footer ── -->
-    @if (modalStep() < 4) {
-      <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
-        @if (modalStep() > 1) {
-          <button (click)="prevStep()"
-                  class="px-4 py-3.5 border border-gray-300 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-100 transition-colors">
-            <i class="fa-solid fa-arrow-left mr-2"></i>Back
-          </button>
-        }
-        <button (click)="closeModal()"
-                class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
-          Cancel
-        </button>
-        <button (click)="nextStep()"
-                [disabled]="(modalStep()===1 && !step1Valid) || (modalStep()===2 && !step2Valid) || isSubmitting()"
-                class="flex-1 py-3.5 rounded-xl font-bold text-sm transition-all"
-                [ngClass]="((modalStep()===1 && !step1Valid) || (modalStep()===2 && !step2Valid))
-                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'">
-          @if (isSubmitting()) {
-            <i class="fa-solid fa-spinner fa-spin mr-2"></i>Creating...
-          } @else if (modalStep() === 3) {
-            <i class="fa-solid fa-check mr-2"></i>Create Client
-          } @else {
-            Continue <i class="fa-solid fa-arrow-right ml-2"></i>
-          }
-        </button>
-      </div>
-      @if (submitError()) {
-        <p class="text-xs text-red-600 text-center pb-3 px-4">
-          <i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ submitError() }}
-        </p>
-      } @else {
-        <p class="text-xs text-gray-400 text-center pb-3">
-          @if (modalStep() < 3) { Required fields must be filled to continue }
-          @else { All required fields must be filled }
-        </p>
-      }
-    }
-
-  </div><!-- /panel -->
-</div><!-- /backdrop -->
+  </div>
+</div>
 }
 
-<!-- ══════════════════════════════════════════════════════════
-     MODAL — EDIT CLIENT  (3 steps — identique à client-detail)
-══════════════════════════════════════════════════════════ -->
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+     MODAL â€” EDIT CLIENT  (3 steps â€” identique Ã  client-detail)
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 @if (showEditModal()) {
 <div class="fixed inset-0 z-50 flex items-center justify-center p-4"
      style="background-color: rgba(0,0,0,0.5)"
@@ -821,7 +429,7 @@
           </div>
           <div>
             <h2 class="text-lg font-bold text-gray-900">Edit Client</h2>
-            <p class="text-xs text-gray-500">Update client profile — {{ editingClient()?.name }}</p>
+            <p class="text-xs text-gray-500">Update client profile â€” {{ editingClient()?.name }}</p>
           </div>
         </div>
         <button (click)="closeEditModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
@@ -851,7 +459,7 @@
     <!-- Scrollable Body -->
     <div class="overflow-y-auto flex-1">
 
-      <!-- ════ STEP 1 — Identity ════ -->
+      <!-- â•â•â•â• STEP 1 â€” Identity â•â•â•â• -->
       @if (editStep() === 1) {
         <div class="px-6 py-5 space-y-5">
           <div class="flex items-center justify-between">
@@ -973,7 +581,7 @@
         </div>
       }
 
-      <!-- ════ STEP 2 — Classification ════ -->
+      <!-- â•â•â•â• STEP 2 â€” Classification â•â•â•â• -->
       @if (editStep() === 2) {
         <div class="px-6 py-5 space-y-5">
           <div class="flex items-center justify-between">
@@ -1058,7 +666,7 @@
         </div>
       }
 
-      <!-- ════ STEP 3 — Notes & Preferences ════ -->
+      <!-- â•â•â•â• STEP 3 â€” Notes & Preferences â•â•â•â• -->
       @if (editStep() === 3) {
         <div class="px-6 py-5 space-y-5">
           <div class="flex items-center justify-between">
@@ -1123,7 +731,7 @@
               </div>
               <div class="flex items-center space-x-2">
                 <i class="fa-solid fa-star text-amber-500 w-4"></i>
-                <span>{{ eF2().type }} · {{ eF2().status }}</span>
+                <span>{{ eF2().type }} Â· {{ eF2().status }}</span>
               </div>
               <div class="flex items-center space-x-2">
                 <i class="fa-solid fa-user-tie text-amber-500 w-4"></i>

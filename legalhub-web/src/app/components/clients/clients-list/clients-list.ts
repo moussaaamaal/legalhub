@@ -1,19 +1,25 @@
-import { Component, signal, OnInit, inject } from '@angular/core';
+import { Component, signal, OnInit, inject, ViewChild } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Client } from '../../../models';
 import { ClientService } from '../../../services/client.service';
+import { HighlightPipe } from '../../../shared/pipes/highlight.pipe';
+import { SearchNavigatorService } from '../../../shared/services/search-navigator.service';
+import { NewClientModal } from '../../../shared/modals/new-client-modal/new-client-modal';
 
 @Component({
   selector: 'app-client-list',
   standalone: true,
-  imports: [NgClass, FormsModule],
+  imports: [NgClass, FormsModule, HighlightPipe, NewClientModal],
   templateUrl: './clients-list.html',
 })
 export class ClientsList implements OnInit {
+  @ViewChild(NewClientModal) clientModal!: NewClientModal;
+
   private clientService = inject(ClientService);
   private router        = inject(Router);
+  searchNav             = inject(SearchNavigatorService);
 
   readonly countryCodes = [
     { code: '+216', flag: '🇹🇳', name: 'Tunisie' },
@@ -44,17 +50,34 @@ export class ClientsList implements OnInit {
 
   searchQuery  = signal('');
   activeFilter = signal('All');
+
+  onSearch(q: string): void {
+    this.searchQuery.set(q);
+    if (!q) { this.searchNav.reset(); return; }
+    setTimeout(() => this.searchNav.scan(), 50);
+  }
   filters      = ['All', 'Active', 'Inactive', 'Pending'];
   isLoading    = signal(false);
   error        = signal<string | null>(null);
 
   // Advanced filters
-  showFilterPanel = signal(false);
-  filterStatus    = signal('');
-  filterType      = signal('');
+  showFilterPanel     = signal(false);
+  filterStatus        = signal('');
+  filterType          = signal('');
+  filterPracticeArea  = signal('');
+
+  readonly practiceAreas = [
+    'Assault & Battery','Contract Disputes','Divorce & Custody','Estate Planning',
+    'Employment Law','Tax Law','Criminal Defense','Personal Injury','Real Estate',
+    'Immigration','Intellectual Property','Corporate Law','Bankruptcy','Civil Rights',
+    'Environmental Law','Medical Malpractice','Insurance Law','Securities Law',
+  ];
 
   // Selection
   selectedIds = signal<Set<string>>(new Set());
+
+  // Delete confirmation
+  pendingDeleteId = signal<string | null>(null);
 
   ngOnInit() { this.loadClients(); }
 
@@ -72,12 +95,16 @@ export class ClientsList implements OnInit {
 
   get stats() {
     const clients = this.clientService.clients();
+    const totalBilledAmount = clients.reduce((sum, c) => sum + c.totalBilledAmount, 0);
+    const totalBilled = totalBilledAmount >= 1000
+      ? '$' + (totalBilledAmount / 1000).toFixed(1) + 'K'
+      : '$' + totalBilledAmount.toFixed(0);
     return {
       total:       clients.length,
       active:      clients.filter(c => c.status === 'Active').length,
       inactive:    clients.filter(c => c.status === 'Inactive').length,
       pending:     clients.filter(c => c.status === 'Pending').length,
-      totalBilled: '$0',
+      totalBilled,
     };
   }
 
@@ -91,17 +118,18 @@ export class ClientsList implements OnInit {
         || c.name.toLowerCase().includes(q)
         || c.company.toLowerCase().includes(q)
         || c.email.toLowerCase().includes(q);
-      const matchStatus = !this.filterStatus() || c.status === this.filterStatus();
-      const matchType   = !this.filterType()   || c.type === this.filterType();
-      return matchFilter && matchSearch && matchStatus && matchType;
+      const matchStatus        = !this.filterStatus()       || c.status === this.filterStatus();
+      const matchType          = !this.filterType()         || c.type === this.filterType();
+      const matchPracticeArea  = !this.filterPracticeArea() || c.practiceArea === this.filterPracticeArea();
+      return matchFilter && matchSearch && matchStatus && matchType && matchPracticeArea;
     });
   }
 
   get hasActiveFilters(): boolean {
-    return !!this.filterStatus() || !!this.filterType();
+    return !!this.filterStatus() || !!this.filterType() || !!this.filterPracticeArea();
   }
 
-  clearFilters() { this.filterStatus.set(''); this.filterType.set(''); }
+  clearFilters() { this.filterStatus.set(''); this.filterType.set(''); this.filterPracticeArea.set(''); }
 
   setFilter(f: string)   { this.activeFilter.set(f); }
   goToDetail(id: string) { this.router.navigate(['/clients', id]); }
@@ -138,12 +166,15 @@ export class ClientsList implements OnInit {
 
   // ── Delete ────────────────────────────────────────────────
 
+  confirmDelete(id: string) { this.pendingDeleteId.set(id); }
+  cancelDelete()            { this.pendingDeleteId.set(null); }
+
   async deleteClient(id: string) {
-    if (!confirm('Delete this client? This cannot be undone.')) return;
+    this.pendingDeleteId.set(null);
     try {
       await this.clientService.deleteClient(id);
     } catch {
-      alert('Failed to delete client.');
+      this.error.set('Failed to delete client.');
     }
   }
 
@@ -172,6 +203,8 @@ export class ClientsList implements OnInit {
   isSaving      = signal(false);
   editingClient = signal<Client | null>(null);
   statusList    = ['Active', 'Pending', 'Inactive'];
+  clientTypes   = ['Standard Client', 'Corporate Client', 'Premium Client', 'VIP Client'];
+  attorneys     = ['Me. Sarah Johnson', 'Me. Michael Chen', 'Me. Emily Rodriguez', 'Me. David Kim'];
 
   eF1 = signal({ name:'', email:'', phoneCode:'+216', phone:'', mobileCode:'+216', mobile:'', company:'', address:'', city:'', taxId:'' });
   eF2 = signal({ type:'', status:'', attorney:'', since:'', tags:'' });
@@ -251,126 +284,5 @@ export class ClientsList implements OnInit {
     }
   }
 
-  // ── Modal — New Client (3 steps) ──────────────────────────
-
-  showModal    = signal(false);
-  modalStep    = signal<1 | 2 | 3 | 4>(1);
-  isSubmitting = signal(false);
-  submitError  = signal<string | null>(null);
-  private _newClientId = signal<string | null>(null);
-
-  f1 = signal({ fullName:'', dob:'', gender:'', idNumber:'', nationality:'', occupation:'' });
-  f2 = signal({ phoneCode:'+216', phone:'', phoneCode2:'+216', phone2:'', email:'', contactPref:'', waCode:'+216', whatsapp:'' });
-  f3 = signal({
-    address:'', city:'', state:'', zip:'', country:'USA',
-    caseType:'', priority:'', caseDesc:'', referral:'',
-    emergencyName:'', emergencyPhone:'', relationship:'', notes:'', tags:'',
-    consentData:false, consentComm:false, consentTerms:false,
-    clientType:'Standard Client', attorney:'',
-  });
-
-  attorneys   = ['Sarah Williams', 'Michael Chen', 'Jennifer Lopez', 'Robert Taylor'];
-  clientTypes = ['Premium Client', 'Standard Client', 'VIP Client', 'Corporate Client'];
-
-  get step1Valid() { return this.f1().fullName.trim().length > 0; }
-  get step2Valid() { return this.f2().email.trim().length > 0 && this.f2().phone.trim().length > 0; }
-  get step3Valid() { return true; }
-  get progressPct() { return ((this.modalStep() - 1) / 3) * 100; }
-
-  get stepLabels() {
-    const s = this.modalStep();
-    return [
-      { label: 'Personal Info', active: s === 1, done: s > 1 },
-      { label: 'Contact Info',  active: s === 2, done: s > 2 },
-      { label: 'Additional',    active: s === 3, done: s > 3 },
-    ];
-  }
-
-  updateConsent(key: string, value: boolean) {
-    this.f3.update(v => ({ ...v, [key]: value }));
-  }
-
-  setGender(g: string)      { this.f1.update(v => ({ ...v, gender: g })); }
-  setContactPref(p: string) { this.f2.update(v => ({ ...v, contactPref: p })); }
-  setPriority(p: string)    { this.f3.update(v => ({ ...v, priority: p })); }
-
-  getF3Bool(key: string): boolean {
-    const f = this.f3();
-    return !!f[key as 'consentData' | 'consentComm' | 'consentTerms'];
-  }
-
-  openModal() {
-    this.submitError.set(null);
-    this.f1.set({ fullName:'', dob:'', gender:'', idNumber:'', nationality:'', occupation:'' });
-    this.f2.set({ phoneCode:'+216', phone:'', phoneCode2:'+216', phone2:'', email:'', contactPref:'', waCode:'+216', whatsapp:'' });
-    this.f3.set({ address:'', city:'', state:'', zip:'', country:'USA', caseType:'', priority:'', caseDesc:'', referral:'', emergencyName:'', emergencyPhone:'', relationship:'', notes:'', tags:'', consentData:false, consentComm:false, consentTerms:false, clientType:'Standard Client', attorney:'' });
-    this._newClientId.set(null);
-    this.modalStep.set(1);
-    this.showModal.set(true);
-  }
-
-  closeModal() { this.showModal.set(false); }
-
-  nextStep() {
-    const s = this.modalStep();
-    if (s < 3) this.modalStep.set((s + 1) as 1|2|3|4);
-    else this.submitClient();
-  }
-
-  prevStep() {
-    const s = this.modalStep();
-    if (s > 1) this.modalStep.set((s - 1) as 1|2|3|4);
-  }
-
-  async submitClient() {
-    this.isSubmitting.set(true);
-    this.submitError.set(null);
-    const f1 = this.f1(); const f2 = this.f2(); const f3 = this.f3();
-
-    const parts      = f1.fullName.trim().split(' ');
-    const first_name = parts[0] || '';
-    const last_name  = parts.slice(1).join(' ') || undefined;
-
-    const clientTypeMap: Record<string, string> = {
-      'Standard Client': 'INDIVIDUAL',
-      'Premium Client':  'INDIVIDUAL',
-      'VIP Client':      'INDIVIDUAL',
-    };
-
-    const payload: Record<string, unknown> = {
-      first_name,
-      email: f2.email,
-      client_type: clientTypeMap[f3.clientType] ?? 'INDIVIDUAL',
-      tag: 'ACTIVE',
-    };
-    if (last_name)      payload['last_name']       = last_name;
-    if (f2.phone)       payload['phone']           = `${f2.phoneCode} ${f2.phone}`.trim();
-    if (f2.whatsapp)    payload['whatsapp_number'] = `${f2.waCode} ${f2.whatsapp}`;
-    if (f1.dob)         payload['date_of_birth']   = f1.dob;
-    if (f1.gender)      payload['gender']          = f1.gender;
-    if (f1.idNumber)    payload['national_id']     = f1.idNumber;
-    if (f1.nationality) payload['nationality']     = f1.nationality;
-    if (f1.occupation)  payload['occupation']      = f1.occupation;
-    if (f3.notes)       payload['notes']           = f3.notes;
-    const addressParts = [f3.address, f3.city, f3.state, f3.zip, f3.country].filter(Boolean);
-    if (addressParts.length) payload['address'] = addressParts.join(', ');
-
-    try {
-      const newClient = await this.clientService.addClient(payload);
-      this._newClientId.set(newClient.id);
-      this.modalStep.set(4);
-    } catch (err: unknown) {
-      const msg = (err as { error?: { detail?: string } })?.error?.detail
-               ?? 'Erreur lors de la création du client';
-      this.submitError.set(msg);
-    } finally {
-      this.isSubmitting.set(false);
-    }
-  }
-
-  goToNewClient() {
-    const id = this._newClientId();
-    this.closeModal();
-    if (id) this.router.navigate(['/clients', id]);
-  }
+  onClientSaved() { this.loadClients(); }
 }

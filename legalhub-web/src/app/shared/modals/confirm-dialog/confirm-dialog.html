@@ -1,0 +1,41 @@
+<!-- Backdrop -->
+<div class="fixed inset-0 z-[200] flex items-center justify-center">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="dismissed.emit()"></div>
+
+  <!-- Card -->
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6"
+       style="animation: slideUp .18s ease-out">
+
+    <div class="flex items-start space-x-4">
+      <!-- Icon -->
+      <div class="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" [ngClass]="iconBg">
+        <i [class]="icon" [ngClass]="iconColor" class="text-lg"></i>
+      </div>
+      <!-- Text -->
+      <div class="flex-1 min-w-0 pt-0.5">
+        <h3 class="text-base font-bold text-gray-900 leading-snug">{{ title }}</h3>
+        <p class="text-sm text-gray-500 mt-1.5 leading-relaxed">{{ message }}</p>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center space-x-3 mt-6">
+      <button (click)="dismissed.emit()"
+        class="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button (click)="confirmed.emit()"
+        class="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+        [ngClass]="btnCls">
+        {{ confirmLabel }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+</style>

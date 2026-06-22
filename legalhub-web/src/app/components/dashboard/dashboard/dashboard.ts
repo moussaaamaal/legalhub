@@ -9,25 +9,26 @@ import {
   DashboardService,
   DashboardStats, DashboardActivity, TodayEvent,
 } from '../../../services/dashboard.service';
-import { NewCaseModal }    from '../../shared/new-case-modal/new-case-modal';
-import { NewClientModal }  from '../../shared/new-client-modal/new-client-modal';
-import { NewEventModal }   from '../../shared/new-event-modal/new-event-modal';
-import { NewInvoiceModal } from '../../shared/new-invoice-modal/new-invoice-modal';
-import { UploadModal }         from '../../../shared/upload-modal/upload-modal';
-import { UploadModalService }  from '../../../shared/upload-modal/upload-modal.sevice';
+import { NewCaseModal }    from '../../../shared/modals/new-case-modal/new-case-modal';
+import { NewClientModal }  from '../../../shared/modals/new-client-modal/new-client-modal';
+import { NewEventModal }   from '../../../shared/modals/new-event-modal/new-event-modal';
+import { NewInvoiceModal } from '../../../shared/modals/new-invoice-modal/new-invoice-modal';
+import { UploadModal }         from '../../../shared/modals/upload-modal/upload-modal';
+import { UploadModalService }  from '../../../shared/modals/upload-modal/upload-modal.sevice';
 import { DocumentService }     from '../../../services/document.service';
 import { CaseService }         from '../../../services/case.service';
-import { TaskService }         from '../../../services/task.service';
-import { VoiceNoteModal }      from '../../../shared/voice-note-modal/voice-note-modal';
+import { VoiceNoteModal }      from '../../../shared/modals/voice-note-modal/voice-note-modal';
+import { NewNoteModal }         from '../../../shared/modals/new-note-modal/new-note-modal';
+import { AiFirmChatModal }     from '../../../shared/modals/ai-firm-chat-modal/ai-firm-chat-modal';
 
 declare var Plotly: any;
 
-interface QuickAction { id: string; label: string; sublabel: string; icon: string; color: string; }
+interface QuickAction { id: string; label: string; icon: string; color: string; }
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [RouterLink, NgClass, NewCaseModal, NewClientModal, NewEventModal, NewInvoiceModal, UploadModal, VoiceNoteModal],
+  imports: [RouterLink, NgClass, NewCaseModal, NewClientModal, NewEventModal, NewInvoiceModal, UploadModal, VoiceNoteModal, NewNoteModal, AiFirmChatModal],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css',
 })
@@ -38,16 +39,18 @@ export class Dashboard implements OnInit, AfterViewInit {
   @ViewChild(NewEventModal)   eventModal!:   NewEventModal;
   @ViewChild(NewInvoiceModal) invoiceModal!: NewInvoiceModal;
   @ViewChild(VoiceNoteModal)  voiceModal!:   VoiceNoteModal;
+  @ViewChild(NewNoteModal)    noteModal!:    NewNoteModal;
+  @ViewChild(AiFirmChatModal) firmAiModal!:  AiFirmChatModal;
   private authService  = inject(AuthService);
   private dashboardSvc = inject(DashboardService);
   private upload       = inject(UploadModalService);
   private docService   = inject(DocumentService);
   private caseService  = inject(CaseService);
-  private taskService  = inject(TaskService);
   private router       = inject(Router);
   private http         = inject(HttpClient);
 
   currentUser = this.authService.currentUser;
+  isAdmin     = computed(() => this.currentUser()?.role === 'admin');
 
   // ── Loading flags ─────────────────────────────────────────────
   statsLoading  = signal(true);
@@ -61,43 +64,41 @@ export class Dashboard implements OnInit, AfterViewInit {
 
   // ── Computed KPI cards ────────────────────────────────────────
   metrics = computed(() => {
-    const s = this.stats();
+    const s     = this.stats();
+    const admin = this.isAdmin();
     return [
       {
         icon: 'fa-solid fa-briefcase', bgColor: 'bg-blue-100', iconColor: 'text-blue-600',
         value: s !== null ? String(s.active_cases) : null,
-        label: 'Active Cases', badge: 'Active', badgeColor: 'text-blue-600 bg-blue-100',
-        note: 'Currently open',
+        label: admin ? 'Active Cases' : 'My Active Cases',
+        badge: 'Active', badgeColor: 'text-blue-600 bg-blue-100',
       },
       {
         icon: 'fa-solid fa-circle-check', bgColor: 'bg-green-100', iconColor: 'text-green-600',
         value: s !== null ? String(s.closed_cases) : null,
-        label: 'Closed Cases', badge: 'Total', badgeColor: 'text-green-600 bg-green-100',
-        note: 'Successfully resolved',
+        label: admin ? 'Closed Cases' : 'My Closed Cases',
+        badge: 'Total', badgeColor: 'text-green-600 bg-green-100',
       },
       {
         icon: 'fa-solid fa-gavel', bgColor: 'bg-amber-100', iconColor: 'text-amber-600',
         value: s !== null ? String(s.upcoming_hearings) : null,
-        label: 'Upcoming Hearings',
+        label: admin ? 'Upcoming Hearings' : 'My Hearings',
         badge: s && s.upcoming_hearings > 0 ? 'Scheduled' : 'None',
         badgeColor: s && s.upcoming_hearings > 0 ? 'text-amber-600 bg-amber-100' : 'text-gray-500 bg-gray-100',
-        note: 'From today onwards',
       },
       {
         icon: 'fa-solid fa-dollar-sign', bgColor: 'bg-purple-100', iconColor: 'text-purple-600',
         value: s !== null ? this.formatAmount(s.pending_payments) : null,
-        label: 'Pending Payments',
+        label: admin ? 'Pending Payments' : 'My Pending Payments',
         badge: s && s.pending_payments > 0 ? 'Due' : 'Clear',
         badgeColor: s && s.pending_payments > 0 ? 'text-red-600 bg-red-100' : 'text-green-600 bg-green-100',
-        note: 'Awaiting collection',
       },
       {
         icon: 'fa-solid fa-clock', bgColor: 'bg-red-100', iconColor: 'text-red-600',
         value: s !== null ? String(s.active_reminders) : null,
-        label: 'Active Reminders',
+        label: admin ? 'Active Reminders' : 'My Reminders',
         badge: s && s.active_reminders > 0 ? 'Overdue' : 'On Track',
         badgeColor: s && s.active_reminders > 0 ? 'text-red-600 bg-red-100' : 'text-green-600 bg-green-100',
-        note: 'Tasks past due date',
       },
     ];
   });
@@ -117,11 +118,18 @@ export class Dashboard implements OnInit, AfterViewInit {
         .then(d  => this.recentActivity.set(d))
         .catch(() => {})
         .finally(() => this.actLoading.set(false)),
+      this.caseService.loadCases().catch(() => {}),
     ]);
+    if (this.plotlyReady) this.renderCaseDistributionChart();
   }
 
+  private plotlyReady = false;
+
   ngAfterViewInit(): void {
-    this.loadPlotly().then(() => this.renderCharts());
+    this.loadPlotly().then(() => {
+      this.plotlyReady = true;
+      this.renderCharts();
+    });
   }
 
   // ── Helpers ───────────────────────────────────────────────────
@@ -212,29 +220,33 @@ export class Dashboard implements OnInit, AfterViewInit {
     return labels[type] ?? type.replace(/_/g, ' ');
   }
 
+  readonly todayDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  greeting(): string {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
   skeletonItems = [1, 2, 3, 4, 5];
 
   // ── Quick Actions ─────────────────────────────────────────────
   readonly allActions: QuickAction[] = [
-    { id: 'add-case',     label: 'Add Case',      sublabel: 'Create case file',  icon: 'fa-solid fa-plus',          color: 'bg-blue-500'   },
-    { id: 'add-client',   label: 'Add Client',    sublabel: 'Register new',      icon: 'fa-solid fa-user-plus',     color: 'bg-green-500'  },
-    { id: 'upload-doc',   label: 'Upload Doc',    sublabel: 'Add document',      icon: 'fa-solid fa-upload',        color: 'bg-red-500'    },
-    { id: 'new-note',     label: 'New Note',      sublabel: 'Quick note',        icon: 'fa-solid fa-note-sticky',   color: 'bg-yellow-500' },
-    { id: 'ai-assistant', label: 'AI Assistant',  sublabel: 'Generate doc',      icon: 'fa-solid fa-robot',         color: 'bg-indigo-500' },
-    { id: 'schedule',     label: 'Schedule',      sublabel: 'Book hearing',      icon: 'fa-solid fa-calendar-plus', color: 'bg-amber-500'  },
-    { id: 'invoice',      label: 'Invoice',       sublabel: 'Create billing',    icon: 'fa-solid fa-file-invoice',  color: 'bg-purple-500' },
-    { id: 'voice-note',   label: 'Voice Note',    sublabel: 'Record audio',      icon: 'fa-solid fa-microphone',    color: 'bg-rose-500'   },
+    { id: 'add-case',     label: 'Add Case',      icon: 'fa-solid fa-plus',          color: 'bg-blue-500'   },
+    { id: 'add-client',   label: 'Add Client',    icon: 'fa-solid fa-user-plus',     color: 'bg-green-500'  },
+    { id: 'upload-doc',   label: 'Upload Doc',    icon: 'fa-solid fa-upload',        color: 'bg-red-500'    },
+    { id: 'new-note',     label: 'New Note',      icon: 'fa-solid fa-note-sticky',   color: 'bg-yellow-500' },
+    { id: 'ai-assistant', label: 'AI Assistant',  icon: 'fa-solid fa-robot',         color: 'bg-indigo-500' },
+    { id: 'schedule',     label: 'Schedule',      icon: 'fa-solid fa-calendar-plus', color: 'bg-amber-500'  },
+    { id: 'invoice',      label: 'Invoice',       icon: 'fa-solid fa-file-invoice',  color: 'bg-purple-500' },
+    { id: 'voice-note',   label: 'Voice Note',    icon: 'fa-solid fa-microphone',    color: 'bg-rose-500'   },
   ];
 
   private readonly QA_KEY = 'dashboard_hidden_actions';
 
   customizeMode   = signal(false);
   hiddenActionIds = signal<string[]>(JSON.parse(localStorage.getItem('dashboard_hidden_actions') ?? '[]') as string[]);
-  noteOpen        = signal(false);
-  noteTitle       = signal('');
-  noteLinkedCase  = signal('');
-  noteContent     = signal('');
-  noteSaving      = signal(false);
 
   showAllActivity = signal(false);
   visibleActivity = computed(() =>
@@ -252,6 +264,11 @@ export class Dashboard implements OnInit, AfterViewInit {
     const r = this.searchResults();
     return r !== null && !r.clients.length && !r.cases.length &&
            !r.tasks.length && !r.notes.length && !r.invoices.length;
+  });
+  totalResults = computed(() => {
+    const r = this.searchResults();
+    if (!r) return 0;
+    return r.clients.length + r.cases.length + r.tasks.length + r.notes.length + r.invoices.length;
   });
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -306,12 +323,27 @@ export class Dashboard implements OnInit, AfterViewInit {
 
   exportOpen = signal(false);
 
+  private computeDistributionData() {
+    const counts = new Map<string, number>();
+    for (const c of this.caseService.cases()) {
+      const area = c.practiceArea || c.type || 'Other';
+      counts.set(area, (counts.get(area) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([label, count]) => ({ label, count }));
+  }
+
   exportPDF(): void {
     const period = this.chartPeriod();
     const stats  = this.stats();
-    const data   = this.chartData[period];
-    const rows   = data.labels.map((l, i) =>
-      `<tr><td>${l}</td><td>${data.active[i]}</td><td>${data.closed[i]}</td></tr>`
+    const data   = this.computeActivityData(period);
+    const dist   = this.computeDistributionData();
+    const total  = dist.reduce((s, d) => s + d.count, 0);
+
+    const activityRows = data.labels.map((l: string, i: number) =>
+      `<tr><td>${l}</td><td>${data.opened[i]}</td><td>${data.closed[i]}</td></tr>`
+    ).join('');
+    const distRows = dist.map(d =>
+      `<tr><td>${d.label}</td><td>${d.count}</td><td>${total ? ((d.count / total) * 100).toFixed(1) + '%' : '—'}</td></tr>`
     ).join('');
     const kpis = [
       ['Active Cases',       stats?.active_cases       ?? '—'],
@@ -340,8 +372,11 @@ export class Dashboard implements OnInit, AfterViewInit {
 <div class="sub">Period: ${period.charAt(0).toUpperCase() + period.slice(1)} &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
 <h2>KPI Summary</h2><div class="kpi">${kpis}</div>
 <h2>Case Activity — ${period.charAt(0).toUpperCase() + period.slice(1)}</h2>
-<table><thead><tr><th>Period</th><th>Active Cases</th><th>Closed Cases</th></tr></thead>
-<tbody>${rows}</tbody></table>
+<table><thead><tr><th>Period</th><th>Cases Opened</th><th>Cases Closed</th></tr></thead>
+<tbody>${activityRows}</tbody></table>
+<h2>Case Distribution — By Practice Area</h2>
+<table><thead><tr><th>Practice Area</th><th>Cases</th><th>Share</th></tr></thead>
+<tbody>${distRows}</tbody></table>
 </body></html>`;
 
     const win = window.open('', '_blank');
@@ -351,7 +386,9 @@ export class Dashboard implements OnInit, AfterViewInit {
   exportExcel(): void {
     const period = this.chartPeriod();
     const stats  = this.stats();
-    const data   = this.chartData[period];
+    const data   = this.computeActivityData(period);
+    const dist   = this.computeDistributionData();
+    const total  = dist.reduce((s, d) => s + d.count, 0);
     const lines  = [
       `Dashboard Report — ${period.toUpperCase()}`,
       `Generated,${new Date().toLocaleDateString()}`,
@@ -364,8 +401,12 @@ export class Dashboard implements OnInit, AfterViewInit {
       `Active Reminders,${stats?.active_reminders ?? ''}`,
       '',
       `Case Activity (${period})`,
-      'Period,Active Cases,Closed Cases',
-      ...data.labels.map((l, i) => `${l},${data.active[i]},${data.closed[i]}`),
+      'Period,Cases Opened,Cases Closed',
+      ...data.labels.map((l: string, i: number) => `${l},${data.opened[i]},${data.closed[i]}`),
+      '',
+      'Case Distribution',
+      'Practice Area,Cases,Share',
+      ...dist.map(d => `${d.label},${d.count},${total ? ((d.count / total) * 100).toFixed(1) + '%' : '0%'}`),
     ];
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
@@ -421,42 +462,15 @@ export class Dashboard implements OnInit, AfterViewInit {
       case 'add-case':     this.caseModal.openModal();               break;
       case 'add-client':   this.clientModal.openModal();             break;
       case 'upload-doc':   this.openUpload();                        break;
-      case 'new-note':     this.openNewNote();                       break;
-      case 'ai-assistant': this.router.navigate(['/ai-assistant']);  break;
+      case 'new-note':     this.noteModal.openModal();               break;
+      case 'ai-assistant': this.firmAiModal.open();                   break;
       case 'schedule':     this.eventModal.openModal();              break;
       case 'invoice':      this.invoiceModal.openModal();            break;
       case 'voice-note':   this.voiceModal.openModal();              break;
     }
   }
 
-  async openNewNote(): Promise<void> {
-    this.noteTitle.set('');
-    this.noteLinkedCase.set('');
-    this.noteContent.set('');
-    if (this.caseService.cases().length === 0) {
-      await this.caseService.loadCases().catch(() => {});
-    }
-    this.noteOpen.set(true);
-  }
-
-  async saveNote(): Promise<void> {
-    const caseId = this.noteLinkedCase();
-    if (!caseId || !this.noteContent()) return;
-    this.noteSaving.set(true);
-    try {
-      await this.taskService.createNote({
-        case_id: caseId,
-        title:   this.noteTitle() || undefined,
-        content: this.noteContent(),
-      });
-      this.noteOpen.set(false);
-      this.showToast('Note saved successfully!');
-    } catch {
-      this.showToast('Failed to save note.', 'error');
-    } finally {
-      this.noteSaving.set(false);
-    }
-  }
+  onNoteSaved(): void { this.showToast('Note saved successfully!'); }
 
   async openUpload(): Promise<void> {
     if (this.caseService.cases().length === 0) {
@@ -473,23 +487,66 @@ export class Dashboard implements OnInit, AfterViewInit {
   // ── Charts ────────────────────────────────────────────────────
   chartPeriod = signal<'monthly' | 'quarterly' | 'yearly'>('monthly');
 
-  private readonly chartData = {
-    monthly: {
-      labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-      active: [12,15,18,14,20,22,19,24,21,26,24,28],
-      closed: [8,11,13,10,15,17,14,18,16,20,19,22],
-    },
-    quarterly: {
-      labels: ['Q1','Q2','Q3','Q4'],
-      active: [45,56,64,78],
-      closed: [32,42,48,61],
-    },
-    yearly: {
-      labels: ['2020','2021','2022','2023','2024','2025'],
-      active: [95,118,134,162,189,210],
-      closed: [72,89,104,128,152,176],
-    },
-  };
+  private computeActivityData(period: 'monthly' | 'quarterly' | 'yearly') {
+    const cases = this.caseService.cases();
+    const closedStatuses = new Set(['SETTLED', 'CLOSED']);
+    const now = new Date();
+
+    type Bucket = { label: string; key: string };
+    const buckets: Bucket[] = [];
+
+    if (period === 'monthly') {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        buckets.push({
+          key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+          label: d.toLocaleString('en-US', { month: 'short' }),
+        });
+      }
+    } else if (period === 'quarterly') {
+      const curQ = Math.floor(now.getMonth() / 3);
+      for (let i = 3; i >= 0; i--) {
+        let q = curQ - i;
+        let y = now.getFullYear();
+        while (q < 0) { q += 4; y--; }
+        buckets.push({ key: `${y}-Q${q + 1}`, label: `Q${q + 1} ${y}` });
+      }
+    } else {
+      for (let i = 5; i >= 0; i--) {
+        const y = now.getFullYear() - i;
+        buckets.push({ key: String(y), label: String(y) });
+      }
+    }
+
+    const openedMap = new Map<string, number>();
+    const closedMap = new Map<string, number>();
+    buckets.forEach(b => { openedMap.set(b.key, 0); closedMap.set(b.key, 0); });
+
+    for (const c of cases) {
+      const created = c.openDate instanceof Date ? c.openDate : new Date(c.openDate);
+      if (isNaN(created.getTime())) continue;
+
+      let key: string;
+      if (period === 'monthly') {
+        key = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`;
+      } else if (period === 'quarterly') {
+        key = `${created.getFullYear()}-Q${Math.floor(created.getMonth() / 3) + 1}`;
+      } else {
+        key = String(created.getFullYear());
+      }
+
+      if (openedMap.has(key)) openedMap.set(key, openedMap.get(key)! + 1);
+      if (closedStatuses.has(c.status) && closedMap.has(key)) {
+        closedMap.set(key, closedMap.get(key)! + 1);
+      }
+    }
+
+    return {
+      labels: buckets.map(b => b.label),
+      opened: buckets.map(b => openedMap.get(b.key)!),
+      closed: buckets.map(b => closedMap.get(b.key)!),
+    };
+  }
 
   setChartPeriod(period: 'monthly' | 'quarterly' | 'yearly'): void {
     this.chartPeriod.set(period);
@@ -497,11 +554,37 @@ export class Dashboard implements OnInit, AfterViewInit {
   }
 
   private renderCaseActivityChart(): void {
-    const data = this.chartData[this.chartPeriod()];
+    const data = this.computeActivityData(this.chartPeriod());
     Plotly.react('case-activity-chart', [
-      { x: data.labels, y: data.active, type: 'scatter', mode: 'lines', name: 'Active Cases', line: { color: '#3b82f6', width: 3 }, fill: 'tozeroy', fillcolor: 'rgba(59,130,246,0.1)' },
-      { x: data.labels, y: data.closed, type: 'scatter', mode: 'lines', name: 'Closed Cases', line: { color: '#10b981', width: 3 } },
-    ], { title: { text: '' }, xaxis: { title: '' }, yaxis: { title: 'Number of Cases' }, margin: { t: 20, r: 20, b: 40, l: 50 }, plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', showlegend: true, legend: { x: 0, y: 1.1, orientation: 'h' } }, { responsive: true, displayModeBar: false });
+      { x: data.labels, y: data.opened, type: 'scatter', mode: 'lines', name: 'Cases Opened', line: { color: '#3b82f6', width: 3 }, fill: 'tozeroy', fillcolor: 'rgba(59,130,246,0.1)' },
+      { x: data.labels, y: data.closed, type: 'scatter', mode: 'lines', name: 'Cases Closed', line: { color: '#10b981', width: 3 } },
+    ], { title: { text: '' }, xaxis: { title: '' }, yaxis: { title: 'Number of Cases', rangemode: 'nonnegative', dtick: 1, tick0: 0 }, margin: { t: 20, r: 20, b: 40, l: 50 }, plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', showlegend: true, legend: { x: 0, y: 1.1, orientation: 'h' } }, { responsive: true, displayModeBar: false });
+  }
+
+  private renderCaseDistributionChart(): void {
+    const cases = this.caseService.cases();
+    const counts = new Map<string, number>();
+    for (const c of cases) {
+      const area = c.practiceArea || c.type || 'Other';
+      counts.set(area, (counts.get(area) ?? 0) + 1);
+    }
+
+    const colors = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#f97316','#84cc16'];
+    const layout = { title: { text: '' }, margin: { t: 20, r: 20, b: 20, l: 20 }, plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', showlegend: true, legend: { x: 0, y: -0.1, orientation: 'h' } };
+    const config = { responsive: true, displayModeBar: false };
+
+    if (counts.size === 0) {
+      Plotly.react('case-distribution-chart', [{ labels: ['No data'], values: [1], type: 'pie', marker: { colors: ['#e5e7eb'] }, textinfo: 'label', hoverinfo: 'none' }], layout, config);
+      return;
+    }
+
+    const labels = [...counts.keys()];
+    const values = labels.map(l => counts.get(l)!);
+    Plotly.react('case-distribution-chart', [{
+      labels, values, type: 'pie',
+      marker: { colors: colors.slice(0, labels.length) },
+      textinfo: 'percent', hoverinfo: 'label+percent+value',
+    }], layout, config);
   }
 
   private loadPlotly(): Promise<void> {
@@ -518,12 +601,7 @@ export class Dashboard implements OnInit, AfterViewInit {
     try {
       this.renderCaseActivityChart();
 
-      Plotly.newPlot('case-distribution-chart', [{
-        labels: ['Civil Litigation','Estate Law','Real Estate','Employment','Corporate','Family Law'],
-        values: [28,18,15,12,17,10], type: 'pie',
-        marker: { colors: ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4'] },
-        textinfo: 'percent', hoverinfo: 'label+percent+value',
-      }], { title: { text: '' }, margin: { t: 20, r: 20, b: 20, l: 20 }, plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', showlegend: true, legend: { x: 0, y: -0.1, orientation: 'v' } }, { responsive: true, displayModeBar: false });
+      this.renderCaseDistributionChart();
 
       Plotly.newPlot('revenue-chart', [{
         x: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov'],

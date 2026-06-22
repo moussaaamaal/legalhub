@@ -1,10 +1,10 @@
-<div class="min-h-screen bg-gray-50 p-6">
-  <div class="max-w-2xl mx-auto">
+<div class="h-full flex flex-col overflow-hidden bg-gray-50">
 
-    <!-- Header -->
-    <div class="flex items-center space-x-3 mb-6">
+  <!-- ── Topbar ──────────────────────────────────────────────────── -->
+  <header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+    <div class="px-8 py-4 flex items-center space-x-4">
       <button (click)="goBack()"
-        class="w-9 h-9 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors shadow-sm">
+        class="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
         <i class="fa-solid fa-arrow-left text-sm"></i>
       </button>
       <div>
@@ -12,89 +12,103 @@
         <p class="text-sm text-gray-500">Manage your personal information and security</p>
       </div>
     </div>
+  </header>
 
-    <!-- Avatar card -->
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-5">
+  <!-- ── Content ────────────────────────────────────────────────── -->
+  <div class="flex-1 overflow-auto bg-gray-50" (click)="showAvatarMenu.set(false)">
 
-      <div class="flex items-start space-x-5">
+    <!-- ── HERO ────────────────────────────────────────────────── -->
+    <section class="bg-gray-50 border-b border-gray-200 px-8 py-6">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 max-w-7xl mx-auto">
 
-        <!-- ── Avatar avec overlay caméra ── -->
-        <div class="relative flex-shrink-0 group">
-          @if (displayAvatar) {
-            <img [src]="displayAvatar" alt="Avatar"
-              (error)="onAvatarLoadError()"
-              class="w-24 h-24 rounded-full border-4 object-cover shadow-md transition-all"
-              [ngClass]="avatarPreview() ? 'border-amber-400 ring-4 ring-amber-200' : 'border-amber-400'">
-          } @else {
-            <div class="w-24 h-24 rounded-full border-4 border-amber-400 bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-md">
-              <span class="text-3xl font-bold text-white">{{ initials }}</span>
+        <!-- Row: avatar · info · photo actions -->
+        <div class="flex items-start justify-between mb-5">
+
+          <!-- Avatar + identity -->
+          <div class="flex items-start gap-5">
+
+            <!-- Avatar cliquable -->
+            <div class="relative flex-shrink-0">
+              <button type="button" (click)="showAvatarMenu.update(v => !v); $event.stopPropagation()"
+                class="block w-20 h-20 rounded-2xl overflow-hidden focus:outline-none ring-0 cursor-pointer">
+                @if (displayAvatar) {
+                  <img [src]="displayAvatar" alt="Avatar"
+                    (error)="onAvatarLoadError()"
+                    class="w-full h-full object-cover border-2 rounded-2xl transition-all"
+                    [ngClass]="avatarPreview() ? 'border-amber-400 ring-2 ring-amber-200' : 'border-gray-200'">
+                } @else {
+                  <div class="w-20 h-20 rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                    <span class="text-2xl font-bold text-white">{{ initials }}</span>
+                  </div>
+                }
+              </button>
+
+              <!-- Petit indicateur caméra -->
+              <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-gray-700 rounded-full flex items-center justify-center shadow pointer-events-none">
+                <i class="fa-solid fa-camera text-white" style="font-size:9px"></i>
+              </div>
+
+              @if (avatarPreview()) {
+                <div class="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow pointer-events-none">
+                  <i class="fa-solid fa-clock text-white" style="font-size:9px"></i>
+                </div>
+              }
+
+              <!-- Dropdown menu -->
+              @if (showAvatarMenu() && !avatarPreview()) {
+                <div class="absolute left-0 top-[88px] z-50 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[150px]"
+                  (click)="$event.stopPropagation()">
+                  <button (click)="triggerAvatarPicker(); showAvatarMenu.set(false)"
+                    class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-amber-50 hover:text-amber-700 transition-colors">
+                    <i class="fa-solid fa-pen w-3.5 text-center text-gray-400"></i>
+                    {{ savedAvatar ? 'Change photo' : 'Upload photo' }}
+                  </button>
+                  @if (hasSavedAvatar) {
+                    <button (click)="openLightbox(); showAvatarMenu.set(false)"
+                      class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+                      <i class="fa-solid fa-eye w-3.5 text-center text-gray-400"></i>View
+                    </button>
+                    <div class="border-t border-gray-100 my-1"></div>
+                    <button (click)="removeAvatar(); showAvatarMenu.set(false)"
+                      class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors">
+                      <i class="fa-solid fa-trash w-3.5 text-center"></i>Remove
+                    </button>
+                  }
+                </div>
+              }
+
+              <input #avatarInput type="file" accept="image/*" class="hidden" (change)="onAvatarSelected($event)">
             </div>
-          }
 
-          <!-- Overlay caméra au hover (uniquement si pas de preview en attente) -->
-          @if (!avatarPreview()) {
-            <button (click)="triggerAvatarPicker()"
-              class="absolute inset-0 rounded-full bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center transition-all cursor-pointer">
-              <i class="fa-solid fa-camera text-white text-xl opacity-0 group-hover:opacity-100 transition-opacity"></i>
-            </button>
-          }
-
-          <!-- Badge "Nouveau" sur la preview en attente -->
-          @if (avatarPreview()) {
-            <div class="absolute -top-1 -right-1 w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center shadow">
-              <i class="fa-solid fa-clock text-white text-xs"></i>
+            <!-- Name · badges · meta -->
+            <div>
+              <h1 class="text-2xl font-bold text-gray-900 leading-tight mb-1">{{ user?.name || '—' }}</h1>
+              <p class="text-xs font-bold text-gray-400 tracking-widest uppercase mb-2">Member since {{ formatDate(user?.createdAt) }}</p>
+              <div class="flex items-center flex-wrap gap-2 mb-3">
+                <span class="text-xs px-2.5 py-1 rounded-full font-semibold" [ngClass]="roleBadgeClass">{{ roleLabel }}</span>
+                @if (user?.firmName) {
+                  <span class="text-xs px-2.5 py-1 rounded-full font-medium bg-gray-100 text-gray-600 flex items-center gap-1">
+                    <i class="fa-solid fa-building text-gray-400 text-xs"></i>{{ user!.firmName }}
+                  </span>
+                }
+                <span class="text-xs px-2.5 py-1 rounded-full font-semibold bg-green-100 text-green-700 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Active
+                </span>
+              </div>
+              <div class="flex items-center flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
+                <span><i class="fa-solid fa-envelope mr-1.5 text-gray-400 text-xs"></i>{{ user?.email }}</span>
+                @if (user?.phone) {
+                  <span><i class="fa-solid fa-phone mr-1.5 text-gray-400 text-xs"></i>{{ user!.phone }}</span>
+                }
+              </div>
             </div>
-          }
-
-          <input #avatarInput type="file" accept="image/*" class="hidden"
-            (change)="onAvatarSelected($event)">
-        </div>
-
-        <!-- ── Infos + actions ── -->
-        <div class="flex-1 min-w-0">
-          <h2 class="text-lg font-bold text-gray-900 truncate">{{ user?.name || '—' }}</h2>
-          <p class="text-sm text-gray-500 truncate mb-2">{{ user?.email }}</p>
-          <div class="flex items-center flex-wrap gap-2 mb-4">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold" [ngClass]="roleBadgeClass">
-              {{ roleLabel }}
-            </span>
-            @if (user?.firmName) {
-              <span class="inline-flex items-center space-x-1 text-xs text-gray-500">
-                <i class="fa-solid fa-building text-gray-400"></i>
-                <span>{{ user!.firmName }}</span>
-              </span>
-            }
           </div>
 
-          <!-- ── État IDLE : aucune preview en attente ── -->
-          @if (!avatarPreview()) {
-            <div class="flex items-center flex-wrap gap-2">
-              <button (click)="triggerAvatarPicker()"
-                class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors">
-                <i class="fa-solid fa-pen text-xs"></i>
-                <span>{{ savedAvatar ? 'Change photo' : 'Upload photo' }}</span>
-              </button>
-              @if (hasSavedAvatar) {
-                <button (click)="openLightbox()"
-                  class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors">
-                  <i class="fa-solid fa-eye text-xs"></i>
-                  <span>View</span>
-                </button>
-                <button (click)="removeAvatar()"
-                  class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-100 transition-colors">
-                  <i class="fa-solid fa-trash text-xs"></i>
-                  <span>Remove</span>
-                </button>
-              }
-            </div>
-          }
-
-          <!-- ── État PENDING : nouvelle photo sélectionnée ── -->
+          <!-- Confirm/Cancel quand photo en attente -->
           @if (avatarPreview()) {
-            <div class="space-y-2">
+            <div class="flex-shrink-0 flex flex-col items-end gap-2">
               <p class="text-xs text-amber-700 font-medium flex items-center space-x-1">
-                <i class="fa-solid fa-circle-info"></i>
-                <span>New photo ready — confirm to apply immediately.</span>
+                <i class="fa-solid fa-circle-info"></i><span>New photo — confirm to apply.</span>
               </p>
               <div class="flex items-center gap-2">
                 <button (click)="confirmAvatar()" [disabled]="avatarSaving()"
@@ -109,269 +123,355 @@
                   class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg border border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors disabled:opacity-60">
                   <i class="fa-solid fa-xmark"></i><span>Cancel</span>
                 </button>
-                <button (click)="triggerAvatarPicker()" [disabled]="avatarSaving()"
-                  class="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-500 text-xs font-medium hover:bg-gray-50 transition-colors disabled:opacity-60">
-                  <i class="fa-solid fa-arrows-rotate text-xs"></i><span>Choose another</span>
-                </button>
               </div>
-            </div>
-          }
-
-          <!-- Feedback succès avatar -->
-          @if (avatarSuccess()) {
-            <p class="text-xs text-green-600 font-semibold mt-2 flex items-center space-x-1">
-              <i class="fa-solid fa-circle-check"></i><span>Photo updated successfully!</span>
-            </p>
-          }
-          @if (avatarError()) {
-            <p class="text-xs text-red-500 mt-2 flex items-center space-x-1">
-              <i class="fa-solid fa-circle-exclamation"></i><span>{{ avatarError() }}</span>
-            </p>
-          }
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Lightbox ── -->
-    @if (showLightbox() && hasSavedAvatar) {
-      <div class="fixed inset-0 bg-black bg-opacity-85 z-[9999] flex items-center justify-center p-6"
-        (click)="closeLightbox()">
-        <div class="relative flex flex-col items-center" (click)="$event.stopPropagation()">
-
-          <!-- Bouton fermer -->
-          <button (click)="closeLightbox()"
-            class="absolute -top-4 -right-4 w-9 h-9 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors z-10">
-            <i class="fa-solid fa-xmark text-sm"></i>
-          </button>
-
-          <!-- Image -->
-          <img [src]="savedAvatar" alt="Profile photo"
-            (error)="onAvatarLoadError(); closeLightbox()"
-            style="max-width: 320px; max-height: 70vh; width: auto; height: auto; display: block;"
-            class="rounded-2xl shadow-2xl">
-
-          <!-- Actions -->
-          <div class="flex justify-center gap-3 mt-5">
-            <button (click)="closeLightbox(); triggerAvatarPicker()"
-              class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white text-gray-800 text-sm font-semibold hover:bg-gray-100 transition-colors shadow">
-              <i class="fa-solid fa-pen"></i><span>Change</span>
-            </button>
-            <button (click)="removeAvatar(); closeLightbox()"
-              class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors shadow">
-              <i class="fa-solid fa-trash"></i><span>Remove</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    }
-
-    <!-- Tabs -->
-    <div class="flex bg-gray-100 rounded-xl p-1 mb-5">
-      <button (click)="activeTab.set('info')"
-        class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-1.5"
-        [ngClass]="activeTab() === 'info' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'">
-        <i class="fa-solid fa-user text-xs"></i><span>Personal Info</span>
-      </button>
-      <button (click)="activeTab.set('security')"
-        class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-1.5"
-        [ngClass]="activeTab() === 'security' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'">
-        <i class="fa-solid fa-lock text-xs"></i><span>Security</span>
-      </button>
-    </div>
-
-    <!-- ── Tab: Personal Info ── -->
-    @if (activeTab() === 'info') {
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-
-        @if (saveSuccess()) {
-          <div class="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center space-x-2">
-            <i class="fa-solid fa-circle-check text-green-500 flex-shrink-0"></i>
-            <p class="text-sm text-green-700 font-medium">Profile updated successfully.</p>
-          </div>
-        }
-        @if (error()) {
-          <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
-            <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
-            <p class="text-sm text-red-700">{{ error() }}</p>
-          </div>
-        }
-
-        <div class="space-y-4">
-          <!-- Full name -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Full Name</label>
-            <div class="relative">
-              <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-              <input type="text" [ngModel]="editName()" (ngModelChange)="editName.set($event)"
-                placeholder="Your full name"
-                class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-            </div>
-          </div>
-
-          <!-- Email (read-only) -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
-            <div class="relative">
-              <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-              <input type="email" [value]="user?.email || ''" readonly
-                class="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-500 text-sm cursor-not-allowed">
-            </div>
-            <p class="text-xs text-gray-400 mt-1">Email cannot be changed here.</p>
-          </div>
-
-          <!-- Phone -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone Number</label>
-            <div class="relative">
-              <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-              <input type="tel" [ngModel]="editPhone()" (ngModelChange)="editPhone.set($event)"
-                placeholder="+1 (555) 000-0000"
-                class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-            </div>
-          </div>
-
-          <!-- Title -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Job Title</label>
-            <div class="relative">
-              <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-              <input type="text" [ngModel]="editTitle()" (ngModelChange)="editTitle.set($event)"
-                placeholder="e.g. Senior Partner"
-                class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-            </div>
-          </div>
-
-          <!-- Firm (read-only) -->
-          @if (user?.firmName) {
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Law Firm</label>
-              <div class="relative">
-                <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input type="text" [value]="user!.firmName" readonly
-                  class="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-500 text-sm cursor-not-allowed">
-              </div>
-            </div>
-          }
-
-          <button (click)="saveProfile()" [disabled]="saving()"
-            class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center space-x-2 text-sm mt-2">
-            @if (saving()) {
-              <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
-            } @else {
-              <i class="fa-solid fa-check"></i><span>Save Changes</span>
-            }
-          </button>
-        </div>
-      </div>
-    }
-
-    <!-- ── Tab: Security ── -->
-    @if (activeTab() === 'security') {
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-
-        <h3 class="text-base font-bold text-gray-900 mb-1">Change Password</h3>
-        <p class="text-sm text-gray-500 mb-5">Use a strong password of at least 8 characters.</p>
-
-        @if (pwdSuccess()) {
-          <div class="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center space-x-2">
-            <i class="fa-solid fa-circle-check text-green-500 flex-shrink-0"></i>
-            <p class="text-sm text-green-700 font-medium">Password updated successfully.</p>
-          </div>
-        }
-        @if (pwdError()) {
-          <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
-            <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
-            <p class="text-sm text-red-700">{{ pwdError() }}</p>
-          </div>
-        }
-
-        <div class="space-y-4">
-          <!-- Current password -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Current Password</label>
-            <div class="relative">
-              <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-              <input [type]="showCurrent() ? 'text' : 'password'" [ngModel]="currentPwd()" (ngModelChange)="currentPwd.set($event)"
-                placeholder="Enter current password"
-                class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-              <button type="button" (click)="showCurrent.update(v => !v)"
-                class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                <i [ngClass]="showCurrent() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- New password -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">New Password</label>
-            <div class="relative">
-              <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-              <input [type]="showNew() ? 'text' : 'password'" [ngModel]="newPwd()" (ngModelChange)="newPwd.set($event)"
-                placeholder="Min. 8 characters"
-                class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-              <button type="button" (click)="showNew.update(v => !v)"
-                class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                <i [ngClass]="showNew() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- Confirm password -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Confirm New Password</label>
-            <div class="relative">
-              <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-              <input [type]="showConfirm() ? 'text' : 'password'" [ngModel]="confirmPwd()" (ngModelChange)="confirmPwd.set($event)"
-                placeholder="Repeat new password"
-                class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm transition-colors"
-                [ngClass]="pwdMismatch ? 'border-red-400 bg-red-50' : 'border-gray-300'">
-              <button type="button" (click)="showConfirm.update(v => !v)"
-                class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                <i [ngClass]="showConfirm() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
-              </button>
-            </div>
-            @if (pwdMismatch) {
-              <p class="text-xs text-red-500 mt-1 flex items-center space-x-1">
-                <i class="fa-solid fa-circle-exclamation"></i><span>Passwords do not match</span>
-              </p>
-            }
-          </div>
-
-          <button (click)="changePassword()" [disabled]="pwdSaving()"
-            class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center space-x-2 text-sm mt-2">
-            @if (pwdSaving()) {
-              <i class="fa-solid fa-spinner fa-spin"></i><span>Updating…</span>
-            } @else {
-              <i class="fa-solid fa-shield-check"></i><span>Update Password</span>
-            }
-          </button>
-        </div>
-
-        <!-- 2FA status -->
-        <div class="mt-6 pt-5 border-t border-gray-100">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
-                [ngClass]="user?.twoFaEnabled ? 'bg-green-100' : 'bg-gray-100'">
-                <i class="fa-solid fa-mobile-screen-button text-lg"
-                  [ngClass]="user?.twoFaEnabled ? 'text-green-600' : 'text-gray-400'"></i>
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-gray-900">Two-Factor Authentication</p>
-                <p class="text-xs"
-                  [ngClass]="user?.twoFaEnabled ? 'text-green-600 font-medium' : 'text-gray-400'">
-                  {{ user?.twoFaEnabled ? 'Enabled' : 'Not enabled' }}
+              @if (avatarSuccess()) {
+                <p class="text-xs text-green-600 font-semibold flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-check"></i><span>Photo updated!</span>
                 </p>
-              </div>
+              }
+              @if (avatarError()) {
+                <p class="text-xs text-red-500 flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-exclamation"></i><span>{{ avatarError() }}</span>
+                </p>
+              }
             </div>
-            <span class="text-xs px-2.5 py-1 rounded-full font-semibold"
-              [ngClass]="user?.twoFaEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'">
-              {{ user?.twoFaEnabled ? 'Active' : 'Off' }}
-            </span>
+          }
+        </div>
+
+
+      </div>
+    </section>
+    <!-- /HERO -->
+
+    <!-- ── Tabs + Content ───────────────────────────────────────── -->
+    <div class="px-8 py-6 max-w-7xl mx-auto space-y-5">
+
+
+          <!-- Tabs -->
+          <div class="flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm">
+            <button (click)="activeTab.set('info')"
+              class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-2"
+              [ngClass]="activeTab() === 'info' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'">
+              <i class="fa-solid fa-user text-xs"></i><span>Personal Info</span>
+            </button>
+            <button (click)="activeTab.set('security')"
+              class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-2"
+              [ngClass]="activeTab() === 'security' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'">
+              <i class="fa-solid fa-lock text-xs"></i><span>Security</span>
+            </button>
           </div>
+
+          <!-- ── Tab: Personal Info ── -->
+          @if (activeTab() === 'info') {
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+
+              <div class="mb-5">
+                <h3 class="text-base font-bold text-gray-900">Personal Information</h3>
+                <p class="text-sm text-gray-500">Update your profile details below</p>
+              </div>
+
+              @if (saveSuccess()) {
+                <div class="mb-5 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center space-x-2">
+                  <i class="fa-solid fa-circle-check text-green-500 flex-shrink-0"></i>
+                  <p class="text-sm text-green-700 font-medium">Profile updated successfully.</p>
+                </div>
+              }
+              @if (error()) {
+                <div class="mb-5 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
+                  <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
+                  <p class="text-sm text-red-700">{{ error() }}</p>
+                </div>
+              }
+
+              <!-- 2-column grid for fields -->
+              <div class="grid grid-cols-2 gap-4">
+
+                <!-- Full Name -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Full Name <span class="text-red-500">*</span></label>
+                  <div class="relative">
+                    <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="text" [ngModel]="editName()" (ngModelChange)="editName.set($event)"
+                      placeholder="Your full name"
+                      class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  </div>
+                </div>
+
+                <!-- Email (read-only) -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="email" [value]="user?.email || ''" readonly
+                      class="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-500 text-sm cursor-not-allowed">
+                  </div>
+                </div>
+
+                <!-- Phone -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone Number</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="tel" [ngModel]="editPhone()" (ngModelChange)="editPhone.set($event)"
+                      placeholder="+1 (555) 000-0000"
+                      class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  </div>
+                </div>
+
+                <!-- WhatsApp Number -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">WhatsApp Number</label>
+                  <div class="relative">
+                    <i class="fa-brands fa-whatsapp absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="tel" [ngModel]="editWhatsapp()" (ngModelChange)="editWhatsapp.set($event)"
+                      placeholder="+1 (555) 000-0000"
+                      class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  </div>
+                </div>
+
+                <!-- Gender -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Gender</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-venus-mars absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <select [ngModel]="editGender()" (ngModelChange)="editGender.set($event)"
+                      class="w-full pl-11 pr-9 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm bg-white appearance-none">
+                      <option value="">Select gender</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Non-binary">Non-binary</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                    <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                  </div>
+                </div>
+
+                <!-- Date of Birth -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Date of Birth</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-cake-candles absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="date" [ngModel]="editDateOfBirth()" (ngModelChange)="editDateOfBirth.set($event)"
+                      class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  </div>
+                </div>
+
+                <!-- Nationality -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Nationality</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-earth-africa absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="text" [ngModel]="editNationality()" (ngModelChange)="editNationality.set($event)"
+                      placeholder="e.g. French, Moroccan…"
+                      class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  </div>
+                </div>
+
+                <!-- Job Title -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Job Title</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="text" [ngModel]="editTitle()" (ngModelChange)="editTitle.set($event)"
+                      placeholder="e.g. Senior Partner"
+                      class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  </div>
+                </div>
+
+                <!-- Address (full width) -->
+                <div class="col-span-2">
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Address</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-location-dot absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="text" [ngModel]="editAddress()" (ngModelChange)="editAddress.set($event)"
+                      placeholder="Street, city, country"
+                      class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  </div>
+                </div>
+
+                <!-- Law Firm (read-only, full width) -->
+                @if (user?.firmName) {
+                  <div class="col-span-2">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Law Firm</label>
+                    <div class="relative">
+                      <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                      <input type="text" [value]="user!.firmName" readonly
+                        class="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-500 text-sm cursor-not-allowed">
+                    </div>
+                  </div>
+                }
+
+              </div>
+
+              <button (click)="saveProfile()" [disabled]="saving()"
+                class="mt-6 w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center space-x-2 text-sm">
+                @if (saving()) {
+                  <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+                } @else {
+                  <i class="fa-solid fa-check"></i><span>Save Changes</span>
+                }
+              </button>
+            </div>
+          }
+
+          <!-- ── Tab: Security ── -->
+          @if (activeTab() === 'security') {
+
+            <!-- Change Password -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div class="mb-5">
+                <h3 class="text-base font-bold text-gray-900">Change Password</h3>
+                <p class="text-sm text-gray-500">Use a strong password of at least 8 characters.</p>
+              </div>
+
+              @if (pwdSuccess()) {
+                <div class="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center space-x-2">
+                  <i class="fa-solid fa-circle-check text-green-500 flex-shrink-0"></i>
+                  <p class="text-sm text-green-700 font-medium">Password updated successfully.</p>
+                </div>
+              }
+              @if (pwdError()) {
+                <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
+                  <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
+                  <p class="text-sm text-red-700">{{ pwdError() }}</p>
+                </div>
+              }
+
+              <div class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Current Password</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input [type]="showCurrent() ? 'text' : 'password'" [ngModel]="currentPwd()" (ngModelChange)="currentPwd.set($event)"
+                      placeholder="Enter current password"
+                      class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                    <button type="button" (click)="showCurrent.update(v => !v)"
+                      class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <i [ngClass]="showCurrent() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">New Password</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input [type]="showNew() ? 'text' : 'password'" [ngModel]="newPwd()" (ngModelChange)="newPwd.set($event)"
+                      placeholder="Min. 8 characters"
+                      class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                    <button type="button" (click)="showNew.update(v => !v)"
+                      class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <i [ngClass]="showNew() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Confirm New Password</label>
+                  <div class="relative">
+                    <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input [type]="showConfirm() ? 'text' : 'password'" [ngModel]="confirmPwd()" (ngModelChange)="confirmPwd.set($event)"
+                      placeholder="Repeat new password"
+                      class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                      [ngClass]="pwdMismatch ? 'border-red-400 bg-red-50' : 'border-gray-300'">
+                    <button type="button" (click)="showConfirm.update(v => !v)"
+                      class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <i [ngClass]="showConfirm() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                    </button>
+                  </div>
+                  @if (pwdMismatch) {
+                    <p class="text-xs text-red-500 mt-1 flex items-center space-x-1">
+                      <i class="fa-solid fa-circle-exclamation"></i><span>Passwords do not match</span>
+                    </p>
+                  }
+                </div>
+              </div>
+
+              <button (click)="changePassword()" [disabled]="pwdSaving()"
+                class="mt-5 w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center space-x-2 text-sm">
+                @if (pwdSaving()) {
+                  <i class="fa-solid fa-spinner fa-spin"></i><span>Updating…</span>
+                } @else {
+                  <i class="fa-solid fa-shield-check"></i><span>Update Password</span>
+                }
+              </button>
+            </div>
+
+            <!-- Login History -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div class="flex items-center space-x-3 mb-4">
+                <div class="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                  <i class="fa-solid fa-clock-rotate-left text-blue-500 text-sm"></i>
+                </div>
+                <div>
+                  <h3 class="text-sm font-bold text-gray-900">Login Activity</h3>
+                  <p class="text-xs text-gray-400">Last 5 sign-ins</p>
+                </div>
+              </div>
+
+              @if (loginHistoryLoading()) {
+                <div class="flex justify-center py-6">
+                  <i class="fa-solid fa-spinner fa-spin text-gray-300 text-xl"></i>
+                </div>
+              } @else if (loginHistory().length === 0) {
+                <div class="text-center py-6">
+                  <i class="fa-solid fa-clock-rotate-left text-gray-200 text-2xl mb-2 block"></i>
+                  <p class="text-xs text-gray-400">No history available.</p>
+                </div>
+              } @else {
+                <div class="space-y-2">
+                  @for (entry of loginHistory(); track entry.id; let i = $index) {
+                    <div class="flex items-center space-x-2.5 p-2.5 rounded-xl"
+                      [ngClass]="i === 0 ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'">
+                      <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                        [ngClass]="i === 0 ? 'bg-blue-100' : 'bg-gray-200'">
+                        <i class="fa-solid fa-right-to-bracket text-xs"
+                          [ngClass]="i === 0 ? 'text-blue-600' : 'text-gray-500'"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-gray-800">{{ i === 0 ? 'Most recent' : 'Login' }}</p>
+                        <p class="text-xs text-gray-500">{{ formatDate(entry.logged_in_at) }}</p>
+                      </div>
+                      @if (i === 0) {
+                        <span class="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold flex-shrink-0">Now</span>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+
+
+    </div>
+  </div>
+  <!-- /Content -->
+
+  <!-- ── Lightbox ─────────────────────────────────────────────── -->
+  @if (showLightbox() && hasSavedAvatar) {
+    <div class="fixed inset-0 bg-black/85 z-[9999] flex items-center justify-center p-6"
+      (click)="closeLightbox()">
+      <div class="relative flex flex-col items-center" (click)="$event.stopPropagation()">
+        <button (click)="closeLightbox()"
+          class="absolute -top-4 -right-4 w-9 h-9 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors z-10">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+        <img [src]="savedAvatar" alt="Profile photo"
+          (error)="onAvatarLoadError(); closeLightbox()"
+          style="max-width: 360px; max-height: 70vh; width: auto; height: auto; display: block;"
+          class="rounded-2xl shadow-2xl">
+        <div class="flex justify-center gap-3 mt-5">
+          <button (click)="closeLightbox(); triggerAvatarPicker()"
+            class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white text-gray-800 text-sm font-semibold hover:bg-gray-100 transition-colors shadow">
+            <i class="fa-solid fa-pen"></i><span>Change</span>
+          </button>
+          <button (click)="removeAvatar(); closeLightbox()"
+            class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors shadow">
+            <i class="fa-solid fa-trash"></i><span>Remove</span>
+          </button>
         </div>
       </div>
-    }
+    </div>
+  }
 
-  </div>
 </div>

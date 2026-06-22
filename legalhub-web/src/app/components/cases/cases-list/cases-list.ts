@@ -1,33 +1,49 @@
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, ViewChild, signal, inject } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { CaseService } from '../../../services/case.service';
 import { ClientService } from '../../../services/client.service';
+import { StaffService } from '../../../services/staff.service';
 import { Case, Client } from '../../../models';
+import { NewCaseModal } from '../../../shared/modals/new-case-modal/new-case-modal';
+import { HighlightPipe } from '../../../shared/pipes/highlight.pipe';
+import { SearchNavigatorService } from '../../../shared/services/search-navigator.service';
+import { AiChatModal } from '../../../shared/modals/ai-chat-modal/ai-chat-modal';
 
 @Component({
   selector: 'app-case-list',
   standalone: true,
-  imports: [NgClass, FormsModule],
+  imports: [NgClass, FormsModule, NewCaseModal, HighlightPipe, AiChatModal],
   templateUrl: './cases-list.html',
 })
 export class CasesList implements OnInit {
+  @ViewChild(NewCaseModal) newCaseModal!: NewCaseModal;
+  @ViewChild(AiChatModal)  aiChatModal!:  AiChatModal;
+
   private router        = inject(Router);
   private caseService   = inject(CaseService);
   private clientService = inject(ClientService);
+  private staffService  = inject(StaffService);
+  searchNav             = inject(SearchNavigatorService);
 
-  searchQuery  = signal('');
-  activeFilter = signal('All');
-  filters      = ['All', 'Active', 'Pending', 'Closed'];
-  isLoading    = signal(false);
-  errorMsg     = signal('');
+  searchQuery      = signal('');
+  activeFilter     = signal('All');
+  filters          = ['All', 'Active', 'Pending', 'Closed'];
+  isLoading        = signal(false);
+  errorMsg         = signal('');
+  pendingDeleteId  = signal<string | null>(null);
 
   // Advanced filters
-  showFilterPanel = signal(false);
-  filterStatus    = signal('');
-  filterType      = signal('');
-  filterPriority  = signal('');
+  showFilterPanel      = signal(false);
+  filterStatus         = signal('');
+  filterType           = signal('');
+  filterPriority       = signal('');
+  filterPracticeArea   = signal('');
+  filterLawyer         = signal('');
+  filterDateFrom       = signal('');
+  filterDateTo         = signal('');
+  firmLawyers          = signal<{ id: string; full_name: string }[]>([]);
 
   // Selection
   selectedIds = signal<Set<string>>(new Set());
@@ -41,10 +57,12 @@ export class CasesList implements OnInit {
   async ngOnInit() {
     this.isLoading.set(true);
     try {
-      await Promise.all([
+      const [,, lawyers] = await Promise.all([
         this.caseService.loadCases(),
         this.clientService.loadClients(),
+        this.staffService.fetchFirmTeam(),
       ]);
+      this.firmLawyers.set(lawyers.map(l => ({ id: l.id, full_name: l.full_name })));
     } catch {
       this.errorMsg.set('Failed to load cases. Make sure the backend is running.');
     } finally {
@@ -142,40 +160,65 @@ export class CasesList implements OnInit {
   // ── Filtering ─────────────────────────────────────────────
 
   get filteredCases(): Case[] {
+    const activeStatuses = new Set(['NEW', 'INVESTIGATION', 'PRE_TRIAL', 'TRIAL', 'APPEAL']);
+    const q            = this.searchQuery().toLowerCase();
+    const dateFrom     = this.filterDateFrom() ? new Date(this.filterDateFrom()) : null;
+    const dateTo       = this.filterDateTo()   ? new Date(this.filterDateTo())   : null;
+    if (dateTo) dateTo.setHours(23, 59, 59, 999);
+
     return this.cases.filter(c => {
-      const activeStatuses = new Set(['NEW', 'INVESTIGATION', 'PRE_TRIAL', 'TRIAL', 'APPEAL']);
       const matchFilter =
         this.activeFilter() === 'All'
         || (this.activeFilter() === 'Active'  && activeStatuses.has(c.status))
         || (this.activeFilter() === 'Pending' && c.status === 'SETTLED')
         || (this.activeFilter() === 'Closed'  && c.status === 'CLOSED');
-      const q = this.searchQuery().toLowerCase();
       const matchSearch = !q
         || c.title.toLowerCase().includes(q)
         || c.caseNumber.toLowerCase().includes(q)
         || c.client.toLowerCase().includes(q);
-      const matchStatus   = !this.filterStatus()   || c.status === this.filterStatus();
-      const matchType     = !this.filterType()     || c.type === this.filterType();
-      const matchPriority = !this.filterPriority() || c.priority === this.filterPriority();
-      return matchFilter && matchSearch && matchStatus && matchType && matchPriority;
+      const matchStatus       = !this.filterStatus()       || c.status === this.filterStatus();
+      const matchType         = !this.filterType()         || c.type === this.filterType();
+      const matchPriority     = !this.filterPriority()     || c.priority === this.filterPriority();
+      const matchPracticeArea = !this.filterPracticeArea() || c.practiceArea === this.filterPracticeArea();
+      const matchLawyer       = !this.filterLawyer()       || c.assignedTo === this.filterLawyer();
+      const matchDateFrom     = !dateFrom || c.openDate >= dateFrom;
+      const matchDateTo       = !dateTo   || c.openDate <= dateTo;
+      return matchFilter && matchSearch && matchStatus && matchType && matchPriority
+          && matchPracticeArea && matchLawyer && matchDateFrom && matchDateTo;
     });
   }
 
   setFilter(f: string)     { this.activeFilter.set(f); }
-  onSearchChange(q: string){ this.searchQuery.set(q); }
+  onSearchChange(q: string): void {
+    this.searchQuery.set(q);
+    if (!q) { this.searchNav.reset(); return; }
+    setTimeout(() => this.searchNav.scan(), 50);
+  }
   onFilterChange()         { }
 
   get hasActiveFilters(): boolean {
-    return !!this.filterStatus() || !!this.filterType() || !!this.filterPriority();
+    return !!this.filterStatus() || !!this.filterType() || !!this.filterPriority()
+        || !!this.filterPracticeArea() || !!this.filterLawyer()
+        || !!this.filterDateFrom() || !!this.filterDateTo();
   }
 
   clearFilters() {
-    this.filterStatus.set(''); this.filterType.set(''); this.filterPriority.set('');
+    this.filterStatus.set('');       this.filterType.set('');        this.filterPriority.set('');
+    this.filterPracticeArea.set(''); this.filterLawyer.set('');
+    this.filterDateFrom.set('');     this.filterDateTo.set('');
   }
 
   readonly statusOptions   = ['NEW','INVESTIGATION','PRE_TRIAL','TRIAL','APPEAL','SETTLED','CLOSED'];
   readonly typeOptions     = ['CRIMINAL','CIVIL','CORPORATE','FAMILY','REAL_ESTATE','IMMIGRATION','PERSONAL_INJURY','IP','LABOR','TAX'];
   readonly priorityOptions = ['URGENT','HIGH','MEDIUM','NORMAL','LOW'];
+  readonly caseTypes       = ['Criminal Law','Civil Law','Corporate Law','Family Law','Real Estate Law','Immigration Law','Personal Injury','Intellectual Property','Labor Law','Tax Law'];
+  readonly billingTypes    = ['Hourly Rate','Flat Fee','Contingency','Retainer'];
+  readonly practiceAreas   = [
+    'Assault & Battery','Contract Disputes','Divorce & Custody','Estate Planning',
+    'Employment Law','Tax Law','Criminal Defense','Personal Injury','Real Estate',
+    'Immigration','Intellectual Property','Corporate Law','Bankruptcy','Civil Rights',
+    'Environmental Law','Medical Malpractice','Insurance Law','Securities Law',
+  ];
 
   // ── Selection ─────────────────────────────────────────────
 
@@ -215,9 +258,39 @@ export class CasesList implements OnInit {
 
   closeRowMenu() { this.rowMenuOpen.set(''); }
 
-  async deleteCase(id: string) {
+
+  // ── Search highlight ──────────────────────────────────────
+
+
+  // ── Column helpers ────────────────────────────────────────
+
+  daysOpen(openDate: Date): number {
+    return Math.floor((Date.now() - new Date(openDate).getTime()) / 86_400_000);
+  }
+
+  isHearingSoon(date?: Date): boolean {
+    if (!date) return false;
+    const diff = (new Date(date).getTime() - Date.now()) / 86_400_000;
+    return diff >= 0 && diff <= 7;
+  }
+
+  isHearingPast(date?: Date): boolean {
+    if (!date) return false;
+    return new Date(date) < new Date();
+  }
+
+
+  requestDelete(id: string) {
     this.closeRowMenu();
-    if (!confirm('Delete this case? This cannot be undone.')) return;
+    this.pendingDeleteId.set(id);
+  }
+
+  cancelDelete() { this.pendingDeleteId.set(null); }
+
+  async confirmDelete() {
+    const id = this.pendingDeleteId();
+    if (!id) return;
+    this.pendingDeleteId.set(null);
     try {
       await this.caseService.deleteCase(id);
     } catch {
@@ -262,6 +335,10 @@ export class CasesList implements OnInit {
     win.print();
   }
 
+  lawyerName(id: string): string {
+    return this.firmLawyers().find(l => l.id === id)?.full_name ?? id;
+  }
+
   goToDetail(id: string) { this.router.navigate(['/cases', id]); }
 
   // ── Edit Modal (2 steps — identique à case-detail) ──────────
@@ -284,9 +361,33 @@ export class CasesList implements OnInit {
     LABOR: 'Labor Law', TAX: 'Tax Law',
   };
 
+  private readonly caseTypeMap: Record<string, string> = {
+    'Criminal Law': 'CRIMINAL', 'Civil Law': 'CIVIL', 'Corporate Law': 'CORPORATE',
+    'Family Law': 'FAMILY', 'Real Estate Law': 'REAL_ESTATE', 'Immigration Law': 'IMMIGRATION',
+    'Personal Injury': 'PERSONAL_INJURY', 'Intellectual Property': 'IP',
+    'Labor Law': 'LABOR', 'Tax Law': 'TAX',
+  };
+
+  private readonly billingTypeMap: Record<string, string> = {
+    'Hourly Rate': 'HOURLY', 'Flat Fee': 'FLAT_FEE', 'Contingency': 'CONTINGENCY', 'Retainer': 'RETAINER',
+  };
+
+  private readonly billingTypeLabelMap: Record<string, string> = {
+    HOURLY: 'Hourly Rate', FLAT_FEE: 'Flat Fee', CONTINGENCY: 'Contingency', RETAINER: 'Retainer',
+  };
+
+  billingTypeLabel(type: string): string {
+    return this.billingTypeLabelMap[type] ?? type;
+  }
+
   get editStep1Valid() {
     const f = this.editF1();
-    return f.title.trim().length > 0 && f.caseType.length > 0 && f.status.length > 0;
+    return f.title.trim().length > 0 && f.caseType.length > 0 && f.status.length > 0 && f.priority.length > 0;
+  }
+
+  get editStep2Valid() {
+    const f = this.editF2();
+    return f.billingType.length > 0 && String(f.caseValue).trim().length > 0 && Number(f.caseValue) >= 0;
   }
 
   get editStepLabels() {
@@ -310,9 +411,13 @@ export class CasesList implements OnInit {
       courtLocation: '',
       judgeName:     '',
       hearingDate:   c.nextHearing ? c.nextHearing.toISOString().split('T')[0] : '',
-      billingType:   '',
+      billingType:   c.billingType ? (this.billingTypeLabelMap[c.billingType] ?? '') : '',
       caseValue:     '',
     });
+  }
+
+  openAiChat(c: Case): void {
+    this.aiChatModal.open(c.id, c.title ?? 'Case', c.caseNumber ?? '');
   }
 
   openEditModal(c: Case) {
@@ -362,128 +467,5 @@ export class CasesList implements OnInit {
     }
   }
 
-  // ── Modal — New Case (3 steps) ────────────────────────────
-
-  showModal     = signal(false);
-  modalStep     = signal<1 | 2 | 3 | 4>(1);
-  isSubmitting  = signal(false);
-  createdCaseId = signal('');
-
-  f1 = signal({ title: '', number: '', caseType: '', practiceArea: '', priority: '', description: '' });
-  f2 = signal({
-    clientId: '', opposingParty: '', opposingCounsel: '',
-    courtName: '', courtLocation: '', judgeName: '',
-    filingDate: '', hearingDate: '', statute: '',
-  });
-  f3 = signal({
-    billingType: '', caseValue: '',
-    notificationsEnabled: true, aiAnalysis: true, confidential: false,
-  });
-
-  caseTypes     = ['Criminal Law','Civil Law','Corporate Law','Family Law','Real Estate Law','Immigration Law','Personal Injury','Intellectual Property','Labor Law','Tax Law'];
-  practiceAreas = ['Assault & Battery','Contract Disputes','Divorce & Custody','Estate Planning','Employment Law','Tax Law'];
-  billingTypes  = ['Hourly Rate','Flat Fee','Contingency','Retainer'];
-
-  get step1Valid() { return this.f1().title.trim().length > 0 && this.f1().caseType.length > 0; }
-  get step2Valid() { return this.f2().clientId.trim().length > 0; }
-  get step3Valid() { return true; }
-  get progressPct() { return ((this.modalStep() - 1) / 3) * 100; }
-
-  get stepLabels() {
-    const s = this.modalStep();
-    return [
-      { label: 'Case Info',      active: s === 1, done: s > 1 },
-      { label: 'Client & Court', active: s === 2, done: s > 2 },
-      { label: 'Financial',      active: s === 3, done: s > 3 },
-    ];
-  }
-
-  setPriority(p: string) { this.f1.update(v => ({ ...v, priority: p })); }
-
-  getF3Bool(key: string): boolean {
-    return !!this.f3()[key as 'notificationsEnabled' | 'aiAnalysis' | 'confidential'];
-  }
-
-  setF3Bool(key: string, value: boolean) {
-    const k = key as 'notificationsEnabled' | 'aiAnalysis' | 'confidential';
-    this.f3.update(v => ({ ...v, [k]: value }));
-  }
-
-  openModal() {
-    this.f1.set({ title: '', number: '', caseType: '', practiceArea: '', priority: '', description: '' });
-    this.f2.set({ clientId: '', opposingParty: '', opposingCounsel: '', courtName: '', courtLocation: '', judgeName: '', filingDate: '', hearingDate: '', statute: '' });
-    this.f3.set({ billingType: '', caseValue: '', notificationsEnabled: true, aiAnalysis: true, confidential: false });
-    this.modalStep.set(1);
-    this.showModal.set(true);
-  }
-
-  closeModal() { this.showModal.set(false); }
-
-  nextStep() {
-    const s = this.modalStep();
-    if (s < 3) this.modalStep.set((s + 1) as 1|2|3|4);
-    else this.submitCase();
-  }
-
-  prevStep() {
-    const s = this.modalStep();
-    if (s > 1) this.modalStep.set((s - 1) as 1|2|3|4);
-  }
-
-  private readonly caseTypeMap: Record<string, string> = {
-    'Criminal Law': 'CRIMINAL', 'Civil Law': 'CIVIL', 'Corporate Law': 'CORPORATE',
-    'Family Law': 'FAMILY', 'Real Estate Law': 'REAL_ESTATE', 'Immigration Law': 'IMMIGRATION',
-    'Personal Injury': 'PERSONAL_INJURY', 'Intellectual Property': 'IP',
-    'Labor Law': 'LABOR', 'Tax Law': 'TAX',
-  };
-
-  private readonly billingTypeMap: Record<string, string> = {
-    'Hourly Rate': 'HOURLY', 'Flat Fee': 'FLAT_FEE', 'Contingency': 'CONTINGENCY', 'Retainer': 'RETAINER',
-  };
-
-  private readonly priorityMap: Record<string, string> = {
-    'Normal': 'NORMAL', 'Medium': 'MEDIUM', 'Urgent': 'URGENT',
-  };
-
-  async submitCase() {
-    this.isSubmitting.set(true);
-    try {
-      const f1 = this.f1(); const f2 = this.f2(); const f3 = this.f3();
-      const payload: Record<string, unknown> = {
-        title:              f1.title,
-        case_number:        f1.number || `CASE-${Date.now()}`,
-        case_type:          this.caseTypeMap[f1.caseType] ?? 'CIVIL',
-        practice_area:      f1.practiceArea || undefined,
-        priority:           this.priorityMap[f1.priority] ?? 'NORMAL',
-        description:        f1.description || undefined,
-        client_id:          f2.clientId || undefined,
-        opposing_party:     f2.opposingParty || undefined,
-        opposing_counsel:   f2.opposingCounsel || undefined,
-        court_name:         f2.courtName || undefined,
-        court_location:     f2.courtLocation || undefined,
-        judge_name:         f2.judgeName || undefined,
-        filing_date:        f2.filingDate || undefined,
-        first_hearing_date: f2.hearingDate || undefined,
-        statute_of_limitations: f2.statute || undefined,
-        billing_type:       f3.billingType ? (this.billingTypeMap[f3.billingType] ?? undefined) : undefined,
-        estimated_value:    f3.caseValue ? Number(f3.caseValue) : undefined,
-      };
-      Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
-
-      await this.caseService.addCase(payload);
-      this.createdCaseId.set(this.cases[0]?.id ?? '');
-      this.modalStep.set(4);
-    } catch (err) {
-      console.error('Failed to create case:', err);
-    } finally {
-      this.isSubmitting.set(false);
-    }
-  }
-
-  goToNewCase() {
-    this.closeModal();
-    if (this.createdCaseId()) {
-      this.router.navigate(['/cases', this.createdCaseId()]);
-    }
-  }
+  openModal() { this.newCaseModal.openModal(); }
 }

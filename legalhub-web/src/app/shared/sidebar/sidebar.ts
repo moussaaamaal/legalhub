@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
@@ -28,7 +28,8 @@ export class Sidebar implements OnInit {
   private authService  = inject(AuthService);
   private notifService = inject(NotificationService);
 
-  currentUser   = this.authService.currentUser;
+  currentUser        = this.authService.currentUser;
+  showLogoutConfirm  = signal(false);
 
   unreadCount   = this.notifService.unreadCount;
   casesCount    = this.notifService.casesCount;
@@ -54,19 +55,27 @@ export class Sidebar implements OnInit {
       items: [
         { label: 'Documents',    icon: 'fa-solid fa-folder-open',         route: '/documents' },
         { label: 'Billing',      icon: 'fa-solid fa-file-invoice-dollar', route: '/billing' },
-        { label: 'AI Assistant', icon: 'fa-solid fa-robot',               route: '/ai-assistant' },
+{ label: 'AI Assistant', icon: 'fa-solid fa-robot',               route: '/ai-assistant' },
       ]
     },
     {
-      title: 'Administration',
+      title: 'Organization',
       items: [
-        { label: 'Staff',    icon: 'fa-solid fa-user-group', route: '/staff' },
-        { label: 'Settings', icon: 'fa-solid fa-cog',        route: '/settings' },
+        { label: 'Staff',              icon: 'fa-solid fa-users',          route: '/staff' },
+        { label: 'Profile & Settings', icon: 'fa-solid fa-sliders',        route: '/settings' },
       ]
     },
   ];
 
   logout(): void {
-    this.authService.logout();
+    this.showLogoutConfirm.set(true);
+  }
+
+  async confirmLogout(): Promise<void> {
+    await this.authService.logout();
+  }
+
+  cancelLogout(): void {
+    this.showLogoutConfirm.set(false);
   }
 }

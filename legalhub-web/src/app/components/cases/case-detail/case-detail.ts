@@ -1,14 +1,41 @@
-import { Component, OnInit, signal, inject, effect, ViewChild } from '@angular/core';
+import { Component, OnInit, signal, computed, inject, effect, ViewChild } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CaseService } from '../../../services/case.service';
 import { Case } from '../../../models';
-import { UploadModalService } from '../../../shared/upload-modal/upload-modal.sevice';
-import { UploadModal } from '../../../shared/upload-modal/upload-modal';
-import { DocumentService, DocEntry } from '../../../services/document.service';
+import { BillingService, InvoiceRaw } from '../../../services/billing.service';
+import { UploadModalService } from '../../../shared/modals/upload-modal/upload-modal.sevice';
+import { UploadModal } from '../../../shared/modals/upload-modal/upload-modal';
+import { DocumentService, RawDoc } from '../../../services/document.service';
 import { TaskService, RawTask, RawNote } from '../../../services/task.service';
-import { VoiceNoteModal } from '../../../shared/voice-note-modal/voice-note-modal';
+import { StaffService, ROLE_MAP } from '../../../services/staff.service';
+import { AuthService } from '../../../services/auth.service';
+import { VoiceNoteModal } from '../../../shared/modals/voice-note-modal/voice-note-modal';
+import { NewNoteModal } from '../../../shared/modals/new-note-modal/new-note-modal';
+import { NewInvoiceModal } from '../../../shared/modals/new-invoice-modal/new-invoice-modal';
+import { InvoiceViewModal } from '../../../shared/modals/invoice-view-modal/invoice-view-modal';
+import { RequestDocModal } from '../../../shared/modals/request-doc-modal/request-doc-modal';
+import { ConfirmDialog } from '../../../shared/modals/confirm-dialog/confirm-dialog';
+import { AiSummaryModal } from '../../../shared/modals/ai-summary-modal/ai-summary-modal';
+import { AiChatModal } from '../../../shared/modals/ai-chat-modal/ai-chat-modal';
+
+interface TeamMember {
+  id: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  avatar_url: string | null;
+}
+
+interface FirmMember {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  avatar_url: string | null;
+}
 
 interface TimelineEntry {
   action: string;
@@ -31,8 +58,32 @@ interface Note {
   title?:    string;
   content:   string;
   author:    string;
+  lawyerId:  string;
   createdAt: string;
   isVoice:   boolean;
+}
+
+type CaseDocStatus = 'Pending Review' | 'Approved' | 'Rejected';
+
+interface CaseDocFile {
+  id:                 string;
+  name:               string;
+  desc:               string;
+  type:               string;
+  typeBg:             string;
+  typeColor:          string;
+  iconBg:             string;
+  icon:               string;
+  iconColor:          string;
+  size:               string;
+  avatar:             string;
+  uploader:           string;
+  modified:           string;
+  status:             CaseDocStatus;
+  storageUrl:         string;
+  isClientDoc:        boolean;
+  isSharedWithClient: boolean;
+  uploaderId:         string;
 }
 
 interface BillingEntry {
@@ -48,67 +99,232 @@ interface BillingEntry {
 @Component({
   selector: 'app-case-detail',
   standalone: true,
-  imports: [NgClass, FormsModule, UploadModal, VoiceNoteModal],
+  imports: [NgClass, FormsModule, UploadModal, VoiceNoteModal, NewNoteModal, NewInvoiceModal, RequestDocModal, InvoiceViewModal, ConfirmDialog, AiSummaryModal, AiChatModal],
   templateUrl: './case-detail.html',
 })
 export class CaseDetail implements OnInit {
-  @ViewChild(VoiceNoteModal) voiceModal!: VoiceNoteModal;
+  @ViewChild(VoiceNoteModal)  voiceModal!:      VoiceNoteModal;
+  @ViewChild(NewNoteModal)    noteModal!:       NewNoteModal;
+  @ViewChild(NewInvoiceModal) invoiceModal!:    NewInvoiceModal;
+  @ViewChild(RequestDocModal) requestDocModal!: RequestDocModal;
+  @ViewChild(AiSummaryModal)  aiSummaryModal!:  AiSummaryModal;
+  @ViewChild(AiChatModal)     aiChatModal!:     AiChatModal;
 
-  private route       = inject(ActivatedRoute);
-  private router      = inject(Router);
-  private caseService = inject(CaseService);
+  private route          = inject(ActivatedRoute);
+  private router         = inject(Router);
+  private caseService    = inject(CaseService);
+  private billingService = inject(BillingService);
   upload              = inject(UploadModalService);
   private docService  = inject(DocumentService);
-  private taskService = inject(TaskService);
+  private taskService  = inject(TaskService);
+  private staffService = inject(StaffService);
+  private authService  = inject(AuthService);
   _caseId     = '';
 
+  get currentUserId(): string { return this.authService.currentUser()?.id ?? ''; }
+  isCurrentUserUploader(doc: CaseDocFile): boolean { return doc.uploaderId === this.currentUserId; }
+
   activeTab = signal('Overview');
-  tabs = ['Overview', 'Timeline', 'Documents', 'Tasks', 'Notes', 'Billing'];
+  tabs = ['Overview', 'Timeline', 'Documents', 'Tasks', 'Notes', 'Billing', 'Team'];
 
   case      = signal<Case | null>(null);
   timeline  = signal<TimelineEntry[]>([]);
   isLoading = signal(false);
   errorMsg  = signal('');
 
-  documents = signal<DocEntry[]>([]);
+  documents     = signal<CaseDocFile[]>([]);
+  docFilter     = signal<'all' | 'pending' | 'approved' | 'shared'>('all');
+  selectedDocs  = signal<Set<string>>(new Set());
+  showBulkBar   = computed(() => this.selectedDocs().size > 0);
+
+  filteredCaseDocs = computed(() => {
+    const f    = this.docFilter();
+    const docs = this.documents();
+    if (f === 'pending')  return docs.filter(d => d.isClientDoc && d.status === 'Pending Review');
+    if (f === 'approved') return docs.filter(d => d.isClientDoc && d.status === 'Approved');
+    if (f === 'shared')   return docs.filter(d => !d.isClientDoc && d.isSharedWithClient);
+    return docs;
+  });
+
+  get docPendingCount(): number {
+    return this.documents().filter(d => d.isClientDoc && d.status === 'Pending Review').length;
+  }
+
+  get docAllSelected(): boolean {
+    const docs = this.filteredCaseDocs();
+    return docs.length > 0 && docs.every(d => this.selectedDocs().has(d.id));
+  }
+
+  isDocSelected(id: string): boolean { return this.selectedDocs().has(id); }
+
+  toggleDoc(id: string): void {
+    this.selectedDocs.update(s => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  toggleAllDocs(): void {
+    const docs = this.filteredCaseDocs();
+    const all  = docs.every(d => this.selectedDocs().has(d.id));
+    this.selectedDocs.set(all ? new Set() : new Set(docs.map(d => d.id)));
+  }
+
+  clearDocSelection(): void { this.selectedDocs.set(new Set()); }
+
+  bulkSummarizeDocs(): void {
+    for (const id of [...this.selectedDocs()]) {
+      this.aiSummarizeDoc(id);
+    }
+  }
 
   // ── Document Actions ──────────────────────────────────────
 
-  previewDoc     = signal<DocEntry | null>(null);
-  downloadingDoc = signal<string | null>(null);
-  deletingDoc    = signal<DocEntry | null>(null);
+  previewDoc           = signal<CaseDocFile | null>(null);
+  downloadingDoc       = signal<string | null>(null);
+  confirmDownloadDoc   = signal<CaseDocFile | null>(null);
+  deletingDoc          = signal<CaseDocFile | null>(null);
+  docIsDeleting        = signal(false);
 
-  openPreview(doc: DocEntry)  { this.previewDoc.set(doc); }
-  closePreview()              { this.previewDoc.set(null); }
+  openPreview(doc: CaseDocFile) { this.previewDoc.set(doc); }
+  closePreview()                { this.previewDoc.set(null); }
 
-  async downloadDoc(doc: DocEntry) {
+  confirmDownload(doc: CaseDocFile): void { this.confirmDownloadDoc.set(doc); }
+  cancelDownload():                  void { this.confirmDownloadDoc.set(null); }
+
+  viewDoc(doc: CaseDocFile): void {
+    if (!doc.storageUrl) return;
+    if (doc.type === 'WORD') {
+      window.open(`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(doc.storageUrl)}`, '_blank');
+    } else {
+      window.open(doc.storageUrl, '_blank');
+    }
+  }
+
+  openRequestDocModal() { this.requestDocModal.openModal(); }
+
+  async downloadDoc(doc: CaseDocFile) {
+    this.confirmDownloadDoc.set(null);
     this.downloadingDoc.set(doc.id);
-    try { await this.docService.downloadFile(doc); } catch {}
+    try { await this.docService.downloadFile({ name: doc.name, url: doc.storageUrl }); } catch {}
     setTimeout(() => this.downloadingDoc.set(null), 1800);
   }
 
-  confirmDelete(doc: DocEntry) { this.deletingDoc.set(doc); }
-  cancelDelete()               { this.deletingDoc.set(null); }
+  confirmDelete(doc: CaseDocFile) { this.deletingDoc.set(doc); }
+  cancelDelete()                  { this.deletingDoc.set(null); }
 
   async deleteDoc() {
     const doc = this.deletingDoc();
     if (!doc) return;
+    this.docIsDeleting.set(true);
     try {
       await this.docService.deleteDocument(doc.id);
       this.documents.update(arr => arr.filter(d => d.id !== doc.id));
+      this.deletingDoc.set(null);
     } catch (err) {
       console.error('Delete failed:', err);
+    } finally {
+      this.docIsDeleting.set(false);
     }
-    this.deletingDoc.set(null);
+  }
+
+  async approveDoc(id: string): Promise<void> {
+    try {
+      await this.docService.updateStatus(id, 'APPROVED');
+      this.documents.update(docs => docs.map(d => d.id === id ? { ...d, status: 'Approved' as CaseDocStatus } : d));
+    } catch { }
+  }
+
+  async rejectDoc(id: string): Promise<void> {
+    try {
+      await this.docService.updateStatus(id, 'REJECTED');
+      this.documents.update(docs => docs.map(d => d.id === id ? { ...d, status: 'Rejected' as CaseDocStatus } : d));
+    } catch { }
+  }
+
+  async shareDoc(id: string): Promise<void> {
+    try {
+      await this.docService.shareDocument(id);
+      this.documents.update(docs => docs.map(d => d.id === id ? { ...d, isSharedWithClient: true } : d));
+    } catch { }
+  }
+
+  aiSummarizeDoc(id: string): void {
+    const doc = this.documents().find(d => d.id === id);
+    this.aiSummaryModal.open(id, doc?.name ?? 'Document');
+  }
+
+  getDocStatusCls(status: CaseDocStatus): string {
+    const map: Record<CaseDocStatus, string> = {
+      'Pending Review': 'bg-orange-100 text-orange-700',
+      'Approved':       'bg-green-100 text-green-700',
+      'Rejected':       'bg-red-100 text-red-700',
+    };
+    return map[status];
+  }
+
+  getDocStatusIcon(status: CaseDocStatus): string {
+    const map: Record<CaseDocStatus, string> = {
+      'Pending Review': 'fa-solid fa-clock',
+      'Approved':       'fa-solid fa-circle-check',
+      'Rejected':       'fa-solid fa-circle-xmark',
+    };
+    return map[status];
   }
 
   async loadDocuments(caseId: string) {
     try {
-      const docs = await this.docService.listForCase(caseId);
-      this.documents.set(docs);
+      const raw = await this.docService.listDocuments({ case_id: caseId });
+      this.documents.set(raw.filter(r => r.category !== 'VOICE_TRANSCRIPT').map(r => this._mapCaseDoc(r)));
     } catch (err) {
       console.error('Failed to load documents:', err);
     }
+  }
+
+  private _mapCaseDoc(raw: RawDoc): CaseDocFile {
+    const style = this.docService.getTypeStyle(raw.file_type);
+    return {
+      id:          raw.id,
+      name:        raw.file_name,
+      desc:        this._caseDocDesc(raw.category),
+      type:        raw.file_type,
+      typeBg:      style.typeBg,
+      typeColor:   style.typeColor,
+      iconBg:      style.iconBg,
+      icon:        style.icon,
+      iconColor:   style.iconColor,
+      size:        `${(raw.file_size_mb ?? 0).toFixed(1)} MB`,
+      avatar:      raw.uploader_avatar_url ?? '',
+      uploader:    raw.uploader_name ?? 'Staff Member',
+      modified:    this.docService.timeAgo(raw.created_at),
+      status:      this._mapCaseDocStatus(raw.status),
+      storageUrl:  raw.storage_url,
+      isClientDoc:        raw.category === 'CLIENT_DOC',
+      isSharedWithClient: raw.is_shared_with_client ?? false,
+      uploaderId:         raw.uploaded_by ?? '',
+    };
+  }
+
+  private _mapCaseDocStatus(s: string): CaseDocStatus {
+    const map: Record<string, CaseDocStatus> = {
+      PENDING_REVIEW: 'Pending Review',
+      APPROVED:       'Approved',
+      REJECTED:       'Rejected',
+    };
+    return map[s] ?? 'Pending Review';
+  }
+
+  private _caseDocDesc(cat: string): string {
+    const map: Record<string, string> = {
+      CONTRACT:   'Contract document',
+      COURT_DOC:  'Court document',
+      EVIDENCE:   'Evidence file',
+      FINANCIAL:  'Financial document',
+      CLIENT_DOC: 'Client document',
+      OTHER:      'Document',
+    };
+    return map[cat] ?? 'Document';
   }
 
   openUploadModal() {
@@ -116,8 +332,11 @@ export class CaseDetail implements OnInit {
     if (!c || !this._caseId) { this.upload.open(); return; }
     this.upload.openForCase(
       c.title,
-      async (file: File) => { await this.docService.uploadFile(file, this._caseId); },
-      () => this.loadDocuments(this._caseId),
+      async (file: File) => {
+        const raw = await this.docService.uploadFile(file, this._caseId);
+        this.documents.update(docs => [this._mapCaseDoc(raw), ...docs]);
+      },
+      () => {},
     );
   }
 
@@ -125,20 +344,341 @@ export class CaseDetail implements OnInit {
   tasksLoading  = signal(false);
 
   notes            = signal<Note[]>([]);
-  showAddNoteModal = signal(false);
-  newNoteTitle     = signal('');
-  newNoteContent   = signal('');
-  isSavingNote     = signal(false);
   editingNoteId    = signal<string | null>(null);
   editNoteTitle    = signal('');
   editNoteContent  = signal('');
   deletingNoteId   = signal<string | null>(null);
+
+  // ── Team ─────────────────────────────────────────────────
+
+  team             = signal<TeamMember[]>([]);
+  firmMembers      = signal<FirmMember[]>([]);
+  showTeamModal    = signal(false);
+  isLoadingFirm    = signal(false);
+  isAddingMember   = signal<string | null>(null);
+  isRemovingMember = signal<string | null>(null);
+  teamSearch       = signal('');
+  confirmRemoveMember = signal<TeamMember | null>(null);
+
+  openConfirmRemove(m: TeamMember) { this.confirmRemoveMember.set(m); }
+  cancelConfirmRemove()            { this.confirmRemoveMember.set(null); }
+
+  async confirmAndRemove(): Promise<void> {
+    const m = this.confirmRemoveMember();
+    if (!m) return;
+    this.confirmRemoveMember.set(null);
+    await this.removeTeamMember(m.user_id);
+  }
+
+  filteredFirmMembers = computed(() => {
+    const teamIds = new Set(this.team().map(m => m.user_id));
+    const q = this.teamSearch().toLowerCase();
+    return this.firmMembers().filter(m =>
+      !teamIds.has(m.id) &&
+      (m.full_name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))
+    );
+  });
+
+  async loadTeam(): Promise<void> {
+    try {
+      const raw = await this.caseService.fetchTeam(this._caseId);
+      this.team.set(raw.map(r => {
+        const u = r['app_user'] as Record<string, unknown> | null;
+        return {
+          id:         String(r['id']),
+          user_id:    String(r['user_id']),
+          full_name:  String(u?.['full_name'] ?? ''),
+          email:      String(u?.['email']     ?? ''),
+          role:       String(u?.['role']      ?? ''),
+          avatar_url: u?.['avatar_url'] ? String(u['avatar_url']) : null,
+        } as TeamMember;
+      }));
+    } catch { this.team.set([]); }
+  }
+
+  async openTeamModal(): Promise<void> {
+    this.teamSearch.set('');
+    this.showTeamModal.set(true);
+    this.isLoadingFirm.set(true);
+    try {
+      this.firmMembers.set(await this.staffService.fetchFirmTeam());
+    } catch (err) {
+      console.error('Failed to load firm members:', err);
+    } finally { this.isLoadingFirm.set(false); }
+  }
+
+  closeTeamModal() { this.showTeamModal.set(false); }
+
+  async addTeamMember(userId: string): Promise<void> {
+    const member = this.firmMembers().find(m => m.id === userId);
+    if (!member) return;
+    this.isAddingMember.set(userId);
+    try {
+      await this.caseService.addTeamMember(this._caseId, userId);
+      this.team.update(arr => [...arr, {
+        id: userId, user_id: userId,
+        full_name: member.full_name, email: member.email,
+        role: member.role, avatar_url: member.avatar_url,
+      }]);
+    } catch (err) {
+      console.error('Failed to add team member:', err);
+    } finally { this.isAddingMember.set(null); }
+  }
+
+  async removeTeamMember(userId: string): Promise<void> {
+    this.isRemovingMember.set(userId);
+    try {
+      await this.caseService.removeTeamMember(this._caseId, userId);
+      this.team.update(arr => arr.filter(m => m.user_id !== userId));
+    } catch (err) {
+      console.error('Failed to remove team member:', err);
+    } finally { this.isRemovingMember.set(null); }
+  }
+
+  memberInitials(name: string): string {
+    return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  }
+
+  get lastUpdatedLabel(): string {
+    const entries = this.timeline();
+    const latest = entries.length > 0 ? new Date(entries[0].created_at) : this.case()?.openDate;
+    if (!latest) return '—';
+    const diff = Date.now() - latest.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return latest.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  memberRoleLabel(role: string): string {
+    return ROLE_MAP[role]?.label ?? role;
+  }
+
+  memberRoleCls(role: string): string {
+    return (ROLE_MAP[role]?.cls ?? 'bg-gray-100 text-gray-700');
+  }
 
   billingEntries: BillingEntry[] = [
     { date:'Nov 15, 2024', attorney:'—', desc:'Discovery document review', hours:'4.5', rate:'$350/hr', amount:'$1,575.00' },
     { date:'Nov 14, 2024', attorney:'—', desc:'Client consultation',       hours:'2.0', rate:'$450/hr', amount:'$900.00' },
     { date:'Nov 13, 2024', attorney:'—', desc:'Motion preparation',        hours:'6.0', rate:'$350/hr', amount:'$2,100.00' },
   ];
+
+  // ── Case Invoices (Drafts) ────────────────────────────
+  caseInvoices       = signal<InvoiceRaw[]>([]);
+  invoicesLoading    = signal(false);
+  sendingInvoiceId   = signal<string | null>(null);
+  sendingReminderId  = signal<string | null>(null);
+  markingCasePaidId  = signal<string | null>(null);
+  deletingInvoiceId   = signal<string | null>(null);
+  cancellingInvoiceId = signal<string | null>(null);
+
+  pendingConfirm = signal<{
+    title: string; message: string; confirmLabel: string;
+    type: 'danger' | 'warning'; onConfirm: () => void;
+  } | null>(null);
+
+  confirmPending() { this.pendingConfirm()?.onConfirm(); this.pendingConfirm.set(null); }
+  dismissConfirm() { this.pendingConfirm.set(null); }
+  viewingInvoice     = signal<InvoiceRaw | null>(null);
+  invoiceFilter      = signal<'all' | 'paid' | 'pending' | 'overdue' | 'draft' | 'cancelled'>('all');
+
+  filteredSentInvoices = computed(() => {
+    const f   = this.invoiceFilter();
+    const all = this.caseInvoices();
+    if (f === 'paid')      return all.filter(inv => inv.status === 'PAID');
+    if (f === 'pending')   return all.filter(inv => inv.status === 'PENDING');
+    if (f === 'overdue')   return all.filter(inv => inv.status === 'OVERDUE');
+    if (f === 'draft')     return all.filter(inv => inv.status === 'DRAFT');
+    if (f === 'cancelled') return all.filter(inv => inv.status === 'CANCELLED');
+    return all;
+  });
+
+  get overdueInvoiceCount(): number {
+    return this.caseInvoices().filter(inv => inv.status === 'OVERDUE').length;
+  }
+
+  invStatusBadgeCls(status: string): string {
+    const map: Record<string, string> = {
+      DRAFT:     'bg-slate-100 text-slate-600',
+      PENDING:   'bg-amber-100 text-amber-700',
+      PAID:      'bg-green-100 text-green-700',
+      OVERDUE:   'bg-red-100 text-red-700',
+      CANCELLED: 'bg-gray-100 text-gray-500',
+    };
+    return map[status] ?? 'bg-gray-100 text-gray-600';
+  }
+
+  invStatusLabel(status: string): string {
+    const map: Record<string, string> = {
+      DRAFT: 'Draft', PENDING: 'Pending', PAID: 'Paid', OVERDUE: 'Overdue', CANCELLED: 'Cancelled',
+    };
+    return map[status] ?? status;
+  }
+
+  isInvoiceOwner(inv: any): boolean {
+    const user = this.authService.currentUser();
+    return user?.role === 'admin' || inv.lawyer_id === this.currentUserId;
+  }
+
+  async loadCaseInvoices(): Promise<void> {
+    this.invoicesLoading.set(true);
+    try {
+      const list = await this.billingService.listForCase(this._caseId);
+      const uid = this.currentUserId;
+      const isAdmin = this.authService.currentUser()?.role === 'admin';
+      this.caseInvoices.set(
+        list.filter(inv => isAdmin || !['DRAFT', 'CANCELLED'].includes(inv.status) || inv.lawyer_id === uid)
+      );
+    } catch { /* silent */ } finally {
+      this.invoicesLoading.set(false);
+    }
+  }
+
+  fmtInvoiceAmount(inv: InvoiceRaw): string {
+    const sym = inv.currency === 'USD' ? '$' : inv.currency + ' ';
+    return sym + inv.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2 });
+  }
+
+  fmtInvoiceDate(iso: string): string {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  getInvDueNote(inv: any): { text: string; cls: string } {
+    if (inv.status === 'PAID')      return { text: 'Paid',      cls: 'text-green-600' };
+    if (inv.status === 'CANCELLED') return { text: 'Cancelled', cls: 'text-gray-400'  };
+    if (!inv.due_date)              return { text: '',          cls: ''               };
+    const diff = Math.ceil((new Date(inv.due_date).getTime() - Date.now()) / 86400000);
+    if (diff < 0)  return { text: `${Math.abs(diff)} day${Math.abs(diff) > 1 ? 's' : ''} overdue`, cls: 'text-red-600'   };
+    if (diff === 0) return { text: 'Due today',                                                      cls: 'text-amber-600' };
+    return              { text: `Due in ${diff} day${diff > 1 ? 's' : ''}`,                         cls: 'text-gray-500'  };
+  }
+
+  openViewInvoice(inv: InvoiceRaw) { this.viewingInvoice.set(inv); }
+  closeViewInvoice()               { this.viewingInvoice.set(null); }
+
+  printInvoice(inv: InvoiceRaw) {
+    const c          = this.case();
+    const client     = inv.client;
+    const clientName = client ? `${client.first_name} ${client.last_name}`.trim() : '—';
+    const caseTitle  = inv.case_file?.title ?? c?.title ?? '—';
+    const caseNum    = inv.case_file?.case_number ?? c?.caseNumber ?? '';
+    const sym        = inv.currency === 'USD' ? '$' : (inv.currency ?? '') + ' ';
+    const fmt        = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    const fmtDate    = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const statusLabels: Record<string, string> = { DRAFT: 'Draft', PENDING: 'Pending', PAID: 'Paid', OVERDUE: 'Overdue', CANCELLED: 'Cancelled' };
+
+    const itemRows = (inv.invoice_item ?? []).map(it =>
+      `<tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827">${it.description}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:#374151">${it.quantity}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#374151">${fmt(it.unit_price)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:#111827">${fmt(it.total)}</td>
+      </tr>`
+    ).join('') || '<tr><td colspan="4" style="padding:16px;text-align:center;color:#9ca3af">No items</td></tr>';
+
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Invoice ${inv.invoice_number}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;background:#f3f4f6;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{max-width:780px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)}.hdr{background:linear-gradient(135deg,#d97706,#f59e0b);padding:28px 36px;display:flex;justify-content:space-between;align-items:flex-start}.hdr-brand{color:#fff;font-size:22px;font-weight:800}.hdr-brand span{opacity:.8;font-weight:400}.hdr-right{text-align:right}.hdr-num{color:#fff;font-size:20px;font-weight:700}.hdr-badge{display:inline-block;margin-top:5px;padding:3px 12px;border-radius:999px;font-size:11px;font-weight:600;background:rgba(255,255,255,.25);color:#fff}.body{padding:28px 36px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:24px}.box{background:#f9fafb;border-radius:8px;padding:14px;border:1px solid #e5e7eb}.box h3{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6b7280;margin-bottom:7px}.box .val{font-size:13px;font-weight:600;color:#111827}.box .sub{font-size:12px;color:#6b7280;margin-top:2px}.sec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#374151;margin-bottom:10px}table{width:100%;border-collapse:collapse;margin-bottom:20px}thead tr{background:#fef3c7}thead th{padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#92400e}thead th:nth-child(2){text-align:center}thead th:nth-child(3),thead th:nth-child(4){text-align:right}.totals{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;max-width:260px;margin-left:auto}.tr{display:flex;justify-content:space-between;font-size:13px;color:#374151;padding:3px 0}.ttotal{font-size:15px;font-weight:700;color:#d97706;border-top:1px solid #e5e7eb;padding-top:9px;margin-top:5px;display:flex;justify-content:space-between}.notes{margin-top:20px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px}.notes h3{font-size:10px;font-weight:700;text-transform:uppercase;color:#92400e;margin-bottom:5px}.notes p{font-size:13px;color:#374151}@media print{body{background:#fff}.page{box-shadow:none;margin:0;border-radius:0}}</style></head><body>
+<div class="page"><div class="hdr"><div><div class="hdr-brand">Legal<span>Hub</span></div><div style="color:rgba(255,255,255,.7);font-size:11px;margin-top:3px">Professional Legal Services</div></div><div class="hdr-right"><div class="hdr-num">${inv.invoice_number}</div><div class="hdr-badge">${statusLabels[inv.status] ?? inv.status}</div></div></div>
+<div class="body"><div class="grid3"><div class="box"><h3>Client</h3><div class="val">${clientName}</div><div class="sub">${client?.email ?? '—'}</div></div><div class="box"><h3>Case</h3><div class="val">${caseTitle}</div>${caseNum ? `<div class="sub"># ${caseNum}</div>` : ''}</div><div class="box"><h3>Dates</h3><div class="val">Issued: ${fmtDate(inv.issue_date)}</div><div class="sub">Due: ${fmtDate(inv.due_date)}</div></div></div>
+<div class="sec">Invoice Items</div><table><thead><tr><th style="width:50%">Description</th><th style="width:12%;text-align:center">Qty</th><th style="width:19%;text-align:right">Unit Price</th><th style="width:19%;text-align:right">Total</th></tr></thead><tbody>${itemRows}</tbody></table>
+<div class="totals"><div class="tr"><span>Subtotal</span><span>${fmt(inv.subtotal)}</span></div><div class="tr"><span>Tax (${inv.tax_rate}%)</span><span>${fmt(inv.tax_amount)}</span></div><div class="ttotal"><span>Total</span><span>${fmt(inv.total_amount)}</span></div></div>
+${inv.notes ? `<div class="notes"><h3>Notes</h3><p>${inv.notes}</p></div>` : ''}</div></div></body></html>`;
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); w.print(); }
+  }
+
+  async sendCaseReminder(inv: InvoiceRaw): Promise<void> {
+    if (this.sendingReminderId()) return;
+    this.sendingReminderId.set(inv.id);
+    try {
+      await this.billingService.sendReminder(inv.id);
+    } catch (e: any) {
+      alert(e?.error?.detail ?? 'Failed to send reminder.');
+    } finally {
+      this.sendingReminderId.set(null);
+    }
+  }
+
+  async markCaseInvoicePaid(inv: InvoiceRaw): Promise<void> {
+    if (this.markingCasePaidId()) return;
+    this.markingCasePaidId.set(inv.id);
+    try {
+      await this.billingService.markAsPaidViaSadad(inv.id);
+      this.caseInvoices.update(list =>
+        list.map(i => i.id === inv.id ? { ...i, status: 'PAID' } : i)
+      );
+    } catch (e: any) {
+      alert(e?.error?.detail ?? 'Failed to mark as paid.');
+    } finally {
+      this.markingCasePaidId.set(null);
+    }
+  }
+
+  async sendCaseInvoice(inv: InvoiceRaw): Promise<void> {
+    if (this.sendingInvoiceId()) return;
+    this.sendingInvoiceId.set(inv.id);
+    try {
+      await this.billingService.sendInvoice(inv.id);
+      this.caseInvoices.update(list =>
+        list.map(i => i.id === inv.id ? { ...i, status: 'PENDING' } : i)
+      );
+    } catch (e: any) {
+      alert(e?.error?.detail ?? 'Failed to send invoice.');
+    } finally {
+      this.sendingInvoiceId.set(null);
+    }
+  }
+
+  deleteCaseInvoice(inv: InvoiceRaw): void {
+    this.pendingConfirm.set({
+      title: 'Delete Invoice?',
+      message: `Invoice ${inv.invoice_number} will be permanently deleted. This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      type: 'danger',
+      onConfirm: () => this._doDeleteCaseInvoice(inv),
+    });
+  }
+
+  private async _doDeleteCaseInvoice(inv: InvoiceRaw): Promise<void> {
+    this.deletingInvoiceId.set(inv.id);
+    try {
+      await this.billingService.deleteInvoice(inv.id);
+      this.caseInvoices.update(list => list.filter(i => i.id !== inv.id));
+    } catch (e: any) {
+      alert(e?.error?.detail ?? 'Failed to delete invoice.');
+    } finally {
+      this.deletingInvoiceId.set(null);
+    }
+  }
+
+  cancelCaseInvoice(inv: InvoiceRaw): void {
+    this.pendingConfirm.set({
+      title: 'Cancel Invoice?',
+      message: `Invoice ${inv.invoice_number} will be marked as Cancelled.`,
+      confirmLabel: 'Cancel Invoice',
+      type: 'warning',
+      onConfirm: () => this._doCancelCaseInvoice(inv),
+    });
+  }
+
+  private async _doCancelCaseInvoice(inv: InvoiceRaw): Promise<void> {
+    this.cancellingInvoiceId.set(inv.id);
+    try {
+      await this.billingService.cancelInvoice(inv.id);
+      this.caseInvoices.update(list =>
+        list.map(i => i.id === inv.id ? { ...i, status: 'CANCELLED' } : i)
+      );
+    } catch (e: any) {
+      alert(e?.error?.detail ?? 'Failed to cancel invoice.');
+    } finally {
+      this.cancellingInvoiceId.set(null);
+    }
+  }
 
   // ── CSS / label helpers ───────────────────────────────────
 
@@ -206,6 +746,71 @@ export class CaseDetail implements OnInit {
     return map[priority] ?? priority;
   }
 
+  readonly lifecycleSteps = [
+    { key: 'NEW',           label: 'New' },
+    { key: 'INVESTIGATION', label: 'Investigation' },
+    { key: 'PRE_TRIAL',     label: 'Pre-Trial' },
+    { key: 'TRIAL',         label: 'Trial' },
+    { key: 'APPEAL',        label: 'Appeal' },
+    { key: 'SETTLED',       label: 'Settled' },
+    { key: 'CLOSED',        label: 'Closed' },
+  ];
+
+  lifecycleIndex(status: string): number {
+    const map: Record<string, number> = {
+      NEW: 0, INVESTIGATION: 1, PRE_TRIAL: 2, TRIAL: 3, APPEAL: 4, SETTLED: 5, CLOSED: 6,
+    };
+    return map[status] ?? 0;
+  }
+
+  private readonly validTransitions: Record<string, string[]> = {
+    NEW:           ['INVESTIGATION', 'CLOSED'],
+    INVESTIGATION: ['PRE_TRIAL', 'CLOSED'],
+    PRE_TRIAL:     ['TRIAL', 'CLOSED'],
+    TRIAL:         ['APPEAL', 'SETTLED', 'CLOSED'],
+    APPEAL:        ['SETTLED', 'CLOSED'],
+    SETTLED:       [],
+    CLOSED:        [],
+  };
+
+  canTransitionTo(stepKey: string): boolean {
+    const current = this.case()?.status ?? '';
+    return (this.validTransitions[current] ?? []).includes(stepKey);
+  }
+
+  isUpdatingStatus  = signal(false);
+  updatingToStep    = signal<string | null>(null);
+  confirmStepKey    = signal<string | null>(null);
+
+  requestLifecycleChange(stepKey: string): void {
+    if (!this.canTransitionTo(stepKey) || this.isUpdatingStatus()) return;
+    this.confirmStepKey.set(stepKey);
+  }
+
+  cancelLifecycleChange(): void { this.confirmStepKey.set(null); }
+
+  async confirmLifecycleChange(): Promise<void> {
+    const stepKey = this.confirmStepKey();
+    const c = this.case();
+    if (!stepKey || !c) return;
+    this.confirmStepKey.set(null);
+    this.isUpdatingStatus.set(true);
+    this.updatingToStep.set(stepKey);
+    try {
+      await this.caseService.updateCaseStatus(c.id, stepKey);
+      this.case.update(curr => curr ? { ...curr, status: stepKey } : curr);
+    } catch (err) {
+      console.error('Failed to update status:', err);
+    } finally {
+      this.isUpdatingStatus.set(false);
+      this.updatingToStep.set(null);
+    }
+  }
+
+  confirmStepLabel(): string {
+    return this.lifecycleSteps.find(s => s.key === this.confirmStepKey())?.label ?? '';
+  }
+
   formatDate(date: Date | undefined): string {
     if (!date) return '—';
     return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
@@ -216,12 +821,18 @@ export class CaseDetail implements OnInit {
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
+  get filteredInvoiceTotalFormatted(): string {
+    const total = this.filteredSentInvoices().reduce((s, inv) => s + inv.total_amount, 0);
+    const cur   = this.caseInvoices()[0]?.currency ?? 'USD';
+    const sym   = cur === 'USD' ? '$' : cur + ' ';
+    return sym + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   get totalBilled(): string {
-    const total = this.billingEntries.reduce((sum, e) => {
-      const n = parseFloat(e.amount.replace(/[$,]/g, ''));
-      return sum + (isNaN(n) ? 0 : n);
-    }, 0);
-    return `$${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    const total = this.caseInvoices()
+      .filter(inv => inv.status !== 'DRAFT' && inv.status !== 'CANCELLED')
+      .reduce((sum: number, inv: InvoiceRaw) => sum + inv.total_amount, 0);
+    return '$' + total.toLocaleString('en-US', { minimumFractionDigits: 2 });
   }
 
   // ── Lifecycle ─────────────────────────────────────────────
@@ -240,22 +851,35 @@ export class CaseDetail implements OnInit {
 
     this._caseId = id;
     this.isLoading.set(true);
+    const cachedCase = this.caseService.getCaseById(id);
+    if (cachedCase) this.case.set(cachedCase);
     try {
-      const [c, tl, docs, rawTasks, rawNotes] = await Promise.all([
-        this.caseService.fetchCaseById(id),
+      const [fetchedCase, tl, rawDocs, rawTasks, rawNotes] = await Promise.all([
+        this.caseService.fetchCaseById(id).catch(() => null),
         this.caseService.fetchTimeline(id),
-        this.docService.listForCase(id),
+        this.docService.listDocuments({ case_id: id }),
         this.taskService.listTasks({ case_id: id }),
         this.taskService.listNotes({ case_id: id }),
       ]);
+      const c = fetchedCase ?? cachedCase;
+      if (!c) { this.errorMsg.set('Could not load case.'); return; }
+      if (fetchedCase && !fetchedCase.clientAvatarUrl && cachedCase?.clientAvatarUrl) {
+        fetchedCase.clientAvatarUrl = cachedCase.clientAvatarUrl;
+      }
       this.case.set(c);
+      if (c.status === 'CLOSED') {
+        const stored = localStorage.getItem(`lh_archived_from_${id}`);
+        if (stored) this.archivedFromStatus.set(stored);
+      }
       this.timeline.set(tl as unknown as TimelineEntry[]);
-      this.documents.set(docs);
+      this.documents.set(rawDocs.filter(r => r.category !== 'VOICE_TRANSCRIPT').map(r => this._mapCaseDoc(r)));
       this.tasks.set(rawTasks.map(r => this._mapTask(r)));
       this.notes.set(rawNotes.map(r => this._mapNote(r)));
       this.initEditForm();
+      this.loadTeam();
+      this.loadCaseInvoices();
     } catch {
-      this.errorMsg.set('Could not load case. It may not exist or the backend is unavailable.');
+      if (!cachedCase) this.errorMsg.set('Could not load case. It may not exist or the backend is unavailable.');
     } finally {
       this.isLoading.set(false);
     }
@@ -263,6 +887,7 @@ export class CaseDetail implements OnInit {
 
   setTab(t: string) { this.activeTab.set(t); }
   goBack()          { this.router.navigate(['/cases']); }
+  goToClient()      { const id = this.case()?.clientId; if (id) this.router.navigate(['/clients', id]); }
 
   async toggleTask(task: Task): Promise<void> {
     const newStatus = task.done ? 'PENDING' : 'COMPLETED';
@@ -308,9 +933,14 @@ export class CaseDetail implements OnInit {
       title:     raw.title ?? undefined,
       content:   raw.content,
       author:    raw.app_user?.full_name ?? 'Unknown',
+      lawyerId:  raw.lawyer_id,
       createdAt: raw.created_at,
       isVoice:   raw.is_voice_note ?? false,
     };
+  }
+
+  isMyNote(note: Note): boolean {
+    return note.lawyerId === this.authService.currentUser()?.id;
   }
 
   openVoiceNoteModal() {
@@ -322,39 +952,18 @@ export class CaseDetail implements OnInit {
     this.notes.set(rawNotes.map(r => this._mapNote(r)));
   }
 
-  openAddNoteModal() {
-    this.newNoteTitle.set('');
-    this.newNoteContent.set('');
-    this.showAddNoteModal.set(true);
-  }
+  openAddNoteModal() { this.noteModal.openModal(); }
 
-  closeAddNoteModal() { this.showAddNoteModal.set(false); }
-
-  async saveNote(): Promise<void> {
-    const content = this.newNoteContent().trim();
-    if (!content) return;
-    this.isSavingNote.set(true);
-    try {
-      const raw = await this.taskService.createNote({
-        case_id: this._caseId,
-        title:   this.newNoteTitle().trim() || undefined,
-        content,
-      });
-      this.notes.update(arr => [this._mapNote(raw), ...arr]);
-      this.newNoteTitle.set('');
-      this.newNoteContent.set('');
-      this.closeAddNoteModal();
-    } catch (err) {
-      console.error('Failed to create note:', err);
-    } finally {
-      this.isSavingNote.set(false);
-    }
+  onNoteSaved() {
+    this.taskService.listNotes({ case_id: this._caseId })
+      .then(raws => this.notes.set(raws.map(r => this._mapNote(r))))
+      .catch(() => {});
   }
 
   startEditNote(note: Note) {
     this.editingNoteId.set(note.id);
-    this.editNoteTitle.set(note.title ?? '');
-    this.editNoteContent.set(note.content);
+    this.editNoteTitle.set(this.getNoteTitle(note));
+    this.editNoteContent.set(this.getNoteBody(note));
   }
 
   cancelEditNote() {
@@ -367,7 +976,7 @@ export class CaseDetail implements OnInit {
     const content = this.editNoteContent().trim();
     if (!content) return;
     try {
-      const raw = await this.taskService.updateNote(id, this.editNoteTitle().trim() || undefined, content);
+      const raw = await this.taskService.updateNote(id, content);
       this.notes.update(arr => arr.map(n => n.id === id ? this._mapNote(raw) : n));
       this.cancelEditNote();
     } catch (err) {
@@ -385,6 +994,23 @@ export class CaseDetail implements OnInit {
     }
   }
 
+  private _stripMd(text: string): string {
+    return text.replace(/\*\*/g, '').replace(/^#+\s*/, '').trim();
+  }
+
+  getNoteTitle(note: Note): string {
+    if (note.title?.trim()) return this._stripMd(note.title);
+    const firstLine = note.content?.split('\n')[0]?.trim() ?? '';
+    const clean = this._stripMd(firstLine);
+    return clean.length > 80 ? clean.slice(0, 80) + '…' : clean;
+  }
+
+  getNoteBody(note: Note): string {
+    if (note.title?.trim()) return note.content ?? '';
+    const lines = note.content?.split('\n') ?? [];
+    return lines.slice(1).join('\n').trim();
+  }
+
   formatNoteDate(iso: string): string {
     if (!iso) return '';
     const d = new Date(iso);
@@ -397,19 +1023,113 @@ export class CaseDetail implements OnInit {
     return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   }
 
-  // ── Favorite ──────────────────────────────────────────────
+  // ── AI Assistant (RAG) ───────────────────────────────────
 
-  isFavorite = signal(false);
-  toggleFavorite() { this.isFavorite.update(v => !v); }
+  openAiChat(): void {
+    const c = this.case();
+    if (!c) return;
+    this.aiChatModal.open(c.id, c.title ?? 'Case', c.caseNumber ?? '');
+  }
 
-  // ── Share / copy link ─────────────────────────────────────
+  // ── Archive ───────────────────────────────────────────────
 
-  copied = signal(false);
-  copyLink() {
-    navigator.clipboard.writeText(window.location.href).then(() => {
-      this.copied.set(true);
-      setTimeout(() => this.copied.set(false), 2000);
-    });
+  confirmArchive    = signal(false);
+  archivedFromStatus = signal<string | null>(null);
+
+  private archivedFromKey(): string { return `lh_archived_from_${this._caseId}`; }
+
+  requestArchive(): void {
+    if (this.case()?.status === 'CLOSED') return;
+    this.confirmArchive.set(true);
+  }
+
+  cancelArchive(): void { this.confirmArchive.set(false); }
+
+  async confirmAndArchive(): Promise<void> {
+    const c = this.case();
+    if (!c) return;
+    const prevStatus = c.status;
+    this.confirmArchive.set(false);
+    this.isUpdatingStatus.set(true);
+    this.updatingToStep.set('CLOSED');
+    try {
+      await this.caseService.updateCaseStatus(c.id, 'CLOSED');
+      localStorage.setItem(this.archivedFromKey(), prevStatus);
+      this.archivedFromStatus.set(prevStatus);
+      this.case.update(curr => curr ? { ...curr, status: 'CLOSED' } : curr);
+    } catch (err) {
+      console.error('Failed to archive case:', err);
+    } finally {
+      this.isUpdatingStatus.set(false);
+      this.updatingToStep.set(null);
+    }
+  }
+
+  // ── Stepper step-state helpers ────────────────────────────
+
+  stepState(i: number): 'done' | 'current' | 'archived-from' | 'skipped' | 'upcoming' {
+    const status       = this.case()?.status ?? '';
+    const currentIdx   = this.lifecycleIndex(status);
+    const archivedFrom = this.archivedFromStatus();
+    const fromIdx      = archivedFrom ? this.lifecycleIndex(archivedFrom) : -1;
+
+    if (i === currentIdx) return 'current';
+    if (status === 'CLOSED' && fromIdx >= 0) {
+      if (i === fromIdx)                       return 'archived-from';
+      if (i < fromIdx)                         return 'done';
+      if (i > fromIdx && i < currentIdx)       return 'skipped';
+    }
+    if (i < currentIdx) return 'done';
+    return 'upcoming';
+  }
+
+  stepCircleCls(i: number): string {
+    const s = this.stepState(i);
+    if (s === 'done')          return 'bg-green-500 border-green-500 text-white';
+    if (s === 'archived-from') return 'bg-amber-400 border-amber-400 text-white';
+    if (s === 'skipped')       return 'bg-gray-100 border-gray-200 text-gray-300';
+    if (s === 'current')       return 'bg-amber-500 border-amber-500 text-white ring-4 ring-amber-100';
+    return 'bg-white border-gray-300 text-gray-400';
+  }
+
+  stepLabelCls(i: number): string {
+    const s = this.stepState(i);
+    if (s === 'done')          return 'text-green-600';
+    if (s === 'archived-from') return 'text-amber-500 font-bold';
+    if (s === 'skipped')       return 'text-gray-300';
+    if (s === 'current')       return 'text-amber-600';
+    return 'text-gray-400';
+  }
+
+  connectorCls(i: number): string {
+    const s = this.stepState(i);
+    if (s === 'done')          return 'bg-green-400';
+    if (s === 'archived-from') return 'bg-amber-300';
+    if (s === 'skipped')       return 'bg-gray-100';
+    return 'bg-gray-200';
+  }
+
+  // ── Restore ───────────────────────────────────────────────
+
+  confirmRestore  = signal(false);
+  isRestoring     = signal(false);
+
+  requestRestore(): void  { this.confirmRestore.set(true); }
+  cancelRestore():  void  { this.confirmRestore.set(false); }
+
+  async confirmAndRestore(): Promise<void> {
+    this.confirmRestore.set(false);
+    this.isRestoring.set(true);
+    try {
+      const restored = await this.caseService.restoreCase(this._caseId);
+      localStorage.removeItem(this.archivedFromKey());
+      this.archivedFromStatus.set(null);
+      this.case.set(restored);
+    } catch (err) {
+      console.error('Failed to restore case:', err);
+    } finally {
+      this.isRestoring.set(false);
+    }
   }
 
   // ── Add Task Modal ────────────────────────────────────────
@@ -491,6 +1211,12 @@ export class CaseDetail implements OnInit {
     const today = new Date().toISOString().split('T')[0];
     this.logTimeForm.set({ date: today, description: '', hours: '', rate: '' });
     this.showLogTimeModal.set(true);
+  }
+
+  openNewInvoiceModal() {
+    const c = this.case();
+    if (c) this.invoiceModal.openModalForCase(c.clientId, c.id, c.client, c.title);
+    else   this.invoiceModal.openModal();
   }
 
   closeLogTimeModal() { this.showLogTimeModal.set(false); }

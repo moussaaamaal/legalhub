@@ -4,12 +4,33 @@
     <div class="relative w-96">
       <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
       <input type="text" placeholder="Search notifications..."
-        class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
+        [ngModel]="searchQuery()" (ngModelChange)="onSearch($event)"
+        class="w-full pl-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50"
+        [class.pr-4]="!searchQuery()"
+        [class.pr-10]="searchQuery() && searchNav.total() === 0"
+        [class.pr-32]="searchQuery() && searchNav.total() > 0">
+      @if (searchQuery()) {
+        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+          @if (searchNav.total() > 0) {
+            <span class="text-xs text-gray-500 bg-white border border-gray-200 rounded px-1.5 py-0.5 font-medium tabular-nums whitespace-nowrap">
+              {{ searchNav.currentIndex() + 1 }}/{{ searchNav.total() }}
+            </span>
+            <button (click)="searchNav.prev()" title="Précédent"
+              class="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-gray-500 transition-colors">
+              <i class="fa-solid fa-chevron-up text-[10px]"></i>
+            </button>
+            <button (click)="searchNav.next()" title="Suivant"
+              class="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-gray-500 transition-colors">
+              <i class="fa-solid fa-chevron-down text-[10px]"></i>
+            </button>
+          }
+          <button (click)="onSearch('')" title="Effacer"
+            class="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors">
+            <i class="fa-solid fa-circle-xmark text-sm"></i>
+          </button>
+        </div>
+      }
     </div>
-    <button class="flex items-center space-x-2 px-4 py-3 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
-      <i class="fa-solid fa-sliders"></i>
-      <span>Filters</span>
-    </button>
   </div>
 </header>
 
@@ -40,92 +61,9 @@
             <span class="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">{{ totalUnread }}</span>
           }
         </button>
-        <!-- WEB-NOTIF-05 — Settings -->
-        <button (click)="showSettings.set(!showSettings())"
-          class="flex items-center space-x-2 px-5 py-2.5 rounded-lg border transition-colors font-medium"
-          [ngClass]="showSettings() ? 'bg-amber-500 text-white border-amber-500' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'">
-          <i class="fa-solid fa-cog"></i>
-          <span>Settings</span>
-        </button>
       </div>
     </div>
   </section>
-
-  <!-- ══ WEB-NOTIF-05 — SETTINGS PANEL ══ -->
-  @if (showSettings()) {
-    <section class="px-8 pb-5">
-      <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
-          <h2 class="text-lg font-bold text-gray-900">Notification Settings</h2>
-          <button (click)="showSettings.set(false)" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-200 transition-colors">
-            <i class="fa-solid fa-times"></i>
-          </button>
-        </div>
-        <div class="p-6">
-
-          <!-- Alert Triggers -->
-          <p class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Alert Triggers</p>
-          <div class="grid grid-cols-3 gap-4 mb-8">
-            @for (group of settingGroups; track group.label) {
-              <div class="rounded-xl border border-gray-200 overflow-hidden">
-                <div class="flex items-center space-x-3 px-4 py-3 border-b border-gray-100"
-                  [ngClass]="group.iconBg">
-                  <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-black/70">
-                    <i [ngClass]="[group.icon, group.iconColor, 'text-sm']"></i>
-                  </div>
-                  <span class="text-sm font-bold" [ngClass]="group.iconColor">{{ group.label }}</span>
-                </div>
-                <div class="divide-y divide-gray-50 px-4">
-                  @for (item of group.items; track item.key) {
-                    <div class="flex items-center justify-between py-3">
-                      <span class="text-sm text-gray-600">{{ item.label }}</span>
-                      <label class="relative inline-flex items-center cursor-pointer ml-3 flex-shrink-0">
-                        <input type="checkbox" [checked]="getSetting(item.key)" (change)="toggleSetting(item.key)" class="sr-only peer">
-                        <div class="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
-                      </label>
-                    </div>
-                  }
-                </div>
-              </div>
-            }
-          </div>
-
-          <!-- Delivery Channels — colorful cards -->
-          <p class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Delivery Channels</p>
-          <div class="grid grid-cols-4 gap-4">
-            @for (ch of channels; track ch.key) {
-              <div class="rounded-xl p-5 border-2 transition-all"
-                [ngClass]="getSetting(ch.key)
-                  ? [ch.activeBg, ch.activeBorder]
-                  : 'bg-gray-50 border-gray-200'">
-                <div class="flex items-center justify-between mb-4">
-                  <div class="w-11 h-11 rounded-xl flex items-center justify-center"
-                    [ngClass]="getSetting(ch.key) ? ch.iconBgActive : 'bg-white'">
-                    <i [ngClass]="[ch.icon, 'text-lg', getSetting(ch.key) ? ch.iconColorActive : 'text-gray-400']"></i>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" [checked]="getSetting(ch.key)" (change)="toggleSetting(ch.key)" class="sr-only peer">
-                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all"
-                      [ngClass]="getSetting(ch.key) ? ch.toggleColor : 'bg-gray-200'"></div>
-                  </label>
-                </div>
-                <h4 class="font-bold mb-0.5"
-                  [ngClass]="getSetting(ch.key) ? ch.labelColor : 'text-gray-700'">{{ ch.label }}</h4>
-                <p class="text-sm" [ngClass]="getSetting(ch.key) ? ch.descColor : 'text-gray-400'">{{ ch.desc }}</p>
-              </div>
-            }
-          </div>
-
-          <div class="flex justify-end mt-6 pt-4 border-t border-gray-100">
-            <button (click)="showSettings.set(false)"
-              class="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold transition-colors">
-              Save Settings
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
-  }
 
   <!-- ══ FILTERS ══ -->
   <section class="px-8 pb-5">
@@ -241,8 +179,8 @@
                       <span class="w-2 h-2 rounded-full flex-shrink-0" [ngClass]="catConfig[n.category].dot"></span>
                     }
                     <h3 class="font-semibold text-gray-900 truncate"
-                      [ngClass]="n.read ? 'text-gray-600' : 'text-gray-900'">
-                      {{ n.title }}
+                      [ngClass]="n.read ? 'text-gray-600' : 'text-gray-900'"
+                      [innerHTML]="n.title | highlight: searchQuery()">
                     </h3>
                     @if (n.priority !== 'normal') {
                       <span class="text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0"
@@ -252,7 +190,7 @@
                     }
                   </div>
 
-                  <p class="text-sm text-gray-500 leading-relaxed mb-2">{{ n.body }}</p>
+                  <p class="text-sm text-gray-500 leading-relaxed mb-2" [innerHTML]="n.body | highlight: searchQuery()"></p>
 
                   <div class="flex items-center gap-2">
                     <!-- Category pill — colored -->

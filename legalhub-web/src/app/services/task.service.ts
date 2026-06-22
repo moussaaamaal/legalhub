@@ -59,6 +59,20 @@ export class TaskService {
     );
   }
 
+  async updateTask(id: string, data: {
+    title?:       string;
+    description?: string;
+    category?:    string;
+    priority?:    string;
+    due_date?:    string;
+    assigned_to?: string;
+    reminder_at?: string;
+  }): Promise<RawTask> {
+    return firstValueFrom(
+      this.http.put<RawTask>(`${this.api}/api/tasks/${id}`, data)
+    );
+  }
+
   async updateStatus(id: string, status: string): Promise<RawTask> {
     return firstValueFrom(
       this.http.patch<RawTask>(`${this.api}/api/tasks/${id}/status`, { status })
@@ -79,15 +93,17 @@ export class TaskService {
     );
   }
 
-  async createNote(data: { case_id: string; title?: string; content: string }): Promise<RawNote> {
+  // Backend CreateNoteRequest accepts only { case_id, content }
+  async createNote(data: { case_id: string; content: string }): Promise<RawNote> {
     return firstValueFrom(
       this.http.post<RawNote>(`${this.api}/api/notes`, data)
     );
   }
 
-  async updateNote(id: string, title: string | undefined, content: string): Promise<RawNote> {
+  // Backend UpdateNoteRequest accepts only { content }
+  async updateNote(id: string, content: string): Promise<RawNote> {
     return firstValueFrom(
-      this.http.put<RawNote>(`${this.api}/api/notes/${id}`, { title, content })
+      this.http.put<RawNote>(`${this.api}/api/notes/${id}`, { content })
     );
   }
 

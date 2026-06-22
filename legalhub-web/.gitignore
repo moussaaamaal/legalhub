@@ -30,7 +30,11 @@ yarn-error.log
 !.vscode/mcp.json
 .history/*
 
+# Claude Code
+.claude/
+
 # Miscellaneous
+/.angular/
 /.angular/cache
 .sass-cache/
 /connect.lock
@@ -43,3 +47,9 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Environment — clés locales, ne pas committer
+src/app/environments/environment.ts
+src/app/environments/environment.prod.ts
+
+

@@ -23,7 +23,7 @@ export interface StaffMember {
   is_active: boolean;
 }
 
-const ROLE_MAP: Record<string, { label: string; cls: string }> = {
+export const ROLE_MAP: Record<string, { label: string; cls: string }> = {
   FIRM_ADMIN:  { label: 'Admin',       cls: 'bg-blue-100 text-blue-700'   },
   LAWYER:      { label: 'Lawyer',      cls: 'bg-green-100 text-green-700' },
   SUPER_ADMIN: { label: 'Super Admin', cls: 'bg-purple-100 text-purple-700' },
@@ -97,14 +97,23 @@ export class StaffService {
   }
 
   async loadStaff(): Promise<void> {
-    const [rawTeam, caseCounts] = await Promise.all([
-      firstValueFrom(this.http.get<Record<string, unknown>[]>(`${this.api}/api/firm/team`)),
-      firstValueFrom(this.http.get<Record<string, number>>(`${this.api}/api/firm/team/case-counts`)),
-    ]);
-    this._staff.set(rawTeam.map(r => ({
-      ...this._map(r),
-      cases: caseCounts[String(r['id'])] ?? 0,
-    })));
+    const rawTeam = await firstValueFrom(
+      this.http.get<Record<string, unknown>[]>(`${this.api}/api/firm/team`)
+    );
+    this._staff.set(rawTeam.map(r => this._map(r)));
+  }
+
+  async fetchFirmTeam(): Promise<{ id: string; full_name: string; email: string; role: string; avatar_url: string | null }[]> {
+    const raw = await firstValueFrom(
+      this.http.get<Record<string, unknown>[]>(`${this.api}/api/firm/team`)
+    );
+    return raw.map(r => ({
+      id:         String(r['id']),
+      full_name:  String(r['full_name'] ?? ''),
+      email:      String(r['email']     ?? ''),
+      role:       String(r['role']      ?? ''),
+      avatar_url: r['avatar_url'] ? String(r['avatar_url']) : null,
+    }));
   }
 
   async inviteStaff(email: string, fullName: string): Promise<void> {
@@ -114,28 +123,7 @@ export class StaffService {
     await this.loadStaff();
   }
 
-  async updateMember(userId: string, fullName: string, phone: string, role: string): Promise<void> {
-    await firstValueFrom(
-      this.http.put(`${this.api}/api/firm/team/${userId}`, {
-        full_name: fullName || undefined,
-        phone:     phone    || undefined,
-        role,
-      })
-    );
-    this._staff.update(list =>
-      list.map(m => m.id !== userId ? m : {
-        ...m,
-        name:      fullName,
-        phone,
-        role,
-        title:     ROLE_MAP[role]?.label ?? m.title,
-        roleLabel: ROLE_MAP[role]?.label ?? m.roleLabel,
-        roleCls:   ROLE_MAP[role]?.cls   ?? m.roleCls,
-        dept:      DEPT_MAP[role]?.label ?? m.dept,
-        deptCls:   DEPT_MAP[role]?.cls   ?? m.deptCls,
-      })
-    );
-  }
+  // No general updateMember endpoint — use updateRole + auth/me for own profile changes
 
   async updateRole(userId: string, role: string): Promise<void> {
     await firstValueFrom(

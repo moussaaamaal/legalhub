@@ -15,15 +15,18 @@ export interface Case {
   title: string;
   client: string;
   clientId: string;
+  clientAvatarUrl?: string;
   type: string;         // backend enum: CRIMINAL | CIVIL | CORPORATE | ...
   status: string;       // backend enum: NEW | INVESTIGATION | PRE_TRIAL | TRIAL | APPEAL | SETTLED | CLOSED
   priority: string;     // backend enum: URGENT | HIGH | MEDIUM | NORMAL | LOW
   assignedTo: string;
+  practiceArea?: string;
   openDate: Date;
   nextHearing?: Date;
   court?: string;
   description?: string;
   tags?: string[];
+  billingType?: string;
 }
 
 // Client model
@@ -38,14 +41,17 @@ export interface Client {
   type: string;
   typeBg: string;
   typeColor: string;
-  clientType: string;       // raw backend: INDIVIDUAL | CORPORATE
+  clientType: string;         // raw backend: INDIVIDUAL | CORPORATE
   status: 'Active' | 'Inactive' | 'Pending';
   statusBg: string;
   statusColor: string;
-  tag: string;              // raw backend: ACTIVE | INACTIVE | PENDING
+  tag: string;                // raw backend: ACTIVE | INACTIVE | PENDING
   since: string;
   lastContact: string;
-  totalBilled: string;
+  totalBilled: string;        // formatted display (e.g. "$1.2K")
+  totalBilledAmount: number;  // raw numeric for computations
+  hasUnpaidInvoices: boolean;
+  practiceArea?: string;
   activeCases: number;
   totalCases: number;
   openCases: number;
@@ -55,6 +61,15 @@ export interface Client {
   address?: string;
   notes?: string;
   joinDate: Date;
+  // Extended personal fields
+  whatsappNumber?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  nationalId?: string;
+  nationality?: string;
+  occupation?: string;
+  inviteStatus?: string;
+  userId?: string;
 }
 
 // Invoice model

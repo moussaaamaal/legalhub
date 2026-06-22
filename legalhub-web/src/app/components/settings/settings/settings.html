@@ -7,24 +7,6 @@
   </div>
 }
 
-<!-- ══ TOPBAR ══ -->
-<header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-  <div class="px-8 py-4 flex items-center justify-between">
-    <div class="flex items-center flex-1">
-      <div class="relative w-96">
-        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-        <input type="text" placeholder="Search settings, users, plans..."
-          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
-      </div>
-    </div>
-    <div class="flex items-center space-x-3">
-      <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-        <i class="fa-solid fa-download text-gray-600"></i>
-        <span class="text-sm text-gray-700">Export Settings</span>
-      </button>
-    </div>
-  </div>
-</header>
 
 <main class="flex-1 overflow-y-auto bg-gray-50">
 
@@ -32,18 +14,9 @@
   <section class="px-8 pt-6 pb-4">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-gray-900">Configuration &amp; Settings</h1>
-        <p class="text-gray-600 mt-1">Manage your office profile, subscription, team roles, and system preferences</p>
+        <h1 class="text-3xl font-bold text-gray-900">Profile &amp; Settings</h1>
+        <p class="text-gray-600 mt-1">{{ isAdmin() ? 'Manage your personal profile, firm configuration and security' : 'Manage your personal profile and security settings' }}</p>
       </div>
-      @if (loading()) {
-        <span class="text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full font-medium">
-          <i class="fa-solid fa-spinner fa-spin mr-1"></i>Loading…
-        </span>
-      } @else {
-        <span class="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-medium">
-          <i class="fa-solid fa-check-circle mr-1"></i>Ready
-        </span>
-      }
     </div>
   </section>
 
@@ -51,7 +24,7 @@
   <section class="px-8 pb-6">
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-2 mb-6">
       <div class="flex items-center space-x-1 overflow-x-auto">
-        @for (tab of tabs; track tab.label) {
+        @for (tab of visibleTabs(); track tab.label) {
           <button (click)="setTab(tab.label)"
             class="px-4 py-2.5 rounded-lg font-medium text-sm whitespace-nowrap transition-colors flex items-center"
             [ngClass]="activeTab() === tab.label ? 'bg-amber-500 text-white' : 'text-gray-700 hover:bg-gray-100'">
@@ -62,652 +35,1268 @@
     </div>
 
     <!-- ══════════════════════════════════════════
-         WEB-CFG-01  OFFICE PROFILE
+         PROFILE
     ══════════════════════════════════════════ -->
-    @if (activeTab() === 'Office Profile') {
-      <div class="grid grid-cols-3 gap-6">
+    @if (activeTab() === 'Profile') {
+      <div>
 
-        <!-- Form -->
-        <div class="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
-          <div class="p-6 border-b border-gray-200">
-            <h2 class="text-lg font-bold text-gray-900">Office Information</h2>
-            <p class="text-sm text-gray-600 mt-1">Legal identity and contact details of your firm</p>
-          </div>
-          <div class="p-6 space-y-6">
+        <!-- Hero -->
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
+          <div class="flex items-start justify-between mb-5">
+            <div class="flex items-start gap-5">
 
-            <!-- Name + Entity -->
-            <div class="grid grid-cols-2 gap-6">
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Office / Firm Name</label>
-                <div class="relative">
-                  <input type="text" [ngModel]="officeName()" (ngModelChange)="officeName.set($event)"
-                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-                  <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <!-- Avatar -->
+              <div class="relative flex-shrink-0">
+                <button type="button"
+                  (click)="hasSavedAvatar ? openLightbox() : triggerAvatarPicker()"
+                  class="block w-20 h-20 rounded-2xl overflow-hidden focus:outline-none cursor-pointer">
+                  @if (displayAvatar) {
+                    <img [src]="displayAvatar" alt="Avatar" (error)="onAvatarLoadError()"
+                      class="w-full h-full object-cover border-2 rounded-2xl transition-all"
+                      [ngClass]="avatarPreview() ? 'border-amber-400 ring-2 ring-amber-200' : 'border-gray-200'">
+                  } @else {
+                    <div class="w-20 h-20 rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                      <span class="text-2xl font-bold text-white">{{ initials }}</span>
+                    </div>
+                  }
+                </button>
+                <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-gray-700 rounded-full flex items-center justify-center shadow pointer-events-none">
+                  <i class="fa-solid fa-camera text-white" style="font-size:9px"></i>
                 </div>
+                @if (avatarPreview()) {
+                  <div class="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow pointer-events-none">
+                    <i class="fa-solid fa-clock text-white" style="font-size:9px"></i>
+                  </div>
+                }
+                <input #avatarInput type="file" accept="image/*" class="hidden" (change)="onAvatarSelected($event)">
               </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Legal Entity Type</label>
-                <div class="relative">
-                  <select [ngModel]="entityType()" (ngModelChange)="entityType.set($event)"
-                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 appearance-none">
-                    @for (e of entityTypes; track e) { <option>{{ e }}</option> }
-                  </select>
-                  <i class="fa-solid fa-scale-balanced absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                  <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-                </div>
-              </div>
-            </div>
 
-            <!-- Reg + Tax -->
-            <div class="grid grid-cols-2 gap-6">
+              <!-- Name · badges -->
               <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Registration Number</label>
-                <div class="relative">
-                  <input type="text" [ngModel]="regNumber()" (ngModelChange)="regNumber.set($event)"
-                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-                  <i class="fa-solid fa-hashtag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                </div>
-              </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Tax ID / EIN</label>
-                <div class="relative">
-                  <input type="text" [ngModel]="taxId()" (ngModelChange)="taxId.set($event)"
-                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-                  <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                </div>
-              </div>
-            </div>
-
-            <!-- Address -->
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-2">Office Address</label>
-              <div class="relative">
-                <input type="text" [ngModel]="address()" (ngModelChange)="address.set($event)"
-                  class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-                <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-            <div class="grid grid-cols-3 gap-4">
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">City</label>
-                <input type="text" [ngModel]="city()" (ngModelChange)="city.set($event)"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-              </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Country / Region</label>
-                <input type="text" [ngModel]="state()" (ngModelChange)="state.set($event)"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-              </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">ZIP Code</label>
-                <input type="text" [ngModel]="zip()" (ngModelChange)="zip.set($event)"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-              </div>
-            </div>
-
-            <!-- Phone + Email -->
-            <div class="grid grid-cols-2 gap-6">
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Office Phone</label>
-                <div class="relative">
-                  <input type="text" [ngModel]="phone()" (ngModelChange)="phone.set($event)"
-                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-                  <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                </div>
-              </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Office Email</label>
-                <div class="relative">
-                  <input type="email" [ngModel]="email()" (ngModelChange)="email.set($event)"
-                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-                  <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                </div>
-              </div>
-            </div>
-
-            <!-- Practice Areas -->
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-2">Practice Areas</label>
-              <div class="flex flex-wrap gap-2 mb-3">
-                @for (area of practiceAreas(); track area; let i = $index) {
-                  <span class="px-3 py-1.5 rounded-full text-sm font-medium flex items-center space-x-2"
-                    [ngClass]="practiceAreaColors[i % practiceAreaColors.length]">
-                    <span>{{ area }}</span>
-                    <button (click)="removePracticeArea(i)" class="hover:opacity-70"><i class="fa-solid fa-times text-xs"></i></button>
+                <h2 class="text-2xl font-bold text-gray-900 leading-tight mb-1">{{ profileUser?.name || '—' }}</h2>
+                <p class="text-xs font-bold text-gray-400 tracking-widest uppercase mb-2">Member since {{ formatDate(profileUser?.createdAt) }}</p>
+                <div class="flex items-center flex-wrap gap-2">
+                  <span class="text-xs px-2.5 py-1 rounded-full font-semibold" [ngClass]="roleBadgeClass">{{ roleLabel }}</span>
+                  @if (profileUser?.firmName) {
+                    <span class="text-xs px-2.5 py-1 rounded-full font-medium bg-gray-100 text-gray-600 flex items-center gap-1">
+                      <i class="fa-solid fa-building text-gray-400 text-xs"></i>{{ profileUser!.firmName }}
+                    </span>
+                  }
+                  <span class="text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1"
+                    [ngClass]="profileUser?.isActive !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'">
+                    <span class="w-1.5 h-1.5 rounded-full"
+                      [ngClass]="profileUser?.isActive !== false ? 'bg-green-500' : 'bg-red-500'"></span>
+                    {{ profileUser?.isActive !== false ? 'Active' : 'Inactive' }}
                   </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Avatar pending confirm/cancel -->
+            @if (avatarPreview()) {
+              <div class="flex-shrink-0 flex flex-col items-end gap-2">
+                <p class="text-xs text-amber-700 font-medium flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-info"></i><span>New photo — confirm to apply.</span>
+                </p>
+                <div class="flex items-center gap-2">
+                  <button (click)="confirmAvatar()" [disabled]="avatarSaving()"
+                    class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 text-white text-xs font-bold hover:shadow-md transition-all disabled:opacity-60">
+                    @if (avatarSaving()) {
+                      <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+                    } @else {
+                      <i class="fa-solid fa-check"></i><span>Confirm</span>
+                    }
+                  </button>
+                  <button (click)="cancelAvatarChange()" [disabled]="avatarSaving()"
+                    class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg border border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors disabled:opacity-60">
+                    <i class="fa-solid fa-xmark"></i><span>Cancel</span>
+                  </button>
+                </div>
+                @if (avatarSuccess()) {
+                  <p class="text-xs text-green-600 font-semibold flex items-center space-x-1">
+                    <i class="fa-solid fa-circle-check"></i><span>Photo updated!</span>
+                  </p>
+                }
+                @if (avatarError()) {
+                  <p class="text-xs text-red-500 flex items-center space-x-1">
+                    <i class="fa-solid fa-circle-exclamation"></i><span>{{ avatarError() }}</span>
+                  </p>
                 }
               </div>
-              <div class="flex items-center space-x-2">
-                <input type="text" placeholder="Add practice area…" [ngModel]="newPracticeArea()" (ngModelChange)="newPracticeArea.set($event)"
-                  (keydown.enter)="addPracticeArea()"
-                  class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-                <button (click)="addPracticeArea()" class="px-4 py-2.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
-                  <i class="fa-solid fa-plus mr-1"></i>Add
+            }
+
+            <!-- Delete Account (lawyer only, no avatar pending) -->
+            @if (!avatarPreview() && isLawyer()) {
+              <div class="flex-shrink-0">
+                <button (click)="showDeleteConfirm.set(true)"
+                  class="inline-flex items-center space-x-2 px-4 py-2 rounded-lg border border-red-200 text-red-600 text-xs font-semibold bg-red-50 hover:bg-red-100 transition-colors">
+                  <i class="fa-solid fa-trash"></i><span>Delete account</span>
                 </button>
               </div>
-            </div>
-
-            <!-- Description -->
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-2">Office Description</label>
-              <textarea rows="4" [ngModel]="description()" (ngModelChange)="description.set($event)"
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"></textarea>
-            </div>
-
-            <div class="flex justify-end pt-2">
-              <button (click)="saveProfile()" [disabled]="profileSaving()"
-                class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md transition-all disabled:opacity-70 flex items-center space-x-2">
-                @if (profileSaving()) {
-                  <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
-                } @else {
-                  <i class="fa-solid fa-save"></i><span>Save Profile</span>
-                }
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Right sidebar -->
-        <div class="space-y-6">
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 class="text-lg font-bold text-gray-900 mb-4">Office Logo</h3>
-            <div class="w-32 h-32 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center mb-4 mx-auto">
-              <i class="fa-solid fa-scale-balanced text-white text-5xl"></i>
-            </div>
-            <p class="text-sm text-gray-600 text-center mb-4">Current logo displayed across the platform</p>
-            <button class="w-full px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">
-              <i class="fa-solid fa-upload mr-2"></i>Upload New Logo
-            </button>
-            <p class="text-xs text-gray-500 mt-3 text-center">Recommended: 512×512px, PNG or SVG</p>
-          </div>
-
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 class="text-lg font-bold text-gray-900 mb-4">Quick Stats</h3>
-            <div class="space-y-4">
-              @for (s of quickStats(); track s.label; let last = $last) {
-                <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-3 border-b border-gray-100'">
-                  <span class="text-sm text-gray-600">{{ s.label }}</span>
-                  <span class="text-lg font-bold text-gray-900">{{ s.value }}</span>
-                </div>
-              }
-            </div>
-          </div>
-
-          <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white">
-            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
-              <i class="fa-solid fa-certificate text-2xl"></i>
-            </div>
-            <h3 class="text-lg font-bold mb-2">Verified Office</h3>
-            <p class="text-sm text-blue-100 mb-4">Your office profile is verified and trusted</p>
-            @if (officeCode()) {
-              <div class="mt-2 bg-white bg-opacity-10 rounded-lg px-3 py-2 text-sm font-mono tracking-widest text-center">
-                {{ officeCode() }}
-              </div>
-              <p class="text-xs text-blue-200 mt-1 text-center">Office invite code</p>
             }
           </div>
         </div>
+
+        <!-- Personal Info -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+
+            <!-- Card header -->
+            <div class="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 class="text-base font-bold text-gray-900">Personal information</h3>
+                <p class="text-sm text-gray-500">{{ profileEditMode() ? 'Update your profile details below' : 'Your profile details' }}</p>
+              </div>
+              @if (!profileEditMode()) {
+                <button (click)="profileEditMode.set(true)"
+                  class="px-4 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-100 flex items-center space-x-1.5 transition-colors">
+                  <i class="fa-solid fa-pen-to-square"></i><span>Edit profile</span>
+                </button>
+              }
+            </div>
+
+            <div class="p-6">
+
+              <!-- Banners -->
+              @if (saveSuccess()) {
+                <div class="mb-5 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center space-x-2">
+                  <i class="fa-solid fa-circle-check text-green-500 flex-shrink-0"></i>
+                  <p class="text-sm text-green-700 font-medium">Profile updated successfully.</p>
+                </div>
+              }
+              @if (userError()) {
+                <div class="mb-5 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
+                  <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
+                  <p class="text-sm text-red-700">{{ userError() }}</p>
+                </div>
+              }
+
+              <!-- ══ READ-ONLY VIEW ══ -->
+              @if (!profileEditMode()) {
+                <div class="grid grid-cols-2 gap-x-8 gap-y-5">
+                  @for (field of [
+                    { label: 'Full Name',     value: profileUser?.name,  icon: 'fa-solid fa-user',    iconBg: 'bg-blue-50',   iconColor: 'text-blue-600'   },
+                    { label: 'Email Address', value: profileUser?.email, icon: 'fa-solid fa-envelope', iconBg: 'bg-purple-50', iconColor: 'text-purple-600' },
+                    { label: 'Phone',         value: editPhone(),        icon: 'fa-solid fa-phone',    iconBg: 'bg-green-50',  iconColor: 'text-green-600'  }
+                  ]; track field.label) {
+                    <div class="flex items-start space-x-3">
+                      <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" [ngClass]="field.iconBg">
+                        <i [ngClass]="[field.icon, field.iconColor, 'text-sm']"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{{ field.label }}</p>
+                        <p class="text-sm font-medium text-gray-900">{{ field.value || '—' }}</p>
+                      </div>
+                    </div>
+                  }
+
+                  <!-- ── Admin-specific fields ── -->
+                  @if (profileUser?.role === 'admin') {
+                    <!-- Role -->
+                    <div class="flex items-start space-x-3">
+                      <div class="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-shield-halved text-red-600 text-sm"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Role</p>
+                        <span class="text-xs px-2.5 py-1 rounded-full font-semibold bg-red-100 text-red-700">
+                          {{ roleLabel }}
+                        </span>
+                      </div>
+                    </div>
+                  }
+
+                  <!-- ── Lawyer-specific fields ── -->
+                  @if (profileUser?.role === 'lawyer') {
+                    <!-- Job Title -->
+                    <div class="flex items-start space-x-3">
+                      <div class="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-briefcase text-amber-600 text-sm"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Job Title</p>
+                        <p class="text-sm font-medium text-gray-900">{{ editTitle() || '—' }}</p>
+                      </div>
+                    </div>
+                    <!-- Years of Experience -->
+                    <div class="flex items-start space-x-3">
+                      <div class="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-star text-indigo-600 text-sm"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Years of Experience</p>
+                        <p class="text-sm font-medium text-gray-900">
+                          {{ profileUser?.yearsExperience != null ? profileUser!.yearsExperience + ' yrs' : '—' }}
+                        </p>
+                      </div>
+                    </div>
+                    <!-- Office Location -->
+                    <div class="flex items-start space-x-3">
+                      <div class="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-map-pin text-teal-600 text-sm"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Office Location</p>
+                        <p class="text-sm font-medium text-gray-900">{{ profileUser?.officeLocation || '—' }}</p>
+                      </div>
+                    </div>
+                    <!-- Specializations — full width -->
+                    <div class="col-span-2 flex items-start space-x-3 pt-4 border-t border-gray-100">
+                      <div class="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-scale-balanced text-violet-600 text-sm"></i>
+                      </div>
+                      <div class="min-w-0 flex-1">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Specializations</p>
+                        @if (profileUser?.specializations?.length) {
+                          <div class="flex flex-wrap gap-2">
+                            @for (spec of profileUser!.specializations!; track spec) {
+                              <span class="text-xs px-2.5 py-1 rounded-full font-semibold bg-violet-100 text-violet-700">
+                                {{ formatSpecialization(spec) }}
+                              </span>
+                            }
+                          </div>
+                        } @else {
+                          <p class="text-sm font-medium text-gray-900">—</p>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- ══ EDIT FORM ══ -->
+              @if (profileEditMode()) {
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Full Name <span class="text-red-500">*</span></label>
+                    <div class="relative">
+                      <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                      <input type="text" [ngModel]="editName()" (ngModelChange)="editName.set($event)" placeholder="Your full name"
+                        class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+                    <div class="relative">
+                      <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                      <input type="email" [value]="profileUser?.email || ''" readonly
+                        class="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-500 text-sm cursor-not-allowed">
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone Number</label>
+                    <div class="relative">
+                      <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                      <input type="tel" [ngModel]="editPhone()" (ngModelChange)="editPhone.set($event)" placeholder="+1 (555) 000-0000"
+                        class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                    </div>
+                  </div>
+                  <!-- ── Lawyer-specific edit fields ── -->
+                  @if (profileUser?.role === 'lawyer') {
+                    <div>
+                      <label class="block text-sm font-semibold text-gray-700 mb-1.5">Job Title</label>
+                      <div class="relative">
+                        <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input type="text" [ngModel]="editTitle()" (ngModelChange)="editTitle.set($event)" placeholder="e.g. Senior Partner"
+                          class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-semibold text-gray-700 mb-1.5">Years of Experience</label>
+                      <div class="relative">
+                        <i class="fa-solid fa-star absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input type="number" min="0" max="60"
+                          [value]="editYearsExperience() ?? ''"
+                          (input)="onYearsExperienceInput($event)"
+                          placeholder="e.g. 5"
+                          class="w-full pl-11 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 text-sm transition-colors"
+                          [ngClass]="lawyerErrors().yearsExperience
+                            ? 'border-red-400 bg-red-50 focus:ring-red-400'
+                            : 'border-gray-300 focus:ring-amber-500'">
+                      </div>
+                      @if (lawyerErrors().yearsExperience) {
+                        <p class="mt-1 text-xs text-red-600 flex items-center gap-1">
+                          <i class="fa-solid fa-circle-exclamation"></i>{{ lawyerErrors().yearsExperience }}
+                        </p>
+                      }
+                    </div>
+                    <div>
+                      <label class="block text-sm font-semibold text-gray-700 mb-1.5">Office Location</label>
+                      <div class="relative">
+                        <i class="fa-solid fa-map-pin absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input type="text"
+                          [ngModel]="editOfficeLocation()"
+                          (ngModelChange)="editOfficeLocation.set($event); lawyerErrors.update(e => ({...e, officeLocation: undefined}))"
+                          placeholder="e.g. Paris, France"
+                          class="w-full pl-11 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 text-sm transition-colors"
+                          [ngClass]="lawyerErrors().officeLocation
+                            ? 'border-red-400 bg-red-50 focus:ring-red-400'
+                            : 'border-gray-300 focus:ring-amber-500'">
+                      </div>
+                      @if (lawyerErrors().officeLocation) {
+                        <p class="mt-1 text-xs text-red-600 flex items-center gap-1">
+                          <i class="fa-solid fa-circle-exclamation"></i>{{ lawyerErrors().officeLocation }}
+                        </p>
+                      }
+                    </div>
+                    <div class="col-span-2">
+                      <label class="block text-sm font-semibold text-gray-700 mb-2">Specializations</label>
+                      <div class="flex flex-nowrap gap-2 overflow-x-auto pb-1">
+                        @for (opt of SPECIALIZATION_OPTIONS; track opt.value) {
+                          <label class="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-colors flex-shrink-0"
+                            [ngClass]="editSpecializations().includes(opt.value)
+                              ? 'border-violet-400 bg-violet-50'
+                              : 'border-gray-200 hover:bg-gray-50'">
+                            <input type="checkbox"
+                              [checked]="editSpecializations().includes(opt.value)"
+                              (change)="toggleSpecialization(opt.value)"
+                              class="w-4 h-4 accent-violet-600">
+                            <span class="text-sm font-medium text-gray-700 whitespace-nowrap">{{ opt.label }}</span>
+                          </label>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+                <div class="flex items-center gap-3 mt-6">
+                  <button (click)="saveUserProfile()" [disabled]="userSaving()"
+                    class="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center space-x-2 text-sm">
+                    @if (userSaving()) {
+                      <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+                    } @else {
+                      <i class="fa-solid fa-check"></i><span>Save changes</span>
+                    }
+                  </button>
+                  <button (click)="profileEditMode.set(false)" [disabled]="userSaving()"
+                    class="px-6 py-3.5 border border-gray-300 text-gray-600 font-semibold rounded-xl hover:bg-gray-50 transition-colors text-sm disabled:opacity-60">
+                    Cancel
+                  </button>
+                </div>
+              }
+
+            </div>
+          </div>
+
+        <!-- Lightbox -->
+        @if (showLightbox() && hasSavedAvatar) {
+          <div class="fixed inset-0 bg-black/85 z-[9999] flex items-center justify-center p-6" (click)="closeLightbox()">
+            <div class="relative flex flex-col items-center" (click)="$event.stopPropagation()">
+              <button (click)="closeLightbox()"
+                class="absolute -top-4 -right-4 w-9 h-9 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors z-10">
+                <i class="fa-solid fa-xmark text-sm"></i>
+              </button>
+              <img [src]="savedAvatar" alt="Profile photo" (error)="onAvatarLoadError(); closeLightbox()"
+                style="max-width:360px;max-height:70vh;width:auto;height:auto;display:block;"
+                class="rounded-2xl shadow-2xl">
+              <div class="flex justify-center gap-3 mt-5">
+                <button (click)="closeLightbox(); triggerAvatarPicker()"
+                  class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white text-gray-800 text-sm font-semibold hover:bg-gray-100 transition-colors shadow">
+                  <i class="fa-solid fa-pen"></i><span>Change</span>
+                </button>
+                <button (click)="removeAvatar(); closeLightbox()"
+                  class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors shadow">
+                  <i class="fa-solid fa-trash"></i><span>Remove</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        }
+
       </div>
     }
 
     <!-- ══════════════════════════════════════════
-         WEB-CFG-02  SUBSCRIPTION
+         OFFICE PROFILE  (unified admin + lawyer)
     ══════════════════════════════════════════ -->
-    @if (activeTab() === 'Subscription') {
+    @if (activeTab() === 'Office profile') {
       <div class="space-y-6">
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-            <div>
-              <h2 class="text-lg font-bold text-gray-900">Subscription &amp; Billing</h2>
-              <p class="text-sm text-gray-600 mt-1">Manage your plan, billing cycle, and payment methods</p>
-            </div>
-            <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
-              <i class="fa-solid fa-crown mr-2"></i>Upgrade Plan
-            </button>
-          </div>
-          <div class="p-6">
-            <div class="grid grid-cols-4 gap-6 mb-8">
-              @for (p of plans; track p.badge) {
-                <div class="border-2 rounded-xl p-6 transition-all relative overflow-hidden"
-                  [ngClass]="p.current ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-amber-300 cursor-pointer'">
-                  @if (p.current) {
-                    <div class="absolute top-0 right-0 bg-amber-500 text-white text-xs px-3 py-1 rounded-bl-lg font-medium">Current</div>
+
+        <!-- ── Hero ── -->
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <div class="flex items-start justify-between">
+            <div class="flex items-start gap-5">
+
+              <!-- Logo -->
+              <div class="relative flex-shrink-0">
+                <button type="button" (click)="onLogoClick()"
+                  class="block w-20 h-20 rounded-2xl overflow-hidden focus:outline-none"
+                  [class.cursor-pointer]="firmLogoUrl() || isAdmin()"
+                  [class.cursor-default]="!firmLogoUrl() && !isAdmin()">
+                  @if ((logoPreview() || firmLogoUrl()) && !logoLoadFailed()) {
+                    <img [src]="logoPreview() || firmLogoUrl()" alt="Firm logo"
+                      (error)="onLogoLoadError()"
+                      class="w-full h-full object-cover border-2 rounded-2xl transition-all"
+                      [ngClass]="logoPreview() ? 'border-amber-400 ring-2 ring-amber-200' : 'border-gray-200'">
+                  } @else {
+                    <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                      <i class="fa-solid fa-scale-balanced text-white text-2xl"></i>
+                    </div>
                   }
-                  <div class="mb-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="p.badgeCls">{{ p.badge }}</span></div>
-                  <h3 class="text-2xl font-bold text-gray-900 mb-1">{{ p.price }}<span class="text-sm font-normal text-gray-600">{{ p.price !== 'Custom' ? '/mo' : '' }}</span></h3>
-                  <p class="text-sm text-gray-600 mb-5">{{ p.sub }}</p>
-                  <ul class="space-y-2 mb-6">
-                    @for (f of p.features; track f) {
-                      <li class="flex items-center text-sm text-gray-700"><i class="fa-solid fa-check text-green-500 mr-2"></i>{{ f }}</li>
-                    }
-                  </ul>
-                  <button class="w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                    [ngClass]="p.current ? 'bg-amber-500 text-white' : 'border border-gray-300 hover:bg-gray-50'">
-                    {{ p.current ? 'Current Plan' : (p.badge === 'Custom' ? 'Contact Sales' : 'Select Plan') }}
-                  </button>
+                </button>
+                @if (isAdmin()) {
+                  <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-gray-700 rounded-full flex items-center justify-center shadow pointer-events-none">
+                    <i class="fa-solid fa-camera text-white" style="font-size:9px"></i>
+                  </div>
+                  @if (logoPreview()) {
+                    <div class="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center shadow pointer-events-none">
+                      <i class="fa-solid fa-clock text-white" style="font-size:9px"></i>
+                    </div>
+                  }
+                  <input #logoInput type="file" accept="image/*" class="hidden" (change)="onLogoSelected($event)">
+                }
+              </div>
+
+              <div>
+                <h2 class="text-2xl font-bold text-gray-900 leading-tight mb-1">{{ officeName() || '—' }}</h2>
+                <p class="text-xs font-bold text-gray-400 tracking-widest uppercase mb-2">
+                  Created since {{ firmCreatedAt() ? (firmCreatedAt() | date:'mediumDate') : '—' }}
+                </p>
+                <div class="flex items-center flex-wrap gap-2">
+                  @if (entityType()) {
+                    <span class="text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-100 text-amber-700 flex items-center gap-1.5">
+                      <i class="fa-solid fa-scale-balanced text-xs"></i>{{ entityType() }}
+                    </span>
+                  }
+                  @if (isAdmin() && officeCode()) {
+                    <span class="text-xs px-2.5 py-1 rounded-full font-black tracking-widest font-mono bg-purple-100 text-purple-700 flex items-center gap-1.5">
+                      <i class="fa-solid fa-key"></i>{{ officeCode() }}
+                    </span>
+                  }
                 </div>
-              }
+              </div>
             </div>
 
-            <div class="grid grid-cols-3 gap-6">
-              <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                <h3 class="text-sm font-semibold text-gray-700 mb-4">Billing Information</h3>
-                <div class="space-y-3">
-                  <div class="flex justify-between"><span class="text-sm text-gray-600">Billing Cycle</span><span class="text-sm font-medium">{{ subscriptionBillingCycle() }}</span></div>
-                  <div class="flex justify-between"><span class="text-sm text-gray-600">Next Billing Date</span><span class="text-sm font-medium">{{ subscriptionNextBilling() }}</span></div>
-                  <div class="flex justify-between"><span class="text-sm text-gray-600">Amount Due</span><span class="text-sm font-medium">{{ subscriptionAmountDue() }}</span></div>
-                  <div class="flex justify-between pt-3 border-t border-gray-300"><span class="text-sm text-gray-600">Payment Method</span><span class="text-sm font-medium">{{ subscriptionPaymentMethod() }}</span></div>
+            <!-- Right side: logo pending OR edit button -->
+            @if (logoPreview()) {
+              <div class="flex-shrink-0 flex flex-col items-end gap-2">
+                <p class="text-xs text-amber-700 font-medium flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-info"></i><span>New logo — confirm to apply.</span>
+                </p>
+                <div class="flex items-center gap-2">
+                  <button (click)="confirmLogo()" [disabled]="logoSaving()"
+                    class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 text-white text-xs font-bold hover:shadow-md transition-all disabled:opacity-60">
+                    @if (logoSaving()) {
+                      <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+                    } @else {
+                      <i class="fa-solid fa-check"></i><span>Confirm</span>
+                    }
+                  </button>
+                  <button (click)="cancelLogoChange()" [disabled]="logoSaving()"
+                    class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg border border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors disabled:opacity-60">
+                    <i class="fa-solid fa-xmark"></i><span>Cancel</span>
+                  </button>
                 </div>
-                <button class="w-full mt-4 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium">
-                  <i class="fa-solid fa-pen-to-square mr-2"></i>Update Payment
-                </button>
+                @if (logoError()) {
+                  <p class="text-xs text-red-500 flex items-center space-x-1">
+                    <i class="fa-solid fa-circle-exclamation"></i><span>{{ logoError() }}</span>
+                  </p>
+                }
               </div>
-              <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                <h3 class="text-sm font-semibold text-gray-700 mb-4">Usage Statistics</h3>
-                <div class="space-y-4">
-                  @for (u of usageBars; track u.label) {
-                    <div>
-                      <div class="flex justify-between mb-2"><span class="text-sm text-gray-600">{{ u.label }}</span><span class="text-sm font-medium">{{ u.value }}</span></div>
-                      <div class="w-full bg-gray-200 rounded-full h-2"><div class="h-2 rounded-full" [ngClass]="u.color" [style.width.%]="u.pct"></div></div>
-                    </div>
-                  }
-                </div>
-              </div>
-              <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                <h3 class="text-sm font-semibold text-gray-700 mb-4">Billing History</h3>
-                <div class="space-y-3">
-                  @for (b of billingHistory; track b.month; let last = $last) {
-                    <div class="flex justify-between" [ngClass]="last ? '' : 'pb-3 border-b border-gray-200'">
-                      <div><p class="text-sm font-medium">{{ b.month }}</p><p class="text-xs text-gray-600">{{ b.paid }}</p></div>
-                      <span class="text-sm font-medium">{{ b.amount }}</span>
-                    </div>
-                  }
-                </div>
-                <button class="w-full mt-4 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium">View All Invoices</button>
-              </div>
-            </div>
+            } @else if (isAdmin() && !editMode()) {
+              <button (click)="editMode.set(true)"
+                class="px-4 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-100 flex items-center space-x-1.5 transition-colors flex-shrink-0">
+                <i class="fa-solid fa-pen-to-square"></i><span>Edit profile</span>
+              </button>
+            }
           </div>
         </div>
+
+        <!-- ── Details Card ── -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+
+          <div class="px-6 pt-5 pb-4 border-b border-gray-100">
+            <h3 class="text-base font-bold text-gray-900">Firm details</h3>
+            <p class="text-sm text-gray-500">Contact, legal and practice information</p>
+          </div>
+
+          @if (isAdmin() && editMode()) {
+
+            <!-- ══ EDIT FORM ══ -->
+            <div class="p-6 space-y-6">
+
+              <!-- General -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Firm Name</label>
+                  <input type="text" [ngModel]="officeName()" (ngModelChange)="officeName.set($event)"
+                    class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 transition-shadow">
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Entity Type</label>
+                  <select [ngModel]="entityType()" (ngModelChange)="entityType.set($event)"
+                    class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+                    @for (e of entityTypes; track e) { <option>{{ e }}</option> }
+                  </select>
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Description</label>
+                  <textarea rows="3" [ngModel]="description()" (ngModelChange)="description.set($event)"
+                    class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"></textarea>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100"></div>
+
+              <!-- Contact -->
+              <div class="grid grid-cols-2 gap-4">
+                @for (f of [
+                  { label: 'Email',            sig: email,   type: 'email' },
+                  { label: 'Phone',            sig: phone,   type: 'text'  },
+                  { label: 'Office Address',   sig: address, type: 'text'  },
+                  { label: 'City',             sig: city,    type: 'text'  },
+                  { label: 'Country / Region', sig: state,   type: 'text'  }
+                ]; track f.label) {
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">{{ f.label }}</label>
+                    <input [type]="f.type" [ngModel]="f.sig()" (ngModelChange)="f.sig.set($event)"
+                      class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 transition-shadow">
+                  </div>
+                }
+              </div>
+
+              <div class="border-t border-gray-100"></div>
+
+              <!-- Legal Identity -->
+              <div class="grid grid-cols-2 gap-4">
+                @for (f of [
+                  { label: 'Registration Number', sig: regNumber, type: 'text' },
+                  { label: 'Tax ID / EIN',        sig: taxId,     type: 'text' }
+                ]; track f.label) {
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">{{ f.label }}</label>
+                    <input [type]="f.type" [ngModel]="f.sig()" (ngModelChange)="f.sig.set($event)"
+                      class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 transition-shadow">
+                  </div>
+                }
+              </div>
+
+              <div class="border-t border-gray-100"></div>
+
+              <!-- Practice Areas -->
+              <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                  <i class="fa-solid fa-gavel mr-1.5"></i>Practice Areas
+                </p>
+                <div class="flex flex-wrap gap-2">
+                  @for (opt of PRACTICE_AREA_OPTIONS; track opt) {
+                    <label class="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-colors"
+                      [ngClass]="practiceAreas().includes(opt)
+                        ? 'border-amber-400 bg-amber-50'
+                        : 'border-gray-200 hover:bg-gray-50'">
+                      <input type="checkbox"
+                        [checked]="practiceAreas().includes(opt)"
+                        (change)="togglePracticeArea(opt)"
+                        class="w-4 h-4 accent-amber-600">
+                      <span class="text-sm font-medium text-gray-700 whitespace-nowrap">{{ opt }}</span>
+                    </label>
+                  }
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100"></div>
+
+              <!-- Actions -->
+              <div class="flex items-center gap-3">
+                <button (click)="saveFirmProfile()" [disabled]="profileSaving()"
+                  class="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center space-x-2 text-sm">
+                  @if (profileSaving()) {
+                    <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+                  } @else {
+                    <i class="fa-solid fa-check"></i><span>Save changes</span>
+                  }
+                </button>
+                <button (click)="editMode.set(false)" [disabled]="profileSaving()"
+                  class="px-6 py-3.5 border border-gray-300 text-gray-600 font-semibold rounded-xl hover:bg-gray-50 transition-colors text-sm disabled:opacity-60">
+                  Cancel
+                </button>
+              </div>
+
+            </div>
+
+          } @else {
+
+            <!-- ══ READ VIEW ══ -->
+            <div class="p-6 space-y-6">
+
+              <!-- Description -->
+              <div class="flex items-start space-x-3">
+                <div class="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i class="fa-solid fa-align-left text-gray-500 text-sm"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Description</p>
+                  <p class="text-sm font-medium text-gray-900 leading-relaxed">{{ description() || '—' }}</p>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100"></div>
+
+              <!-- Contact -->
+              <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                  <i class="fa-solid fa-address-book mr-1.5 text-blue-400"></i>Contact
+                </p>
+                <div class="grid grid-cols-2 gap-x-8 gap-y-5">
+                  @for (field of [
+                    { label: 'Email',   value: email(),   icon: 'fa-solid fa-envelope',       iconBg: 'bg-purple-50', iconColor: 'text-purple-600' },
+                    { label: 'Phone',   value: phone(),   icon: 'fa-solid fa-phone',          iconBg: 'bg-green-50',  iconColor: 'text-green-600'  },
+                    { label: 'Address', value: address(), icon: 'fa-solid fa-map-marker-alt', iconBg: 'bg-blue-50',   iconColor: 'text-blue-600'   },
+                    { label: 'City',    value: city(),    icon: 'fa-solid fa-city',           iconBg: 'bg-sky-50',    iconColor: 'text-sky-600'    },
+                    { label: 'Country', value: state(),   icon: 'fa-solid fa-globe',          iconBg: 'bg-indigo-50', iconColor: 'text-indigo-600' }
+                  ]; track field.label) {
+                    <div class="flex items-start space-x-3">
+                      <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" [ngClass]="field.iconBg">
+                        <i [ngClass]="[field.icon, field.iconColor, 'text-sm']"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{{ field.label }}</p>
+                        <p class="text-sm font-medium text-gray-900 break-all">{{ field.value || '—' }}</p>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- Legal Identity (admin only) -->
+              @if (isAdmin()) {
+                <div class="border-t border-gray-100"></div>
+                <div>
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                    <i class="fa-solid fa-building-columns mr-1.5 text-amber-500"></i>Legal Identity
+                  </p>
+                  <div class="grid grid-cols-2 gap-x-8 gap-y-5">
+                    <div class="flex items-start space-x-3">
+                      <div class="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-hashtag text-orange-600 text-sm"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Registration Number</p>
+                        <p class="text-sm font-medium text-gray-900">{{ regNumber() || '—' }}</p>
+                      </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                      <div class="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-id-card text-red-600 text-sm"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Tax ID / EIN</p>
+                        <p class="text-sm font-medium text-gray-900">{{ taxId() || '—' }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              }
+
+              <!-- Practice Areas -->
+              @if (practiceAreas().length) {
+                <div class="border-t border-gray-100"></div>
+                <div>
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                    <i class="fa-solid fa-gavel mr-1.5 text-amber-500"></i>Practice Areas
+                  </p>
+                  <div class="flex flex-wrap gap-2">
+                    @for (area of practiceAreas(); track area; let i = $index) {
+                      <span class="px-3 py-1.5 rounded-full text-sm font-medium"
+                        [ngClass]="practiceAreaColors[i % practiceAreaColors.length]">{{ area }}</span>
+                    }
+                  </div>
+                </div>
+              }
+
+            </div>
+          }
+
+        </div>
+
       </div>
+
+      <!-- Logo lightbox -->
+      @if (showLogoLightbox() && firmLogoUrl()) {
+        <div class="fixed inset-0 bg-black/85 z-[9999] flex items-center justify-center p-6" (click)="closeLogoLightbox()">
+          <div class="relative flex flex-col items-center" (click)="$event.stopPropagation()">
+            <button (click)="closeLogoLightbox()"
+              class="absolute -top-4 -right-4 w-9 h-9 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors z-10">
+              <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+            <img [src]="firmLogoUrl()" alt="Firm logo" (error)="onLogoLoadError(); closeLogoLightbox()"
+              style="max-width:360px;max-height:70vh;width:auto;height:auto;display:block;"
+              class="rounded-2xl shadow-2xl">
+            @if (isAdmin()) {
+              <div class="flex justify-center gap-3 mt-5">
+                <button (click)="closeLogoLightbox(); triggerLogoPicker()"
+                  class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white text-gray-800 text-sm font-semibold hover:bg-gray-100 transition-colors shadow">
+                  <i class="fa-solid fa-pen"></i><span>Change</span>
+                </button>
+                <button (click)="removeLogo(); closeLogoLightbox()"
+                  class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors shadow">
+                  <i class="fa-solid fa-trash"></i><span>Remove</span>
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
     }
 
     <!-- ══════════════════════════════════════════
          WEB-CFG-03  ROLES & PERMISSIONS
     ══════════════════════════════════════════ -->
-    @if (activeTab() === 'Roles & Permissions') {
+    @if (isAdmin() && activeTab() === 'Roles & Permissions') {
       <div class="space-y-6">
         <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+
+          <!-- Header -->
           <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <div>
-              <h2 class="text-lg font-bold text-gray-900">Roles &amp; Permissions Management</h2>
+              <h2 class="text-lg font-bold text-gray-900">Roles &amp; Permissions management</h2>
               <p class="text-sm text-gray-600 mt-1">Define user roles and control access levels across the platform</p>
             </div>
-            <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
-              <i class="fa-solid fa-plus mr-2"></i>Create New Role
+            <button (click)="editPermissions.set(!editPermissions())"
+              class="px-4 py-2 rounded-lg text-sm font-semibold flex items-center space-x-2 transition-colors"
+              [ngClass]="editPermissions()
+                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100'">
+              <i [ngClass]="editPermissions() ? 'fa-solid fa-xmark' : 'fa-solid fa-pen-to-square'"></i>
+              <span>{{ editPermissions() ? 'Cancel' : 'Edit permissions' }}</span>
             </button>
           </div>
+
           <div class="p-6">
-            <div class="grid grid-cols-3 gap-6 mb-8">
-              @for (role of [
-                {iconBg:'bg-blue-100',icon:'fa-solid fa-user-tie',iconColor:'text-blue-600',title:'Senior Partner',desc:'Full administrative access and control',badge:'2 Users',badgeCls:'bg-blue-100 text-blue-700',level:'Admin Level',perms:[['All case management',true],['Financial oversight',true],['User management',true],['System settings',true]]},
-                {iconBg:'bg-green-100',icon:'fa-solid fa-user-graduate',iconColor:'text-green-600',title:'Associate Lawyer',desc:'Case management and client interaction',badge:'8 Users',badgeCls:'bg-green-100 text-green-700',level:'Standard Level',perms:[['Assigned cases',true],['Client communication',true],['Document management',true],['Financial access',false]]},
-                {iconBg:'bg-purple-100',icon:'fa-solid fa-user-shield',iconColor:'text-purple-600',title:'Legal Secretary',desc:'Administrative and support functions',badge:'6 Users',badgeCls:'bg-purple-100 text-purple-700',level:'Limited Level',perms:[['Schedule management',true],['Document filing',true],['Client intake',true],['Case creation',false]]}
-              ]; track role.title) {
-                <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-amber-500 transition-all">
-                  <div class="flex items-center justify-between mb-4">
-                    <div class="w-12 h-12 rounded-lg flex items-center justify-center" [ngClass]="role.iconBg">
-                      <i [ngClass]="[role.icon, role.iconColor, 'text-xl']"></i>
+
+            <!-- Role cards — permissions tirées de permMatrix -->
+            <div class="grid grid-cols-2 gap-6 mb-8">
+
+              <!-- Admin card -->
+              <div class="border-2 border-gray-200 rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <i class="fa-solid fa-user-shield text-blue-600 text-xl"></i>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-xs px-3 py-1 rounded-full font-medium block mb-1.5 bg-blue-100 text-blue-700">Admin Level</span>
+                    <span class="text-xs text-gray-400">{{ adminCount() }} member{{ adminCount() !== 1 ? 's' : '' }}</span>
+                  </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-1">Admin</h3>
+                <p class="text-sm text-gray-600 mb-4">Full access — firm management, team, billing, settings</p>
+                <div class="space-y-1.5">
+                  @for (row of permMatrix; track row.feature) {
+                    <div class="flex items-center text-xs text-gray-700">
+                      <i class="mr-2 w-3.5 text-center flex-shrink-0" [ngClass]="permIcon(row.admin)"></i>
+                      {{ row.feature }}
                     </div>
-                    <button class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-ellipsis-vertical"></i></button>
-                  </div>
-                  <h3 class="text-lg font-bold text-gray-900 mb-1">{{ role.title }}</h3>
-                  <p class="text-sm text-gray-600 mb-4">{{ role.desc }}</p>
-                  <div class="flex items-center justify-between mb-4">
-                    <span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="role.badgeCls">{{ role.badge }}</span>
-                    <span class="text-xs text-gray-500">{{ role.level }}</span>
-                  </div>
-                  <div class="space-y-2 mb-4">
-                    @for (p of role.perms; track p[0]) {
-                      <div class="flex items-center text-xs text-gray-700">
-                        <i class="mr-2" [ngClass]="p[1] ? 'fa-solid fa-check text-green-500' : 'fa-solid fa-times text-red-500'"></i>
-                        {{ p[0] }}
-                      </div>
-                    }
-                  </div>
-                  <button class="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">Edit Permissions</button>
+                  }
                 </div>
-              }
+              </div>
+
+              <!-- Lawyer card -->
+              <div class="border-2 border-gray-200 rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
+                    <i class="fa-solid fa-scale-balanced text-green-600 text-xl"></i>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-xs px-3 py-1 rounded-full font-medium block mb-1.5 bg-green-100 text-green-700">Standard Level</span>
+                    <span class="text-xs text-gray-400">{{ lawyerCount() }} member{{ lawyerCount() !== 1 ? 's' : '' }}</span>
+                  </div>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-1">Lawyer</h3>
+                <p class="text-sm text-gray-600 mb-4">Case and client management, restricted to assigned work</p>
+                <div class="space-y-1.5">
+                  @for (row of permMatrix; track row.feature) {
+                    <div class="flex items-center text-xs text-gray-700">
+                      <i class="mr-2 w-3.5 text-center flex-shrink-0" [ngClass]="permIcon(row.lawyer)"></i>
+                      {{ row.feature }}
+                    </div>
+                  }
+                </div>
+              </div>
+
             </div>
 
-            <!-- Permission Matrix -->
-            <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
-              <h3 class="text-lg font-bold text-gray-900 mb-6">Detailed Permission Matrix</h3>
-              <div class="overflow-x-auto">
-                <table class="w-full">
-                  <thead class="bg-white border-b border-gray-200">
-                    <tr>
-                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Feature / Module</th>
-                      <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Senior Partner</th>
-                      <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Associate</th>
-                      <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Secretary</th>
-                      <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase">Paralegal</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-100 bg-white">
-                    @for (row of permMatrix; track row.feature) {
-                      <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ row.feature }}</td>
-                        <td class="px-6 py-4 text-center"><i class="text-lg" [ngClass]="permIcon(row.partner)"></i></td>
-                        <td class="px-6 py-4 text-center"><i class="text-lg" [ngClass]="permIcon(row.associate)"></i></td>
-                        <td class="px-6 py-4 text-center"><i class="text-lg" [ngClass]="permIcon(row.secretary)"></i></td>
-                        <td class="px-6 py-4 text-center"><i class="text-lg" [ngClass]="permIcon(row.paralegal)"></i></td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-              <div class="mt-6 flex items-center justify-between">
-                <div class="flex items-center space-x-6 text-sm">
-                  <div class="flex items-center"><i class="fa-solid fa-check-circle text-green-500 mr-2"></i><span>Full Access</span></div>
-                  <div class="flex items-center"><i class="fa-solid fa-minus-circle text-amber-500 mr-2"></i><span>Partial Access</span></div>
-                  <div class="flex items-center"><i class="fa-solid fa-times-circle text-red-500 mr-2"></i><span>No Access</span></div>
-                </div>
-                <button class="px-6 py-2.5 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
-                  <i class="fa-solid fa-save mr-2"></i>Save All Changes
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </div>
-    }
 
-    <!-- ══════════════════════════════════════════
-         WEB-CFG-04  BRANDING
-    ══════════════════════════════════════════ -->
-    @if (activeTab() === 'Branding') {
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h2 class="text-lg font-bold text-gray-900">Branding &amp; Appearance</h2>
-            <p class="text-sm text-gray-600 mt-1">Logo, colors, and the firm name shown across the UI</p>
-          </div>
-          <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
-            <i class="fa-solid fa-eye mr-2"></i>Preview Changes
-          </button>
-        </div>
-        <div class="p-6">
-          <div class="grid grid-cols-2 gap-8">
+      <!-- ── Permission Matrix Modal ── -->
+      @if (editPermissions()) {
+        <div class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          style="background:rgba(0,0,0,0.5);"
+          (click)="!permsSaving() && editPermissions.set(false)">
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
+            (click)="$event.stopPropagation()">
 
-            <!-- Colors + Firm Name -->
-            <div class="space-y-6">
+            <!-- Modal header -->
+            <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Firm Name (displayed in UI)</label>
-                <div class="relative">
-                  <input type="text" [ngModel]="firmDisplayName()" (ngModelChange)="firmDisplayName.set($event)"
-                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
-                  <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                </div>
-                <p class="text-xs text-gray-500 mt-1">Shown in the sidebar header and emails</p>
-              </div>
-
-              <h3 class="text-sm font-semibold text-gray-700">Brand Colors</h3>
-              @for (colorDef of [
-                {label:'Primary Color', sig:primaryColor, note:'Buttons, links, primary actions'},
-                {label:'Secondary Color', sig:secondaryColor, note:'Headers, navigation, accents'},
-                {label:'Accent Color', sig:accentColor, note:'Highlights and notifications'},
-                {label:'Background Color', sig:bgColor, note:'Main background color for pages'}
-              ]; track colorDef.label) {
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">{{ colorDef.label }}</label>
-                  <div class="flex items-center space-x-3">
-                    <input type="color" [ngModel]="colorDef.sig()" (ngModelChange)="colorDef.sig.set($event)" class="w-14 h-11 border border-gray-300 rounded-lg cursor-pointer">
-                    <input type="text" [ngModel]="colorDef.sig()" (ngModelChange)="colorDef.sig.set($event)" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-sm">
-                  </div>
-                  <p class="text-xs text-gray-500 mt-1">{{ colorDef.note }}</p>
-                </div>
-              }
-            </div>
-
-            <!-- Logo + Favicon + Signature -->
-            <div class="space-y-6">
-              <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center">
-                <div class="w-32 h-32 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center mb-4 mx-auto">
-                  <i class="fa-solid fa-scale-balanced text-white text-5xl"></i>
-                </div>
-                <h4 class="text-sm font-semibold text-gray-900 mb-1">Primary Logo</h4>
-                <p class="text-xs text-gray-600 mb-4">Displayed in header, emails, and documents</p>
-                <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"><i class="fa-solid fa-upload mr-2"></i>Upload New Logo</button>
-                <p class="text-xs text-gray-500 mt-2">PNG, SVG recommended · Max 2MB</p>
-              </div>
-
-              <div class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
-                <div class="w-16 h-16 bg-white border border-gray-300 rounded-lg flex items-center justify-center mb-3 mx-auto">
-                  <i class="fa-solid fa-scale-balanced text-amber-500 text-2xl"></i>
-                </div>
-                <h4 class="text-sm font-semibold text-gray-900 mb-1">Favicon</h4>
-                <p class="text-xs text-gray-600 mb-3">Browser tab icon</p>
-                <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium"><i class="fa-solid fa-upload mr-2"></i>Upload Favicon</button>
-                <p class="text-xs text-gray-500 mt-2">32×32px ICO or PNG</p>
-              </div>
-
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Email Signature</label>
-                <textarea rows="6" [ngModel]="emailSignature()" (ngModelChange)="emailSignature.set($event)"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm resize-none"></textarea>
-              </div>
-            </div>
-          </div>
-
-          <!-- Live Preview -->
-          <div class="mt-8 pt-6 border-t border-gray-200">
-            <h3 class="text-sm font-semibold text-gray-900 mb-4">Live Preview</h3>
-            <div class="bg-white rounded-lg shadow border border-gray-200 p-6 max-w-sm">
-              <div class="flex items-center space-x-3 mb-5">
-                <div class="w-10 h-10 rounded-lg flex items-center justify-center" [style.background-color]="primaryColor()">
-                  <i class="fa-solid fa-scale-balanced text-white text-lg"></i>
-                </div>
-                <div>
-                  <h4 class="text-base font-bold text-gray-900">{{ firmDisplayName() }}</h4>
-                  <p class="text-xs text-gray-500">Practice Management</p>
+                <h2 class="text-base font-bold text-gray-900">Edit permission matrix</h2>
+                <div class="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
+                  <span class="flex items-center gap-1"><i class="fa-solid fa-check-circle text-green-500"></i>Full access</span>
+                  <span class="flex items-center gap-1"><i class="fa-solid fa-minus-circle text-amber-500"></i>Partial access</span>
+                  <span class="flex items-center gap-1"><i class="fa-solid fa-times-circle text-red-500"></i>No access</span>
+                  <span class="text-[10px] text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">click Lawyer cell to toggle</span>
                 </div>
               </div>
-              <button class="w-full px-4 py-2.5 rounded-lg text-white font-medium text-sm mb-3" [style.background-color]="primaryColor()">Primary Button</button>
-              <button class="w-full px-4 py-2.5 border-2 rounded-lg font-medium text-sm" [style.border-color]="primaryColor()" [style.color]="primaryColor()">Secondary Button</button>
+              <button (click)="editPermissions.set(false)" [disabled]="permsSaving()"
+                class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
             </div>
-          </div>
 
-          <div class="flex justify-end mt-6">
-            <button (click)="saveBranding()" [disabled]="brandingSaving()"
-              class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md disabled:opacity-70 flex items-center space-x-2">
-              @if (brandingSaving()) {
-                <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
-              } @else {
-                <i class="fa-solid fa-save"></i><span>Save Branding</span>
-              }
-            </button>
-          </div>
-        </div>
-      </div>
-    }
-
-    <!-- ══════════════════════════════════════════
-         TEAM MEMBERS
-    ══════════════════════════════════════════ -->
-    @if (activeTab() === 'Team Members') {
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h2 class="text-lg font-bold text-gray-900">Team Members Management</h2>
-            <p class="text-sm text-gray-600 mt-1">Invite, manage, and control team member access</p>
-          </div>
-          <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
-            <i class="fa-solid fa-user-plus mr-2"></i>Invite Team Member
-          </button>
-        </div>
-        <div class="p-6">
-          <div class="mb-6 flex items-center space-x-3">
-            <div class="relative">
-              <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              <input type="text" placeholder="Search team members…"
-                [ngModel]="teamSearch()" (ngModelChange)="teamSearch.set($event)"
-                class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 w-72">
-            </div>
-            <select [ngModel]="teamRoleFilter()" (ngModelChange)="teamRoleFilter.set($event)"
-              class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-              @for (r of teamMemberRoles; track r) { <option>{{ r }}</option> }
-            </select>
-            <select [ngModel]="teamStatusFilter()" (ngModelChange)="teamStatusFilter.set($event)"
-              class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-              @for (s of teamMemberStatuses; track s) { <option>{{ s }}</option> }
-            </select>
-          </div>
-
-          @if (loading()) {
-            <div class="flex items-center justify-center py-16 text-gray-400">
-              <i class="fa-solid fa-spinner fa-spin text-3xl mr-3"></i>
-              <span class="text-sm">Loading team members…</span>
-            </div>
-          } @else if (filteredTeam().length === 0) {
-            <div class="text-center py-16 text-gray-400">
-              <i class="fa-solid fa-users text-4xl mb-3"></i>
-              <p class="text-sm">No team members found</p>
-            </div>
-          } @else {
-            <div class="overflow-x-auto">
+            <!-- Table -->
+            <div class="overflow-y-auto" style="max-height:60vh">
               <table class="w-full">
-                <thead class="bg-gray-50 border-b border-gray-200">
+                <thead class="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
-                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Team Member</th>
-                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Role</th>
-                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
-                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Cases</th>
-                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Member Since</th>
-                    <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Feature / Module</th>
+                    <th class="px-6 py-3 text-center text-xs font-semibold text-blue-600 uppercase">Admin</th>
+                    <th class="px-6 py-3 text-center text-xs font-semibold text-green-600 uppercase">Lawyer</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
-                  @for (m of filteredTeam(); track m.id) {
+                  @for (row of permMatrix; track row.feature) {
                     <tr class="hover:bg-gray-50">
-                      <td class="px-6 py-4">
-                        <div class="flex items-center space-x-3">
-                          <img [src]="m.avatar" class="w-10 h-10 rounded-full border-2 object-cover" [ngClass]="m.borderCls" [alt]="m.name">
-                          <div><p class="text-sm font-semibold text-gray-900">{{ m.name }}</p><p class="text-xs text-gray-500">{{ m.email }}</p></div>
-                        </div>
-                      </td>
-                      <td class="px-6 py-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="m.roleCls">{{ m.roleLabel }}</span></td>
-                      <td class="px-6 py-4 text-sm text-gray-900">{{ m.phone || '—' }}</td>
-                      <td class="px-6 py-4 text-sm font-semibold text-gray-900">{{ m.cases }}</td>
-                      <td class="px-6 py-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="m.statusCls">{{ m.status }}</span></td>
-                      <td class="px-6 py-4 text-sm text-gray-500">{{ m.since }}</td>
-                      <td class="px-6 py-4 text-right">
-                        @if (m.is_active) {
-                          <button (click)="deactivateTeamMember(m.id)" [disabled]="teamMemberSaving() === m.id"
-                            class="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50">
-                            @if (teamMemberSaving() === m.id) {
-                              <i class="fa-solid fa-spinner fa-spin"></i>
-                            } @else {
-                              Deactivate
-                            }
-                          </button>
-                        } @else {
-                          <span class="text-xs text-gray-400">Inactive</span>
-                        }
+                      <td class="px-6 py-3.5 text-sm font-medium text-gray-900">{{ row.feature }}</td>
+                      <td class="px-6 py-3.5 text-center"><i class="text-lg" [ngClass]="permIcon(row.admin)"></i></td>
+                      <td class="px-6 py-3.5 text-center cursor-pointer hover:bg-green-50 transition-colors select-none"
+                          (click)="cyclePerm(row)" title="Click to toggle">
+                        <i class="text-lg" [ngClass]="permIcon(row.lawyer)"></i>
                       </td>
                     </tr>
                   }
                 </tbody>
               </table>
             </div>
-          }
+
+            <!-- Modal footer -->
+            <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3">
+              <button (click)="editPermissions.set(false)" [disabled]="permsSaving()"
+                class="px-5 py-2.5 border border-gray-300 text-gray-600 font-semibold rounded-xl hover:bg-gray-50 text-sm disabled:opacity-60">
+                Cancel
+              </button>
+              <button (click)="savePermissions()" [disabled]="permsSaving()"
+                class="px-6 py-2.5 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 text-sm disabled:opacity-70 flex items-center space-x-2">
+                @if (permsSaving()) {
+                  <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+                } @else {
+                  <i class="fa-solid fa-save"></i><span>Save changes</span>
+                }
+              </button>
+            </div>
+
+          </div>
         </div>
-      </div>
+      }
+
     }
+
+
 
     <!-- ══════════════════════════════════════════
          WEB-CFG-07  NOTIFICATIONS
     ══════════════════════════════════════════ -->
     @if (activeTab() === 'Notifications') {
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div class="p-6 border-b border-gray-200">
-          <h2 class="text-lg font-bold text-gray-900">Firm-Wide Notification Preferences</h2>
-          <p class="text-sm text-gray-600 mt-1">Configure notification channels and triggers for the entire firm</p>
-        </div>
-        <div class="p-6">
-          <div class="grid grid-cols-3 gap-8">
+      <div class="space-y-6">
 
-            <!-- Email -->
+        <!-- Notification Types -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <div>
-              <div class="flex items-center space-x-2 mb-5">
-                <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fa-solid fa-envelope text-blue-600"></i></div>
-                <h3 class="text-sm font-bold text-gray-800">Email Notifications</h3>
-              </div>
-              <div class="space-y-4">
-                @for (n of emailNotifs; track n.label; let i = $index; let last = $last) {
-                  <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
-                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(emailNotifs, i)" class="sr-only peer">
-                      <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                  </div>
-                }
-              </div>
+              <h2 class="text-lg font-bold text-gray-900">Notification types</h2>
+              <p class="text-sm text-gray-600 mt-1">Choose what you'd like to be notified about</p>
             </div>
-
-            <!-- SMS -->
-            <div>
-              <div class="flex items-center space-x-2 mb-5">
-                <div class="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center"><i class="fa-solid fa-mobile-screen text-green-600"></i></div>
-                <h3 class="text-sm font-bold text-gray-800">SMS Notifications</h3>
-              </div>
-              <div class="space-y-4">
-                @for (n of smsNotifs; track n.label; let i = $index; let last = $last) {
-                  <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
-                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(smsNotifs, i)" class="sr-only peer">
-                      <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                  </div>
-                }
-              </div>
-            </div>
-
-            <!-- Push -->
-            <div>
-              <div class="flex items-center space-x-2 mb-5">
-                <div class="w-9 h-9 bg-purple-100 rounded-lg flex items-center justify-center"><i class="fa-solid fa-bell text-purple-600"></i></div>
-                <h3 class="text-sm font-bold text-gray-800">In-App Push</h3>
-              </div>
-              <div class="space-y-4">
-                @for (n of pushNotifs; track n.label; let i = $index; let last = $last) {
-                  <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
-                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(pushNotifs, i)" class="sr-only peer">
-                      <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                  </div>
-                }
-              </div>
-            </div>
+            <span class="text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full font-medium">
+              {{ activeNotifCount() }} / {{ notifTypes.length }} active
+            </span>
           </div>
-
-          <div class="mt-8 pt-6 border-t border-gray-200 flex justify-end">
-            <button class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md">
-              <i class="fa-solid fa-save mr-2"></i>Save Preferences
-            </button>
+          <div class="p-6 grid grid-cols-3 gap-4">
+            @for (n of notifTypes; track n.key) {
+              <div class="group border-2 rounded-xl p-5 transition-all cursor-pointer"
+                [ngClass]="notifToggles()[n.key]
+                  ? 'border-amber-300 bg-amber-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'"
+                (click)="toggleNotifType(n.key)">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-11 h-11 rounded-xl flex items-center justify-center" [ngClass]="n.iconBg">
+                    <i [ngClass]="[n.icon, n.iconColor, 'text-base']"></i>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer" (click)="$event.stopPropagation()">
+                    <input type="checkbox" [checked]="notifToggles()[n.key]" (change)="toggleNotifType(n.key)" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                  </label>
+                </div>
+                <p class="text-sm font-bold text-gray-900 mb-1">{{ n.label }}</p>
+                <p class="text-xs text-gray-500">{{ n.desc }}</p>
+              </div>
+            }
           </div>
         </div>
+
+        <!-- Silent Hours -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 flex items-center justify-between flex-wrap gap-4">
+            <div class="flex items-center space-x-4">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                [ngClass]="silentHoursEnabled() ? 'bg-purple-100' : 'bg-gray-100'">
+                <i class="fa-solid fa-moon text-xl"
+                  [ngClass]="silentHoursEnabled() ? 'text-purple-600' : 'text-gray-400'"></i>
+              </div>
+              <div>
+                <p class="text-base font-bold text-gray-900">Silent Hours</p>
+                <p class="text-sm text-gray-500">Pause all notifications during set hours</p>
+              </div>
+            </div>
+            <div class="flex items-center space-x-6">
+              @if (silentHoursEnabled()) {
+                <div class="flex items-center space-x-3">
+                  <div>
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">From</p>
+                    <input type="time" [ngModel]="silentStart()" (ngModelChange)="silentStart.set($event)"
+                      class="px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                  </div>
+                  <i class="fa-solid fa-arrow-right text-gray-300 mt-4"></i>
+                  <div>
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">To</p>
+                    <input type="time" [ngModel]="silentEnd()" (ngModelChange)="silentEnd.set($event)"
+                      class="px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                  </div>
+                </div>
+              }
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" [checked]="silentHoursEnabled()" (change)="silentHoursEnabled.set(!silentHoursEnabled())" class="sr-only peer">
+                <div class="w-12 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Save -->
+        <div class="flex justify-end">
+          <button (click)="saveNotifPreferences()" [disabled]="notifSaving()"
+            class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md disabled:opacity-70 flex items-center space-x-2">
+            @if (notifSaving()) {
+              <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+            } @else {
+              <i class="fa-solid fa-save"></i><span>Save preferences</span>
+            }
+          </button>
+        </div>
+
       </div>
     }
 
     <!-- ══════════════════════════════════════════
          WEB-CFG-05  SECURITY
     ══════════════════════════════════════════ -->
+
+    <!-- Personal 2FA (all users) -->
     @if (activeTab() === 'Security') {
+      <div class="mb-6 bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200">
+          <h2 class="text-lg font-bold text-gray-900">Two-Factor Authentication</h2>
+          <p class="text-sm text-gray-600 mt-1">Add an extra layer of security to your personal account</p>
+        </div>
+        <div class="p-6">
+          <div class="flex items-center space-x-4 mb-5">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+              [ngClass]="currentUser()?.twoFaEnabled ? 'bg-green-100' : 'bg-gray-100'">
+              <i class="fa-solid fa-mobile-screen-button text-xl"
+                [ngClass]="currentUser()?.twoFaEnabled ? 'text-green-600' : 'text-gray-400'"></i>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-gray-900">Authenticator App</p>
+              <p class="text-xs mt-0.5" [ngClass]="currentUser()?.twoFaEnabled ? 'text-green-600' : 'text-gray-500'">
+                {{ currentUser()?.twoFaEnabled ? 'Enabled — your account is protected' : 'Not enabled — your account is less secure' }}
+              </p>
+            </div>
+            <span class="text-xs px-2.5 py-1 rounded-full font-semibold"
+              [ngClass]="currentUser()?.twoFaEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'">
+              {{ currentUser()?.twoFaEnabled ? 'Active' : 'Off' }}
+            </span>
+          </div>
+
+          @if (twoFaSuccess()) {
+            <div class="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center space-x-2">
+              <i class="fa-solid fa-circle-check text-green-500 flex-shrink-0"></i>
+              <p class="text-sm text-green-700 font-medium">2FA enabled successfully!</p>
+            </div>
+          }
+
+          @if (currentUser()?.twoFaEnabled && !show2faSetup()) {
+            <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+              <p class="text-sm text-gray-600 mb-3">Your account is protected with two-factor authentication.</p>
+              @if (!showDisable2FAConfirm()) {
+                <button (click)="showDisable2FAConfirm.set(true)"
+                  class="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-white border border-red-300 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors">
+                  <i class="fa-solid fa-shield-slash"></i><span>Disable 2FA</span>
+                </button>
+              } @else {
+                <div class="space-y-3">
+                  <p class="text-sm text-red-700 font-semibold flex items-center space-x-2">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>Are you sure? This will remove 2FA protection from your account.</span>
+                  </p>
+                  <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Enter your 6-digit authenticator code to confirm</label>
+                    <input type="text" inputmode="numeric" maxlength="6"
+                      [ngModel]="disable2faCode()" (ngModelChange)="disable2faCode.set($event)"
+                      placeholder="000000"
+                      class="w-full px-4 py-2.5 border border-red-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-400 text-center text-lg font-mono tracking-widest bg-white">
+                  </div>
+                  @if (disable2FAError()) {
+                    <p class="text-sm text-red-500 flex items-center space-x-1">
+                      <i class="fa-solid fa-circle-exclamation"></i><span>{{ disable2FAError() }}</span>
+                    </p>
+                  }
+                  <div class="flex gap-2">
+                    <button (click)="disable2FA()" [disabled]="disable2FASaving()"
+                      class="px-4 py-2 bg-red-600 text-white font-bold rounded-lg text-sm hover:bg-red-700 transition-colors disabled:opacity-60 flex items-center space-x-2">
+                      @if (disable2FASaving()) {
+                        <i class="fa-solid fa-spinner fa-spin"></i><span>Disabling…</span>
+                      } @else {
+                        <i class="fa-solid fa-shield-slash"></i><span>Yes, disable</span>
+                      }
+                    </button>
+                    <button (click)="cancelDisable2FA()"
+                      class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          @if (!currentUser()?.twoFaEnabled && !show2faSetup()) {
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p class="text-sm text-gray-600 mb-3">Add an extra layer of security. You'll need your phone to sign in.</p>
+              @if (twoFaError() && !show2faSetup()) {
+                <p class="text-sm text-red-500 mb-2 flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-exclamation"></i><span>{{ twoFaError() }}</span>
+                </p>
+              }
+              <button (click)="startSetup2FA()"
+                class="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors">
+                <i class="fa-solid fa-shield-halved"></i><span>Enable 2FA</span>
+              </button>
+            </div>
+          }
+
+          @if (show2faSetup()) {
+            <div class="border border-amber-200 rounded-xl p-5 bg-amber-50 space-y-4">
+              <p class="text-sm font-semibold text-gray-800">1. Open your authenticator app</p>
+              <p class="text-sm text-gray-600">Enter this secret key (Google Authenticator, Authy…):</p>
+              <div class="flex items-center space-x-2">
+                <div class="flex-1 bg-white border border-amber-300 rounded-lg px-3 py-2.5 font-mono text-sm text-gray-900 tracking-widest break-all">
+                  {{ twoFaSecret() }}
+                </div>
+                <button (click)="copySecret()"
+                  class="flex-shrink-0 w-9 h-9 rounded-lg border flex items-center justify-center transition-colors"
+                  [ngClass]="twoFaCopied() ? 'bg-green-100 border-green-300 text-green-600' : 'bg-white border-amber-300 text-amber-600 hover:bg-amber-100'">
+                  <i [ngClass]="twoFaCopied() ? 'fa-solid fa-check' : 'fa-solid fa-copy'"></i>
+                </button>
+              </div>
+              @if (twoFaCopied()) {
+                <p class="text-sm text-green-600">Copied!</p>
+              }
+              <p class="text-sm font-semibold text-gray-800">2. Enter the 6-digit code</p>
+              <input type="text" inputmode="numeric" maxlength="6"
+                [ngModel]="twoFaCode()" (ngModelChange)="twoFaCode.set($event)"
+                placeholder="000000"
+                class="w-full px-4 py-3 border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-center text-xl font-mono tracking-widest bg-white">
+              @if (twoFaError()) {
+                <p class="text-sm text-red-500 flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-exclamation"></i><span>{{ twoFaError() }}</span>
+                </p>
+              }
+              <div class="flex gap-2">
+                <button (click)="confirm2FA()" [disabled]="twoFaSaving()"
+                  class="px-6 py-2.5 bg-green-500 text-white font-bold rounded-lg text-sm hover:bg-green-600 transition-colors disabled:opacity-60 flex items-center space-x-2">
+                  @if (twoFaSaving()) {
+                    <i class="fa-solid fa-spinner fa-spin"></i><span>Verifying…</span>
+                  } @else {
+                    <i class="fa-solid fa-check"></i><span>Verify & Enable</span>
+                  }
+                </button>
+                <button (click)="cancelSetup2FA()"
+                  class="px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Change Password (all users) -->
+    @if (activeTab() === 'Security') {
+      <div class="mb-6 bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200">
+          <h2 class="text-lg font-bold text-gray-900">Change Password</h2>
+          <p class="text-sm text-gray-600 mt-1">Use a strong password of at least 8 characters.</p>
+        </div>
+        <div class="p-6">
+          @if (pwdSuccess()) {
+            <div class="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center space-x-2">
+              <i class="fa-solid fa-circle-check text-green-500 flex-shrink-0"></i>
+              <p class="text-sm text-green-700 font-medium">Password updated successfully.</p>
+            </div>
+          }
+          @if (pwdError()) {
+            <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
+              <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
+              <p class="text-sm text-red-700">{{ pwdError() }}</p>
+            </div>
+          }
+          <div class="grid grid-cols-2 gap-4">
+            <div class="col-span-2">
+              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Current Password</label>
+              <div class="relative">
+                <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input [type]="showCurrent() ? 'text' : 'password'" [ngModel]="currentPwd()" (ngModelChange)="currentPwd.set($event)"
+                  placeholder="Enter current password"
+                  class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                <button type="button" (click)="showCurrent.update(v => !v)"
+                  class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <i [ngClass]="showCurrent() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1.5">New Password</label>
+              <div class="relative">
+                <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input [type]="showNew() ? 'text' : 'password'" [ngModel]="newPwd()" (ngModelChange)="newPwd.set($event)"
+                  placeholder="Min. 8 characters"
+                  class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                <button type="button" (click)="showNew.update(v => !v)"
+                  class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <i [ngClass]="showNew() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Confirm New Password</label>
+              <div class="relative">
+                <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input [type]="showConfirm() ? 'text' : 'password'" [ngModel]="confirmPwd()" (ngModelChange)="confirmPwd.set($event)"
+                  placeholder="Repeat new password"
+                  class="w-full pl-11 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                  [ngClass]="[confirmPwd() ? 'pr-20' : 'pr-12', pwdMismatch ? 'border-red-400 bg-red-50' : (confirmPwd() && !pwdMismatch ? 'border-green-400' : 'border-gray-300')]">
+                <button type="button" (click)="showConfirm.update(v => !v)"
+                  class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <i [ngClass]="showConfirm() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                </button>
+                @if (confirmPwd()) {
+                  <span class="absolute right-11 top-1/2 -translate-y-1/2">
+                    <i [ngClass]="pwdMismatch ? 'fa-solid fa-circle-xmark text-red-400' : 'fa-solid fa-circle-check text-green-500'"
+                      class="text-base"></i>
+                  </span>
+                }
+              </div>
+              @if (pwdMismatch) {
+                <p class="text-xs text-red-500 mt-1 flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-exclamation"></i><span>Passwords do not match</span>
+                </p>
+              }
+            </div>
+
+            @if (newPwd()) {
+              <div class="col-span-2 bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Password strength</span>
+                    <span class="text-xs font-bold" [ngClass]="passwordStrength.textColor">{{ passwordStrength.label }}</span>
+                  </div>
+                  <div class="flex gap-1">
+                    @for (seg of [1,2,3,4]; track seg) {
+                      <div class="flex-1 h-1.5 rounded-full transition-all duration-300"
+                        [ngClass]="seg <= passwordStrength.score ? passwordStrength.barColor : 'bg-gray-200'"></div>
+                    }
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  @for (req of pwdReqs; track req.label) {
+                    <div class="flex items-center space-x-2">
+                      <div class="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                        [ngClass]="req.met ? 'bg-green-100' : 'bg-gray-200'">
+                        <i class="text-xs" [ngClass]="req.met ? 'fa-solid fa-check text-green-600' : 'fa-solid fa-minus text-gray-400'"></i>
+                      </div>
+                      <span class="text-xs" [ngClass]="req.met ? 'text-green-700 font-medium' : 'text-gray-500'">{{ req.label }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+          <button (click)="changePassword()" [disabled]="pwdSaving()"
+            class="mt-5 w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center space-x-2 text-sm">
+            @if (pwdSaving()) {
+              <i class="fa-solid fa-spinner fa-spin"></i><span>Updating…</span>
+            } @else {
+              <i class="fa-solid fa-shield-check"></i><span>Update Password</span>
+            }
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- Login History (all users) -->
+    @if (activeTab() === 'Security') {
+      <div class="mb-6 bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-200">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+              <i class="fa-solid fa-clock-rotate-left text-blue-500 text-sm"></i>
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">Login Activity</h2>
+              <p class="text-sm text-gray-600 mt-0.5">{{ loginHistory().length }} sign-in{{ loginHistory().length !== 1 ? 's' : '' }} recorded</p>
+            </div>
+          </div>
+        </div>
+        <div class="p-6">
+          @if (loginHistoryLoading()) {
+            <div class="flex justify-center py-6">
+              <i class="fa-solid fa-spinner fa-spin text-gray-300 text-xl"></i>
+            </div>
+          } @else if (loginHistory().length === 0) {
+            <div class="text-center py-6">
+              <i class="fa-solid fa-clock-rotate-left text-gray-200 text-2xl mb-2 block"></i>
+              <p class="text-xs text-gray-400">No history available.</p>
+            </div>
+          } @else {
+            <div class="space-y-2">
+              @for (entry of (showAllHistory() ? loginHistory() : loginHistory().slice(0, 5)); track entry.id; let i = $index) {
+                <div class="flex items-center space-x-2.5 p-2.5 rounded-xl"
+                  [ngClass]="i === 0 ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'">
+                  <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                    [ngClass]="i === 0 ? 'bg-blue-100' : 'bg-gray-200'">
+                    <i class="text-xs" [ngClass]="[loginMethodIcon(entry.login_method), i === 0 ? 'text-blue-600' : 'text-gray-500']"></i>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-medium text-gray-800">{{ loginMethodLabel(entry.login_method) }}</p>
+                    <p class="text-xs text-gray-500">{{ formatDate(entry.logged_in_at) }}</p>
+                  </div>
+                  @if (i === 0) {
+                    <span class="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold flex-shrink-0">Latest</span>
+                  }
+                </div>
+              }
+            </div>
+            @if (loginHistory().length > 5) {
+              <button (click)="showAllHistory.update(v => !v)"
+                class="mt-3 w-full py-2 text-xs font-semibold text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg border border-dashed border-amber-300 transition-colors flex items-center justify-center space-x-1.5">
+                @if (showAllHistory()) {
+                  <i class="fa-solid fa-chevron-up"></i><span>Show less</span>
+                } @else {
+                  <i class="fa-solid fa-chevron-down"></i><span>View all {{ loginHistory().length }} sign-ins</span>
+                }
+              </button>
+            }
+          }
+        </div>
+      </div>
+    }
+
+    @if (isAdmin() && activeTab() === 'Security') {
       <div class="space-y-6">
 
         <!-- 2FA + Session + IP -->
@@ -845,31 +1434,51 @@
           <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <div>
               <h2 class="text-base font-bold text-gray-900">Security Audit Log</h2>
-              <p class="text-sm text-gray-600 mt-0.5">Recent authentication and security events</p>
+              <p class="text-sm text-gray-600 mt-0.5">
+                Recent authentication events
+                @if (securityEvents().length > 0) {
+                  <span class="ml-1 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">{{ securityEvents().length }} event{{ securityEvents().length !== 1 ? 's' : '' }}</span>
+                }
+              </p>
             </div>
-            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">
-              <i class="fa-solid fa-download mr-2"></i>Export Log
-            </button>
           </div>
-          <div class="p-6 space-y-4">
-            @for (e of securityEvents; track e.title) {
-              <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="e.iconBg">
-                  <i [ngClass]="[e.icon, e.iconColor]"></i>
-                </div>
-                <div class="flex-1">
-                  <p class="text-sm font-semibold text-gray-900">{{ e.title }}</p>
-                  <p class="text-xs text-gray-500">{{ e.user }} · IP: {{ e.ip }}</p>
-                </div>
-                <span class="text-xs text-gray-400 whitespace-nowrap">{{ e.when }}</span>
+          <div class="p-6">
+            @if (loginHistoryLoading()) {
+              <div class="flex justify-center py-8">
+                <i class="fa-solid fa-spinner fa-spin text-gray-300 text-xl"></i>
+              </div>
+            } @else if (securityEvents().length === 0) {
+              <div class="text-center py-8">
+                <i class="fa-solid fa-shield-halved text-gray-200 text-3xl mb-3 block"></i>
+                <p class="text-sm text-gray-400">No security events recorded yet.</p>
+              </div>
+            } @else {
+              <div class="space-y-3">
+                @for (e of securityEvents(); track $index) {
+                  <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="e.iconBg">
+                      <i [ngClass]="[e.icon, e.iconColor]"></i>
+                    </div>
+                    <div class="flex-1">
+                      <p class="text-sm font-semibold text-gray-900">{{ e.title }}</p>
+                      <p class="text-xs text-gray-500">{{ e.user }}</p>
+                    </div>
+                    <span class="text-xs text-gray-400 whitespace-nowrap">{{ e.when }}</span>
+                  </div>
+                }
               </div>
             }
           </div>
         </div>
 
         <div class="flex justify-end">
-          <button class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md">
-            <i class="fa-solid fa-save mr-2"></i>Save Security Settings
+          <button (click)="saveFirmSecurity()" [disabled]="securitySaving()"
+            class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md disabled:opacity-70 flex items-center space-x-2">
+            @if (securitySaving()) {
+              <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+            } @else {
+              <i class="fa-solid fa-save"></i><span>Save security settings</span>
+            }
           </button>
         </div>
       </div>
@@ -880,175 +1489,93 @@
     ══════════════════════════════════════════ -->
     @if (activeTab() === 'Integrations') {
       <div class="space-y-6">
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 border-b-0">
-          <div class="flex items-center justify-between mb-6">
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
             <div>
               <h2 class="text-lg font-bold text-gray-900">Integrations</h2>
-              <p class="text-sm text-gray-600 mt-1">Connect your favorite tools with LegalFlow</p>
+              <p class="text-sm text-gray-600 mt-1">Connect your favorite tools with LegalHub</p>
             </div>
-            <span class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-medium">3 of 5 connected</span>
+            <span class="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-medium">
+              {{ connectedCount() }} / {{ integrations().length }} connected
+            </span>
           </div>
-        </div>
 
-        @for (group of integrations; track group.category) {
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div class="px-6 py-4 border-b border-gray-100">
-              <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wider">{{ group.category }}</h3>
+          @if (integrationsLoading()) {
+            <div class="p-10 flex items-center justify-center">
+              <i class="fa-solid fa-spinner fa-spin text-2xl text-amber-500 mr-3"></i>
+              <span class="text-sm text-gray-500">Checking connections…</span>
             </div>
-            <div class="p-6 grid grid-cols-2 gap-4">
-              @for (intg of group.items; track intg.name) {
-                <div class="border-2 rounded-xl p-5 transition-all"
-                     [ngClass]="intg.connected ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-amber-300'">
-                  <div class="flex items-start justify-between mb-3">
-                    <div class="flex items-center space-x-3">
-                      <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" [ngClass]="intg.iconBg">
-                        <i [ngClass]="[intg.icon, intg.iconColor, 'text-xl']"></i>
-                      </div>
-                      <div>
-                        <p class="text-sm font-bold text-gray-900">{{ intg.name }}</p>
-                        <span class="text-xs px-2 py-0.5 rounded-full font-medium" [ngClass]="intg.statusCls">
-                          {{ intg.connected ? 'Connected' : 'Not connected' }}
-                        </span>
-                      </div>
+          } @else {
+            <div class="p-6 grid grid-cols-4 gap-4">
+              @for (intg of integrations(); track intg.name) {
+                <div class="border-2 rounded-xl p-5 flex flex-col transition-all"
+                  [ngClass]="intg.connected ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white hover:border-amber-300'">
+
+                  <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 rounded-xl flex items-center justify-center" [ngClass]="intg.iconBg">
+                      <i [ngClass]="[intg.icon, intg.iconColor, 'text-xl']"></i>
                     </div>
-                  </div>
-                  <p class="text-xs text-gray-600 mb-3">{{ intg.desc }}</p>
-                  @if (intg.connected && intg.connectedAs) {
-                    <p class="text-xs text-gray-500 mb-3"><i class="fa-solid fa-link mr-1 text-green-500"></i>{{ intg.connectedAs }}</p>
-                  }
-                  <div class="flex items-center space-x-2">
                     @if (intg.connected) {
-                      <button class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium hover:bg-white transition-colors">
-                        <i class="fa-solid fa-gear mr-1"></i>Configure
-                      </button>
-                      <button class="flex-1 px-3 py-2 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors">
-                        <i class="fa-solid fa-unlink mr-1"></i>Disconnect
-                      </button>
+                      <span class="flex items-center space-x-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                        <i class="fa-solid fa-circle text-[6px]"></i><span>Connected</span>
+                      </span>
                     } @else {
-                      <button class="w-full px-3 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-xs font-medium hover:shadow-md transition-all">
-                        <i class="fa-solid fa-plug mr-1"></i>Connect
-                      </button>
+                      <span class="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">Inactive</span>
                     }
                   </div>
-                </div>
-              }
-            </div>
-          </div>
-        }
-      </div>
-    }
 
-    <!-- ══════════════════════════════════════════
-         WEB-CFG-08  STORAGE
-    ══════════════════════════════════════════ -->
-    @if (activeTab() === 'Storage') {
-      <div class="space-y-6">
+                  <p class="text-sm font-bold text-gray-900">{{ intg.name }}</p>
+                  <p class="text-xs text-gray-400 font-medium mb-2">{{ intg.category }}</p>
+                  <p class="text-xs text-gray-500 leading-relaxed flex-1 mb-4">{{ intg.desc }}</p>
 
-        <!-- Usage Overview -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-            <div>
-              <h2 class="text-lg font-bold text-gray-900">Storage Management</h2>
-              <p class="text-sm text-gray-600 mt-1">Monitor usage and upgrade your storage plan</p>
-            </div>
-            <button class="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 text-sm">
-              <i class="fa-solid fa-arrow-up mr-2"></i>Upgrade Storage
-            </button>
-          </div>
-          <div class="p-6">
-
-            <!-- Big usage bar -->
-            <div class="bg-gray-50 rounded-xl p-6 border border-gray-200 mb-6">
-              <div class="flex items-end justify-between mb-3">
-                <div>
-                  <p class="text-3xl font-bold text-gray-900">670 GB <span class="text-lg font-normal text-gray-500">/ 2 TB used</span></p>
-                  <p class="text-sm text-gray-500 mt-1">Business Plan · 33% capacity remaining</p>
-                </div>
-                <span class="text-sm font-semibold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full">67% used</span>
-              </div>
-              <div class="w-full bg-gray-200 rounded-full h-4">
-                <div class="h-4 rounded-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all" style="width:67%"></div>
-              </div>
-            </div>
-
-            <!-- Breakdown -->
-            <div class="grid grid-cols-4 gap-4 mb-6">
-              @for (s of storageBreakdown; track s.label) {
-                <div class="bg-white border border-gray-200 rounded-xl p-5">
-                  <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-3" [ngClass]="s.iconBg">
-                    <i [ngClass]="[s.icon, s.iconColor]"></i>
-                  </div>
-                  <p class="text-sm font-semibold text-gray-900 mb-1">{{ s.label }}</p>
-                  <p class="text-xl font-bold text-gray-900 mb-2">{{ s.used }}</p>
-                  <div class="w-full bg-gray-200 rounded-full h-1.5">
-                    <div class="h-1.5 rounded-full" [ngClass]="s.color" [style.width.%]="s.pct"></div>
-                  </div>
-                  <p class="text-xs text-gray-500 mt-1">{{ s.pct }}% of total</p>
-                </div>
-              }
-            </div>
-          </div>
-        </div>
-
-        <!-- Storage Plans -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div class="p-6 border-b border-gray-200">
-            <h2 class="text-base font-bold text-gray-900">Storage Plans</h2>
-            <p class="text-sm text-gray-600 mt-0.5">Choose a plan that fits your firm's needs</p>
-          </div>
-          <div class="p-6">
-            <div class="grid grid-cols-4 gap-4">
-              @for (sp of storagePlans; track sp.name) {
-                <div class="border-2 rounded-xl p-5 text-center transition-all"
-                     [ngClass]="sp.current ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-amber-300 cursor-pointer'">
-                  @if (sp.current) {
-                    <span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full font-medium">Current</span>
+                  @if (intg.connected && intg.connectedAs) {
+                    <p class="text-xs text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2 mb-3 truncate">
+                      <i class="fa-solid fa-link mr-1.5 text-green-500"></i>{{ intg.connectedAs }}
+                    </p>
                   }
-                  <p class="text-lg font-bold text-gray-900 mt-3">{{ sp.name }}</p>
-                  <p class="text-3xl font-black text-gray-900 my-2">{{ sp.size }}</p>
-                  <p class="text-sm font-semibold mb-4" [ngClass]="sp.current ? 'text-amber-600' : 'text-gray-600'">{{ sp.price }}</p>
-                  <button class="w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                    [ngClass]="sp.current ? 'bg-amber-500 text-white' : 'border border-gray-300 hover:bg-gray-50'">
-                    {{ sp.current ? 'Current Plan' : 'Select' }}
-                  </button>
+
+                  <!-- Google Calendar connected -->
+                  @if (intg.connected && intg.key === 'google_calendar') {
+                    <div class="flex space-x-2">
+                      <button (click)="syncGoogleCalendar()" [disabled]="intgActionLoading() === 'google_calendar'"
+                        class="flex-1 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors disabled:opacity-60 flex items-center justify-center space-x-1">
+                        @if (intgActionLoading() === 'google_calendar') {
+                          <i class="fa-solid fa-spinner fa-spin"></i><span>Syncing…</span>
+                        } @else {
+                          <i class="fa-solid fa-rotate"></i><span>Sync Events</span>
+                        }
+                      </button>
+                      <button (click)="connectGoogleCalendar()" title="Reconnect"
+                        class="px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                        <i class="fa-brands fa-google"></i>
+                      </button>
+                    </div>
+                  }
+                  <!-- WhatsApp / Stripe / Sadad connected -->
+                  @if (intg.connected && intg.key !== 'google_calendar') {
+                    <div class="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs font-semibold text-green-700 text-center">
+                      <i class="fa-solid fa-circle-check mr-1"></i>Active & running
+                    </div>
+                  }
+                  <!-- Not connected: Google Calendar -->
+                  @if (!intg.connected && intg.key === 'google_calendar') {
+                    <button (click)="connectGoogleCalendar()"
+                      class="w-full px-3 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg text-xs font-semibold hover:shadow-md transition-all">
+                      <i class="fa-brands fa-google mr-1.5"></i>Connect with Google
+                    </button>
+                  }
+                  <!-- Not connected: server-configured integrations -->
+                  @if (!intg.connected && intg.key !== 'google_calendar') {
+                    <div class="w-full px-3 py-2.5 bg-gray-100 text-gray-400 rounded-lg text-xs font-semibold text-center cursor-default"
+                      title="Configure the API keys on the server to enable this integration">
+                      <i class="fa-solid fa-server mr-1.5"></i>Server config required
+                    </div>
+                  }
                 </div>
               }
             </div>
-          </div>
-        </div>
-
-        <!-- Usage History -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-            <h2 class="text-base font-bold text-gray-900">Storage Growth History</h2>
-            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"><i class="fa-solid fa-download mr-2"></i>Export</button>
-          </div>
-          <div class="overflow-x-auto">
-            <table class="w-full">
-              <thead class="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Month</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Total Used</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Growth</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Usage Bar</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-100">
-                @for (h of storageHistory; track h.month) {
-                  <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ h.month }}</td>
-                    <td class="px-6 py-4 text-sm text-gray-900">{{ h.used }}</td>
-                    <td class="px-6 py-4"><span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{{ h.change }}</span></td>
-                    <td class="px-6 py-4 w-48">
-                      <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div class="h-2 rounded-full bg-amber-500" [style.width.%]="h.pct"></div>
-                      </div>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
+          }
         </div>
 
       </div>
@@ -1057,3 +1584,64 @@
   </section>
 
 </main>
+
+<!-- ══ DELETE ACCOUNT MODAL (lawyer only) ══ -->
+@if (showDeleteConfirm()) {
+  <div class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+    style="background:rgba(0,0,0,0.5);"
+    (click)="!deleteAccountSaving() && showDeleteConfirm.set(false); deleteAccountError.set('')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-0 overflow-hidden"
+      (click)="$event.stopPropagation()">
+
+      <!-- Header -->
+      <div class="bg-red-600 px-6 py-5 flex items-center gap-4">
+        <div class="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-triangle-exclamation text-white text-xl"></i>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold text-white">Delete account</h2>
+          <p class="text-sm text-red-100">This action cannot be undone</p>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="px-6 py-6 space-y-4">
+        <p class="text-sm text-gray-700 leading-relaxed">
+          You are about to <span class="font-bold text-red-600">permanently delete</span> your account.
+          All your data — cases, documents, history — will be erased and cannot be recovered.
+        </p>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <i class="fa-solid fa-circle-info text-amber-500 mt-0.5 flex-shrink-0"></i>
+          <p class="text-xs text-amber-800">
+            If you're leaving the firm, ask your Admin to deactivate your account instead — that preserves case history.
+          </p>
+        </div>
+
+        @if (deleteAccountError()) {
+          <div class="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+            <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
+            <p class="text-sm text-red-700">{{ deleteAccountError() }}</p>
+          </div>
+        }
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 pb-6 flex items-center gap-3">
+        <button (click)="deleteAccount()" [disabled]="deleteAccountSaving()"
+          class="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors disabled:opacity-60 flex items-center justify-center space-x-2 text-sm">
+          @if (deleteAccountSaving()) {
+            <i class="fa-solid fa-spinner fa-spin"></i><span>Deleting…</span>
+          } @else {
+            <i class="fa-solid fa-trash"></i><span>Yes, permanently delete</span>
+          }
+        </button>
+        <button (click)="showDeleteConfirm.set(false); deleteAccountError.set('')" [disabled]="deleteAccountSaving()"
+          class="flex-1 py-3 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors text-sm disabled:opacity-60">
+          Cancel
+        </button>
+      </div>
+
+    </div>
+  </div>
+}

@@ -1,8 +1,11 @@
-import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { HttpInterceptorFn, HttpErrorResponse, HttpContextToken } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { from, switchMap, catchError, throwError } from 'rxjs';
 import { environment } from '../environments/environment';
+
+/** Set to true on requests that should NOT trigger a /auth redirect on 401. */
+export const SKIP_AUTH_REDIRECT = new HttpContextToken<boolean>(() => false);
 
 // Shared refresh promise — deduplicates concurrent refresh calls
 let refreshing: Promise<string | null> | null = null;
@@ -20,14 +23,32 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       const authReq = token
         ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
         : req;
-      return next(authReq);
-    }),
-    catchError((err: HttpErrorResponse) => {
-      if (err.status === 401) {
-        clearSession();
-        router.navigate(['/auth']);
-      }
-      return throwError(() => err);
+      const skipRedirect = req.context.get(SKIP_AUTH_REDIRECT);
+      return next(authReq).pipe(
+        catchError((err: HttpErrorResponse) => {
+          if (err.status === 401) {
+            return from(refreshAccessToken()).pipe(
+              switchMap(newToken => {
+                if (!newToken) {
+                  if (!skipRedirect) { clearSession(); router.navigate(['/auth']); }
+                  return throwError(() => err);
+                }
+                const retryReq = req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } });
+                return next(retryReq).pipe(
+                  catchError((retryErr: HttpErrorResponse) => {
+                    if (retryErr.status === 401 && !skipRedirect) {
+                      clearSession();
+                      router.navigate(['/auth']);
+                    }
+                    return throwError(() => retryErr);
+                  }),
+                );
+              }),
+            );
+          }
+          return throwError(() => err);
+        }),
+      );
     }),
   );
 };
@@ -35,30 +56,52 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function isAuthEndpoint(url: string): boolean {
-  return (
-    url.includes('/api/auth/login') ||
-    url.includes('/api/auth/refresh') ||
-    url.includes('/api/auth/register') ||
-    url.includes('/api/auth/forgot-password')
-  );
+  const publicPaths = [
+    '/api/auth/login',
+    '/api/auth/2fa/login',
+    '/api/auth/oauth/token',
+    '/api/auth/refresh',
+    '/api/auth/register',
+    '/api/auth/forgot-password',
+    '/api/auth/reset-password',
+  ];
+  return publicPaths.some(path => {
+    const idx = url.indexOf(path);
+    if (idx === -1) return false;
+    const after = url[idx + path.length];
+    return after === undefined || after === '?' || after === '&';
+  });
+}
+
+/** Read a session key from whichever storage holds the current session. */
+function getSessionItem(key: string): string | null {
+  return localStorage.getItem(key) ?? sessionStorage.getItem(key);
+}
+
+/** Write a session key back to whichever storage already holds the session. */
+function setSessionItem(key: string, value: string): void {
+  if (sessionStorage.getItem('access_token') !== null || sessionStorage.getItem('refresh_token') !== null) {
+    sessionStorage.setItem(key, value);
+  } else {
+    localStorage.setItem(key, value);
+  }
 }
 
 /** Returns a valid (non-expired) token, refreshing proactively when needed. */
 async function getValidToken(): Promise<string | null> {
-  const token = localStorage.getItem('access_token');
+  const token = getSessionItem('access_token');
   if (!token) return null;
 
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
     const expiresInMs = payload.exp * 1000 - Date.now();
 
-    // Still valid for more than 60 seconds → use as-is
-    if (expiresInMs > 60_000) return token;
+    // Still valid for more than 5 minutes → use as-is
+    if (expiresInMs > 300_000) return token;
 
     // Expires soon (or already expired) → refresh
     return await refreshAccessToken();
   } catch {
-    // Malformed token — attempt the request anyway and let the 401 handler deal with it
     return token;
   }
 }
@@ -68,7 +111,7 @@ async function getValidToken(): Promise<string | null> {
 async function refreshAccessToken(): Promise<string | null> {
   if (refreshing) return refreshing;
 
-  const refreshToken = localStorage.getItem('refresh_token');
+  const refreshToken = getSessionItem('refresh_token');
   if (!refreshToken) {
     clearSession();
     return null;
@@ -84,7 +127,7 @@ async function refreshAccessToken(): Promise<string | null> {
       return res.json();
     })
     .then((data: { access_token: string }) => {
-      localStorage.setItem('access_token', data.access_token);
+      setSessionItem('access_token', data.access_token);
       return data.access_token;
     })
     .catch(() => {
@@ -97,7 +140,9 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 function clearSession(): void {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
-  localStorage.removeItem('current_user');
+  ['access_token', 'refresh_token', 'current_user'].forEach(k => {
+    localStorage.removeItem(k);
+    sessionStorage.removeItem(k);
+  });
+  window.dispatchEvent(new CustomEvent('lh:session-cleared'));
 }

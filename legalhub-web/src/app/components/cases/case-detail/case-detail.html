@@ -4,7 +4,7 @@
     <div class="flex items-center space-x-4">
       <button (click)="goBack()" class="mr-4 flex items-center space-x-2 text-gray-600 hover:text-amber-600 transition-colors">
         <i class="fa-solid fa-arrow-left text-lg"></i>
-        <span class="text-sm font-medium">Back to Cases</span>
+        <span class="text-sm font-medium">Back to cases</span>
       </button>
     </div>
     <div class="flex items-center space-x-3">
@@ -12,7 +12,7 @@
       @if (case()) {
         <button (click)="openEditModal()" class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
           <i class="fa-solid fa-pen-to-square"></i>
-          <span class="font-medium">Edit Case</span>
+          <span class="font-medium">Edit case</span>
         </button>
       <button (click)="exportPdf()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
         <i class="fa-solid fa-file-pdf mr-2 text-red-500"></i>Export PDF
@@ -43,101 +43,107 @@
 
   @if (!isLoading() && case()) {
 
-  <!-- CASE HEADER -->
-  <section class="bg-white border-b border-gray-200 px-8 py-6">
-    <div class="flex items-start justify-between mb-6">
-      <div class="flex items-start space-x-5">
-        <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-             [ngClass]="typeBg(case()!.type)">
-          <i class="fa-solid fa-briefcase text-2xl" [ngClass]="typeColor(case()!.type)"></i>
-        </div>
-        <div>
-          <div class="flex items-center space-x-3 mb-2">
-            <h1 class="text-2xl font-bold text-gray-900">{{ case()!.title }}</h1>
-            <span class="text-xs px-3 py-1.5 rounded-full font-semibold"
-                  [ngClass]="[statusBg(case()!.status), statusColor(case()!.status)]">
-              {{ statusLabel(case()!.status) }}
-            </span>
-            <span class="text-xs px-3 py-1.5 rounded-full font-semibold"
-                  [ngClass]="[typeBg(case()!.type), typeColor(case()!.type)]">
-              {{ typeLabel(case()!.type) }}
-            </span>
-            <span class="text-xs px-3 py-1.5 rounded-full font-semibold"
-                  [ngClass]="priorityClasses(case()!.priority)">
-              {{ priorityLabel(case()!.priority) }}
-            </span>
-          </div>
-          <div class="flex items-center space-x-6 text-sm text-gray-600">
-            <span><i class="fa-solid fa-hashtag mr-2 text-gray-400"></i>{{ case()!.caseNumber }}</span>
-            <span><i class="fa-solid fa-user mr-2 text-gray-400"></i>{{ case()!.client || '—' }}</span>
-            @if (case()!.court) {
-              <span><i class="fa-solid fa-landmark mr-2 text-gray-400"></i>{{ case()!.court }}</span>
-            }
-          </div>
-        </div>
-      </div>
-      <div class="flex items-center space-x-2">
-        <button (click)="toggleFavorite()"
-                class="px-4 py-2 border rounded-lg text-sm transition-colors flex items-center"
-                [ngClass]="isFavorite()
-                  ? 'bg-amber-50 border-amber-300 text-amber-700'
-                  : 'border-gray-300 text-gray-600 hover:bg-gray-50'">
-          <i class="mr-2" [ngClass]="isFavorite() ? 'fa-solid fa-star text-amber-500' : 'fa-regular fa-star'"></i>
-          {{ isFavorite() ? 'Favorited' : 'Favorite' }}
-        </button>
-        <button (click)="copyLink()"
-                class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm flex items-center transition-colors"
-                [ngClass]="copied() ? 'bg-green-50 border-green-300 text-green-700' : 'text-gray-600'">
-          <i class="mr-2" [ngClass]="copied() ? 'fa-solid fa-check' : 'fa-solid fa-copy'"></i>
-          {{ copied() ? 'Copied!' : 'Copy Link' }}
-        </button>
-      </div>
-    </div>
+  <!-- CASE CARD -->
+  <section class="bg-gray-50 border-b border-gray-200 px-8 py-6">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
 
-    <!-- Stat pills -->
-    <div class="grid grid-cols-5 gap-4">
-      <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-blue-600 font-semibold uppercase">Status</span>
-          <i class="fa-solid fa-circle-info text-blue-500"></i>
+      <!-- Row 1: Icon · Case Number · Title · Badges · Actions -->
+      <div class="flex items-start justify-between mb-5">
+        <div class="flex items-start gap-4">
+          <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm"
+               [ngClass]="typeBg(case()!.type)">
+            <i class="fa-solid fa-briefcase text-xl" [ngClass]="typeColor(case()!.type)"></i>
+          </div>
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900 leading-tight mb-2">{{ case()!.title }}</h1>
+            <p class="text-xs font-bold text-gray-400 tracking-widest uppercase mb-1">
+              #{{ case()!.caseNumber }}
+            </p>
+            
+            <div class="flex items-center flex-wrap gap-2">
+              <span class="text-xs px-2.5 py-1 rounded-full font-semibold"
+                    [ngClass]="[statusBg(case()!.status), statusColor(case()!.status)]">
+                <i class="fa-solid fa-circle text-xs mr-1"></i>{{ statusLabel(case()!.status) }}
+              </span>
+              <span class="text-xs px-2.5 py-1 rounded-full font-semibold"
+                    [ngClass]="[typeBg(case()!.type), typeColor(case()!.type)]">
+                {{ typeLabel(case()!.type) }}
+              </span>
+              <span class="text-xs px-2.5 py-1 rounded-full font-semibold"
+                    [ngClass]="priorityClasses(case()!.priority)">
+                <i class="fa-solid fa-flag mr-1 text-xs"></i>{{ priorityLabel(case()!.priority) }}
+              </span>
+            </div>
+          </div>
         </div>
-        <p class="text-lg font-bold text-blue-900">{{ statusLabel(case()!.status) }}</p>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button (click)="openAiChat()"
+                  class="px-3 py-2 border rounded-lg text-sm transition-colors flex items-center gap-1.5 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-400">
+            <i class="fa-solid fa-robot"></i>
+            AI Assistant
+          </button>
+          @if (case()!.status === 'CLOSED') {
+            <button (click)="requestRestore()"
+                    class="px-3 py-2 border rounded-lg text-sm transition-colors flex items-center gap-1.5 border-green-300 text-green-700 hover:bg-green-50"
+                    [disabled]="isRestoring()">
+              @if (isRestoring()) {
+                <i class="fa-solid fa-spinner fa-spin"></i>
+              } @else {
+                <i class="fa-solid fa-rotate-left"></i>
+              }
+              {{ isRestoring() ? 'Restoring...' : 'Restore' }}
+            </button>
+          } @else {
+            <button (click)="requestArchive()"
+                    class="px-3 py-2 border rounded-lg text-sm transition-colors flex items-center gap-1.5 border-gray-300 text-gray-600 hover:bg-red-50 hover:border-red-300 hover:text-red-600">
+              <i class="fa-solid fa-box-archive"></i>
+              Archive
+            </button>
+          }
+        </div>
       </div>
-      <div class="bg-green-50 rounded-xl p-4 border border-green-200">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-green-600 font-semibold uppercase">Priority</span>
-          <i class="fa-solid fa-flag text-green-500"></i>
+
+      <!-- Divider -->
+      <div class="border-t border-gray-100 mt-5 mb-4"></div>
+
+      <!-- Status Lifecycle (compact) -->
+      <div>
+        <p class="text-xs font-bold text-black-400 tracking-widest uppercase mb-3">Case Status Lifecycle</p>
+        <div class="flex items-center">
+          @for (step of lifecycleSteps; track step.key; let i = $index; let last = $last) {
+            <div class="flex flex-col items-center transition-opacity"
+                 [ngClass]="canTransitionTo(step.key) && !isUpdatingStatus() ? 'cursor-pointer hover:opacity-75' : 'cursor-default'"
+                 (click)="requestLifecycleChange(step.key)">
+              <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all"
+                   [ngClass]="stepCircleCls(i)">
+                @if (updatingToStep() === step.key) {
+                  <i class="fa-solid fa-spinner fa-spin text-xs"></i>
+                } @else if (stepState(i) === 'archived-from') {
+                  <i class="fa-solid fa-box-archive text-xs"></i>
+                } @else if (stepState(i) === 'done') {
+                  <i class="fa-solid fa-check text-xs"></i>
+                } @else if (stepState(i) === 'skipped') {
+                  <i class="fa-solid fa-minus text-xs"></i>
+                } @else {
+                  {{ i + 1 }}
+                }
+              </div>
+              <p class="text-xs mt-1 font-medium whitespace-nowrap" [ngClass]="stepLabelCls(i)">
+                {{ step.label }}
+              </p>
+            </div>
+            @if (!last) {
+              <div class="flex-1 h-0.5 mx-1.5 mb-5" [ngClass]="connectorCls(i)"></div>
+            }
+          }
         </div>
-        <p class="text-base font-bold text-green-900 truncate">{{ priorityLabel(case()!.priority) }}</p>
       </div>
-      <div class="bg-amber-50 rounded-xl p-4 border border-amber-200">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-amber-600 font-semibold uppercase">Next Hearing</span>
-          <i class="fa-solid fa-gavel text-amber-500"></i>
-        </div>
-        <p class="text-lg font-bold text-amber-900">{{ formatDate(case()!.nextHearing) }}</p>
-      </div>
-      <button (click)="setTab('Documents')"
-              class="bg-purple-50 rounded-xl p-4 border border-purple-200 text-left hover:bg-purple-100 transition-colors">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-purple-600 font-semibold uppercase">Documents</span>
-          <i class="fa-solid fa-folder text-purple-500"></i>
-        </div>
-        <p class="text-lg font-bold text-purple-900">{{ documents().length }}</p>
-      </button>
-      <button (click)="setTab('Tasks')"
-              class="bg-red-50 rounded-xl p-4 border border-red-200 text-left hover:bg-red-100 transition-colors">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-red-600 font-semibold uppercase">Tasks</span>
-          <i class="fa-solid fa-tasks text-red-500"></i>
-        </div>
-        <p class="text-lg font-bold text-red-900">{{ tasks().length }}</p>
-      </button>
+
     </div>
   </section>
 
   <!-- TABS -->
-  <section class="bg-white border-b border-gray-200 px-8">
+  <section class="bg-slate-100 border-b border-slate-200 px-8">
     <div class="flex items-center space-x-1">
       @for (tab of tabs; track tab) {
         <button (click)="setTab(tab)"
@@ -155,202 +161,164 @@
        TAB: OVERVIEW
   ══════════════════════════════════════════ -->
   @if (activeTab() === 'Overview') {
-    <div class="px-8 py-6">
-      <div class="grid grid-cols-3 gap-6">
+    <section class="px-8 py-6 space-y-6">
 
-        <!-- LEFT -->
-        <div class="col-span-2 space-y-6">
+      <!-- Case summary -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4">
+          <h3 class="text-base font-bold text-gray-900">Case summary</h3>
+        </div>
+        <div class="px-6 pb-5 grid grid-cols-4 gap-3">
 
-          <!-- Description -->
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 class="text-lg font-bold text-gray-900 mb-4">Case Description</h2>
-            <p class="text-gray-700 leading-relaxed">{{ case()!.description || 'No description provided.' }}</p>
+          <!-- Documents -->
+          <button (click)="setTab('Documents')"
+                  class="flex items-center gap-3 bg-purple-50 rounded-xl p-3 border border-purple-100 hover:border-purple-300 hover:bg-purple-100 hover:shadow-sm transition-all text-left group">
+            <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-purple-200 transition-colors">
+              <i class="fa-solid fa-folder-open text-purple-600 text-xs"></i>
+            </div>
+            <div>
+              <p class="text-lg font-bold text-gray-900 leading-none">{{ documents().length }}</p>
+              <p class="text-[10px] text-gray-500 mt-0.5">Documents</p>
+            </div>
+          </button>
+
+          <!-- Tasks -->
+          <button (click)="setTab('Tasks')"
+                  class="flex items-center gap-3 bg-green-50 rounded-xl p-3 border border-green-100 hover:border-green-300 hover:bg-green-100 hover:shadow-sm transition-all text-left group">
+            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-green-200 transition-colors">
+              <i class="fa-solid fa-list-check text-green-600 text-xs"></i>
+            </div>
+            <div>
+              <p class="text-lg font-bold text-gray-900 leading-none">{{ tasks().length }}</p>
+              <p class="text-[10px] text-gray-500 mt-0.5">Tasks</p>
+              <p class="text-[10px] text-green-500 font-medium">{{ tasks().filter(t => !t.done).length }} pending</p>
+            </div>
+          </button>
+
+          <!-- Notes -->
+          <button (click)="setTab('Notes')"
+                  class="flex items-center gap-3 bg-orange-50 rounded-xl p-3 border border-orange-100 hover:border-orange-300 hover:bg-orange-100 hover:shadow-sm transition-all text-left group">
+            <div class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-orange-200 transition-colors">
+              <i class="fa-solid fa-note-sticky text-orange-500 text-xs"></i>
+            </div>
+            <div>
+              <p class="text-lg font-bold text-gray-900 leading-none">{{ notes().length }}</p>
+              <p class="text-[10px] text-gray-500 mt-0.5">Notes</p>
+            </div>
+          </button>
+
+          <!-- Next Hearing -->
+          <div class="flex items-center gap-3 bg-indigo-50 rounded-xl p-3 border border-indigo-100">
+            <div class="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-calendar-days text-indigo-600 text-xs"></i>
+            </div>
+            <div class="min-w-0">
+              <p class="text-lg font-bold text-gray-900 leading-none truncate">{{ formatDate(case()!.nextHearing) }}</p>
+              <p class="text-[10px] text-gray-500 mt-0.5">Next hearing</p>
+            </div>
           </div>
 
-          <!-- Timeline (compact) -->
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div class="flex items-center justify-between mb-5">
-              <h2 class="text-lg font-bold text-gray-900">Recent Timeline</h2>
-              <button (click)="setTab('Timeline')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
-                View All ({{ timeline().length }})
-              </button>
+        </div>
+      </div>
+
+      <!-- Case information -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-6">Case information</h3>
+        <div class="grid grid-cols-4 gap-4">
+                    <!-- Description (full width) -->
+          <div class="col-span-4 flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
+            <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-align-left text-amber-600"></i>
             </div>
-            @if (timeline().length === 0) {
-              <p class="text-sm text-gray-400 text-center py-4">No timeline events yet.</p>
-            }
-            <div class="space-y-4">
-              @for (item of timeline().slice(0, 4); track item.created_at) {
-                <div class="flex items-start space-x-4">
-                  <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                    <i class="fa-solid fa-clock-rotate-left text-xs text-amber-600"></i>
-                  </div>
-                  <div class="flex-1">
-                    <div class="flex items-start justify-between">
-                      <p class="text-sm font-semibold text-gray-900">{{ item.action }}</p>
-                      <span class="text-xs text-gray-500 ml-4 whitespace-nowrap">{{ formatTimelineDate(item.created_at) }}</span>
-                    </div>
-                  </div>
-                </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Description</p>
+              <p class="text-sm font-medium text-gray-900 leading-relaxed">{{ case()!.description || 'No description provided.' }}</p>
+            </div>
+          </div>
+
+          <!-- Client -->
+          <button (click)="goToClient()"
+                  class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-blue-50 transition-colors text-left group">
+            <div class="w-10 h-10 rounded-full bg-blue-100 border-2 border-blue-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
+              @if (case()!.clientAvatarUrl) {
+                <img [src]="case()!.clientAvatarUrl" [alt]="case()!.client" class="w-full h-full object-cover">
+              } @else if (case()!.client) {
+                <span class="text-sm font-bold text-blue-600">{{ memberInitials(case()!.client) }}</span>
+              } @else {
+                <i class="fa-solid fa-user text-blue-400"></i>
               }
             </div>
-          </div>
-
-          <!-- Documents (preview) -->
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-bold text-gray-900">Recent Documents</h2>
-              <button (click)="setTab('Documents')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
+            <div class="min-w-0">
+              <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Client</p>
+              <p class="text-sm font-medium text-blue-700 group-hover:underline truncate">{{ case()!.client || '—' }}</p>
             </div>
-            <div class="space-y-3">
-              @for (doc of documents().slice(0, 3); track doc.id) {
-                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div class="flex items-center space-x-3 flex-1">
-                    <div class="w-10 h-10 rounded-lg flex items-center justify-center" [ngClass]="doc.iconBg">
-                      <i class="fa-solid" [ngClass]="[doc.icon, doc.iconColor]"></i>
-                    </div>
-                    <div>
-                      <p class="text-sm font-medium text-gray-900">{{ doc.name }}</p>
-                      <p class="text-xs text-gray-600">Uploaded {{ doc.ago }} · {{ doc.size }}</p>
-                    </div>
+          </button>
+
+                    <!-- Team -->
+          <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
+            <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-users text-amber-600"></i>
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Team</p>
+              @if (team().length > 0) {
+                <div class="flex items-center gap-2">
+                  <div class="flex -space-x-1.5">
+                    @for (m of team().slice(0, 5); track m.id) {
+                      @if (m.avatar_url) {
+                        <img [src]="m.avatar_url" [title]="m.full_name" class="w-6 h-6 rounded-full border-2 border-white object-cover">
+                      } @else {
+                        <div [title]="m.full_name" class="w-6 h-6 rounded-full border-2 border-white bg-amber-100 flex items-center justify-center">
+                          <span class="font-bold text-amber-700" style="font-size:8px">{{ memberInitials(m.full_name) }}</span>
+                        </div>
+                      }
+                    }
+                    @if (team().length > 5) {
+                      <div class="w-6 h-6 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center">
+                        <span class="font-bold text-gray-600" style="font-size:8px">+{{ team().length - 5 }}</span>
+                      </div>
+                    }
                   </div>
-                  <button class="text-gray-400 hover:text-gray-600 p-1">
-                    <i class="fa-solid fa-download"></i>
+                  <button (click)="setTab('Team')" class="text-xs text-amber-600 hover:underline font-medium whitespace-nowrap">
+                    {{ team().length }} member{{ team().length > 1 ? 's' : '' }}
                   </button>
                 </div>
+              } @else {
+                <p class="text-sm font-medium text-gray-400">No members</p>
               }
             </div>
           </div>
 
-        </div><!-- /col-span-2 -->
-
-        <!-- RIGHT sidebar -->
-        <div class="space-y-6">
-
-          <!-- Participants -->
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 class="text-lg font-bold text-gray-900 mb-4">Participants</h2>
-            <div class="pt-2">
-              <p class="text-xs text-gray-600 font-semibold uppercase mb-3">Client</p>
-              <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <i class="fa-solid fa-user text-blue-600"></i>
-                </div>
-                <div>
-                  <p class="text-sm font-semibold text-gray-900">{{ case()!.client || '—' }}</p>
-                  <p class="text-xs text-gray-500">Client</p>
-                </div>
-              </div>
+          <!-- Practice Area -->
+          <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+            <div class="w-10 h-10 bg-violet-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-scale-balanced text-violet-600"></i>
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Practice Area</p>
+              <p class="text-sm font-medium text-gray-900">{{ case()!.practiceArea || '—' }}</p>
             </div>
           </div>
 
-          <!-- AI Summary widget -->
-          <div class="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl shadow-lg p-6 text-white">
-            <div class="flex items-center justify-between mb-4">
-              <div class="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <i class="fa-solid fa-robot text-2xl"></i>
-              </div>
-              <span class="text-xs bg-white/20 px-3 py-1 rounded-full font-medium">AI Powered</span>
+          <!-- Last Updated -->
+          <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+            <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <i class="fa-regular fa-clock text-slate-500"></i>
             </div>
-            <h3 class="text-lg font-bold mb-2">Generate AI Summary</h3>
-            <p class="text-sm text-purple-100 mb-4">Get an instant AI-generated summary with key facts and strategic recommendations.</p>
-            @if (!showAiSummary()) {
-              <button (click)="generateAiSummary()"
-                      class="w-full bg-white text-purple-600 py-2.5 rounded-lg font-semibold hover:bg-purple-50 transition-colors">
-                <i class="fa-solid fa-sparkles mr-2"></i>Generate Summary
-              </button>
-            } @else if (aiSummaryLoading()) {
-              <div class="flex items-center justify-center py-2">
-                <i class="fa-solid fa-spinner fa-spin text-white mr-2"></i>
-                <span class="text-sm text-purple-100">Analyzing case...</span>
-              </div>
-            } @else {
-              <div class="bg-white/10 rounded-lg p-3 text-sm text-purple-100 leading-relaxed">
-                {{ aiSummaryText() }}
-              </div>
-              <button (click)="showAiSummary.set(false)"
-                      class="mt-3 w-full text-xs text-purple-200 hover:text-white underline">
-                Dismiss
-              </button>
-            }
+            <div class="min-w-0">
+              <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Last Updated</p>
+              <p class="text-sm font-medium text-gray-900">{{ lastUpdatedLabel }}</p>
+            </div>
           </div>
 
-          <!-- Upcoming Hearing -->
-          @if (case()!.nextHearing) {
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 class="text-lg font-bold text-gray-900 mb-4">Upcoming Hearing</h2>
-              <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <p class="text-sm font-semibold text-gray-900 mb-1">Next Hearing</p>
-                @if (case()!.court) {
-                  <p class="text-xs text-gray-600">{{ case()!.court }}</p>
-                }
-                <div class="flex items-center space-x-2 text-xs text-gray-600 mt-3">
-                  <i class="fa-solid fa-calendar text-amber-500"></i>
-                  <span>{{ formatDate(case()!.nextHearing) }}</span>
-                </div>
-              </div>
-            </div>
-          }
 
-          <!-- Tasks quick view -->
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-bold text-gray-900">Active Tasks</h2>
-              <button (click)="setTab('Tasks')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
-            </div>
-            <div class="space-y-3">
-              @for (task of tasks().slice(0, 3); track task.id) {
-                <div class="flex items-start space-x-3">
-                  <input type="checkbox" [ngModel]="task.done" (ngModelChange)="toggleTask(task)"
-                         class="mt-1 rounded border-gray-300 accent-amber-500">
-                  <div class="flex-1">
-                    <p class="text-sm font-medium"
-                       [ngClass]="task.done ? 'text-gray-400 line-through' : 'text-gray-900'">{{ task.label }}</p>
-                    <p class="text-xs mt-0.5" [ngClass]="task.dueColor">{{ task.due }}</p>
-                  </div>
-                </div>
-              }
-            </div>
-            <button (click)="setTab('Tasks')"
-                    class="w-full mt-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-              <i class="fa-solid fa-plus mr-2"></i>Add Task
-            </button>
-          </div>
 
-          <!-- Notes quick view -->
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-lg font-bold text-gray-900">Recent Notes</h2>
-              <button (click)="setTab('Notes')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
-            </div>
-            @if (notes().length === 0) {
-              <p class="text-sm text-gray-400 text-center py-3">No notes yet.</p>
-            }
-            <div class="space-y-3">
-              @for (note of notes().slice(0, 2); track note.id) {
-                <div class="p-3 bg-gray-50 rounded-lg border-l-4"
-                     [ngClass]="note.isVoice ? 'border-l-purple-400' : 'border-l-amber-300'">
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <i class="fa-solid text-[10px]"
-                       [ngClass]="note.isVoice ? 'fa-microphone text-purple-500' : 'fa-pen-to-square text-amber-500'"></i>
-                    <span class="text-[10px] font-semibold"
-                          [ngClass]="note.isVoice ? 'text-purple-600' : 'text-amber-600'">
-                      {{ note.isVoice ? 'Voice note' : 'Written note' }}
-                    </span>
-                    <span class="text-[10px] text-gray-400 ml-auto">{{ formatNoteDate(note.createdAt) }}</span>
-                  </div>
-                  <p class="text-xs text-gray-700 leading-relaxed line-clamp-2">{{ note.content }}</p>
-                </div>
-              }
-            </div>
-            <button (click)="setTab('Notes')"
-                    class="w-full mt-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-              <i class="fa-solid fa-plus mr-2"></i>Add Note
-            </button>
-          </div>
 
-        </div><!-- /sidebar -->
+
+        </div>
       </div>
-    </div>
+
+    </section>
   }
 
   <!-- ══════════════════════════════════════════
@@ -399,55 +367,191 @@
   ══════════════════════════════════════════ -->
   @if (activeTab() === 'Documents') {
     <div class="px-8 py-6">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="text-lg font-bold text-gray-900">Case Documents</h2>
-          <button (click)="openUploadModal()"
-                  class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
-            <i class="fa-solid fa-cloud-arrow-up"></i>
-            <span>Upload Document</span>
-          </button>
-        </div>
-        <div class="space-y-3">
-          @for (doc of documents(); track doc.id) {
-            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group">
-              <div class="flex items-center space-x-4 flex-1">
-                <div class="w-12 h-12 rounded-xl flex items-center justify-center" [ngClass]="doc.iconBg">
-                  <i class="fa-solid text-xl" [ngClass]="[doc.icon, doc.iconColor]"></i>
-                </div>
-                <div>
-                  <p class="text-sm font-semibold text-gray-900">{{ doc.name }}</p>
-                  <p class="text-xs text-gray-600 mt-0.5">Uploaded {{ doc.ago }} · {{ doc.size }}</p>
-                </div>
-              </div>
-              <div class="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button (click)="openPreview(doc)"
-                        class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Preview">
-                  <i class="fa-solid fa-eye"></i>
-                </button>
-                <button (click)="downloadDoc(doc)"
-                        class="p-2 rounded-lg transition-colors"
-                        [ngClass]="downloadingDoc() === doc.id
-                          ? 'text-green-600 bg-green-50'
-                          : 'text-gray-400 hover:text-green-600 hover:bg-green-50'"
-                        title="Download">
-                  <i class="fa-solid"
-                     [ngClass]="downloadingDoc() === doc.id ? 'fa-check' : 'fa-download'"></i>
-                </button>
-                <button (click)="confirmDelete(doc)"
-                        class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                  <i class="fa-solid fa-trash"></i>
-                </button>
-              </div>
-            </div>
-          }
-        </div>
-        @if (documents().length === 0) {
-          <div class="text-center py-12 text-gray-400">
-            <i class="fa-solid fa-folder-open text-4xl mb-3 block"></i>
-            <p class="font-medium">No documents uploaded yet.</p>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+
+        <!-- Header -->
+        <div class="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Case Documents</h2>
+            <p class="text-sm text-gray-500 mt-0.5">{{ documents().length }} document{{ documents().length !== 1 ? 's' : '' }}</p>
           </div>
-        }
+          <div class="flex items-center gap-2">
+            <button (click)="openRequestDocModal()"
+              class="flex items-center space-x-2 px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm font-medium hover:bg-amber-100 transition-colors">
+              <i class="fa-solid fa-inbox"></i><span>Request Doc</span>
+            </button>
+            <button (click)="openUploadModal()"
+              class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+              <i class="fa-solid fa-cloud-arrow-up"></i><span>Upload Document</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="px-6 py-3 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+          <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+            <i class="fa-solid fa-filter mr-1 text-amber-500"></i>Filter:
+          </span>
+          <div class="flex items-center bg-gray-100 rounded-xl p-1 gap-1 flex-wrap">
+            @for (f of [
+              { key: 'all',      label: 'All',               icon: 'fa-solid fa-layer-group' },
+              { key: 'pending',  label: 'Pending Review',    icon: 'fa-solid fa-clock' },
+              { key: 'approved', label: 'Approved',          icon: 'fa-solid fa-circle-check' },
+              { key: 'shared',   label: 'Shared with Client',icon: 'fa-solid fa-share-nodes' }
+            ]; track f.key) {
+              <button (click)="docFilter.set($any(f.key))"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                [ngClass]="docFilter() === f.key ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-white hover:shadow-sm'">
+                <i [ngClass]="f.icon" class="text-xs"></i>
+                <span>{{ f.label }}</span>
+                @if (f.key === 'pending' && docPendingCount > 0) {
+                  <span class="min-w-[18px] h-[18px] px-1 rounded-full text-xs font-bold flex items-center justify-center"
+                    [ngClass]="docFilter() === 'pending' ? 'bg-white text-amber-600' : 'bg-orange-100 text-orange-700'">
+                    {{ docPendingCount }}
+                  </span>
+                }
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Document Name</th>
+                <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Size</th>
+                <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Uploaded By</th>
+                <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Modified</th>
+                <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                <th class="px-5 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              @for (doc of filteredCaseDocs(); track doc.id) {
+                <tr class="hover:bg-gray-50 transition-colors border-l-4"
+                  [ngClass]="doc.status === 'Rejected' ? 'bg-red-50 border-red-400' : 'border-transparent'">
+
+                  <!-- Name -->
+                  <td class="px-5 py-4">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="doc.iconBg">
+                        <i [ngClass]="[doc.icon, doc.iconColor]"></i>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm font-medium text-gray-900 truncate max-w-xs">{{ doc.name }}</p>
+                        <p class="text-xs text-gray-500">{{ doc.desc }}</p>
+                      </div>
+                    </div>
+                  </td>
+
+                  <!-- Type -->
+                  <td class="px-5 py-4">
+                    <span class="text-xs px-2.5 py-1 rounded-full font-medium" [ngClass]="[doc.typeBg, doc.typeColor]">{{ doc.type }}</span>
+                  </td>
+
+                  <!-- Size -->
+                  <td class="px-5 py-4"><p class="text-sm text-gray-900">{{ doc.size }}</p></td>
+
+                  <!-- Uploaded By -->
+                  <td class="px-5 py-4">
+                    <div class="flex items-center space-x-2">
+                      @if (doc.avatar) {
+                        <img [src]="doc.avatar" alt="" class="w-6 h-6 rounded-full">
+                      } @else {
+                        <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                          <i class="fa-solid fa-user text-gray-400 text-xs"></i>
+                        </div>
+                      }
+                      <span class="text-sm text-gray-900 whitespace-nowrap">{{ doc.uploader }}</span>
+                    </div>
+                  </td>
+
+                  <!-- Modified -->
+                  <td class="px-5 py-4"><p class="text-sm text-gray-500">{{ doc.modified }}</p></td>
+
+                  <!-- Status -->
+                  <td class="px-5 py-4">
+                    @if (doc.isClientDoc) {
+                      <span class="text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 w-fit whitespace-nowrap"
+                        [ngClass]="getDocStatusCls(doc.status)">
+                        <i [ngClass]="getDocStatusIcon(doc.status)" class="text-xs"></i>
+                        {{ doc.status }}
+                      </span>
+                      @if (doc.status === 'Pending Review') {
+                        <div class="flex items-center gap-1 mt-1.5">
+                          <button (click)="approveDoc(doc.id)"
+                            class="flex items-center gap-1 text-xs px-2 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors font-medium">
+                            <i class="fa-solid fa-check text-[10px]"></i>Approve
+                          </button>
+                          <button (click)="rejectDoc(doc.id)"
+                            class="flex items-center gap-1 text-xs px-2 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium">
+                            <i class="fa-solid fa-times text-[10px]"></i>Reject
+                          </button>
+                        </div>
+                      }
+                    } @else {
+                      @if (doc.isSharedWithClient) {
+                        <span class="text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 w-fit whitespace-nowrap bg-green-100 text-green-700">
+                          <i class="fa-solid fa-circle-check text-xs"></i>Shared with client
+                        </span>
+                      } @else if (isCurrentUserUploader(doc)) {
+                        <button (click)="shareDoc(doc.id)"
+                          class="flex items-center gap-1 text-xs px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors font-medium">
+                          <i class="fa-solid fa-share text-[10px]"></i>Share with client
+                        </button>
+                      } @else {
+                        <span class="text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 w-fit whitespace-nowrap bg-gray-100 text-gray-500">
+                          <i class="fa-solid fa-circle-xmark text-xs"></i>Not shared
+                        </span>
+                      }
+                    }
+                  </td>
+
+                  <!-- Actions -->
+                  <td class="px-5 py-4 text-right">
+                    <div class="flex items-center justify-end space-x-1">
+                      <button (click)="viewDoc(doc)" class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View">
+                        <i class="fa-solid fa-eye text-sm"></i>
+                      </button>
+                      <button (click)="confirmDownload(doc)"
+                        class="p-2 rounded-lg transition-colors"
+                        [ngClass]="downloadingDoc() === doc.id ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:text-green-600 hover:bg-green-50'"
+                        title="Download">
+                        <i class="fa-solid text-sm" [ngClass]="downloadingDoc() === doc.id ? 'fa-check' : 'fa-download'"></i>
+                      </button>
+                      <button (click)="aiSummarizeDoc(doc.id)" class="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="AI Summarize">
+                        <i class="fa-solid fa-robot text-sm"></i>
+                      </button>
+                      @if (isCurrentUserUploader(doc)) {
+                        <button (click)="confirmDelete(doc)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                          <i class="fa-solid fa-trash text-sm"></i>
+                        </button>
+                      }
+                    </div>
+                  </td>
+
+                </tr>
+              }
+
+              @if (documents().length === 0) {
+                <tr>
+                  <td colspan="8" class="px-6 py-16 text-center">
+                    <div class="flex flex-col items-center">
+                      <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                        <i class="fa-solid fa-folder-open text-gray-400 text-xl"></i>
+                      </div>
+                      <p class="text-sm font-medium text-gray-600">No documents uploaded yet</p>
+                      <p class="text-xs text-gray-400 mt-1">Upload a document or request one from the client</p>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   }
@@ -536,81 +640,85 @@
         </div>
 
         <!-- Notes list -->
-        <div class="divide-y divide-gray-100">
+        <div class="flex flex-col gap-3">
           @for (note of notes(); track note.id) {
-            <div class="py-5 group">
-              <!-- Row: avatar + meta + actions -->
-              <div class="flex items-start justify-between mb-2">
-                <div class="flex items-center space-x-3">
-                  <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+            <div class="group relative bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col"
+                 [ngClass]="note.isVoice ? 'border-l-[3px] border-l-purple-400' : 'border-l-[3px] border-l-amber-400'">
+
+              <!-- Card header: icon + title + actions -->
+              <div class="px-4 pt-4 pb-3 border-b border-gray-100 flex-shrink-0"
+                   [ngClass]="note.isVoice ? 'bg-purple-50/60' : 'bg-amber-50/60'">
+                <div class="flex items-start gap-2">
+                  <div class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
                        [ngClass]="note.isVoice ? 'bg-purple-100' : 'bg-amber-100'">
-                    <i class="text-sm"
-                       [ngClass]="note.isVoice ? 'fa-solid fa-microphone text-purple-600' : 'fa-solid fa-user text-amber-600'"></i>
+                    <i class="text-xs" [ngClass]="note.isVoice ? 'fa-solid fa-microphone text-purple-600' : 'fa-solid fa-note-sticky text-amber-600'"></i>
                   </div>
-                  <div>
-                    <div class="flex items-center space-x-2">
-                      <p class="text-sm font-semibold text-gray-900">{{ note.author }}</p>
-                      @if (note.isVoice) {
-                        <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
-                          <i class="fa-solid fa-microphone mr-1"></i>Voice
-                        </span>
+                  <div class="flex-1 min-w-0">
+                    <h3 class="text-sm font-bold text-gray-900 leading-snug">{{ getNoteTitle(note) }}</h3>
+                    @if (note.isVoice) {
+                      <span class="inline-flex items-center gap-1 text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-semibold mt-1">
+                        <i class="fa-solid fa-microphone text-[8px]"></i>Voice
+                      </span>
+                    }
+                  </div>
+                  <!-- Actions on hover — only for own notes -->
+                  @if (isMyNote(note)) {
+                    <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      @if (!note.isVoice && editingNoteId() !== note.id) {
+                        <button (click)="startEditNote(note)" title="Edit"
+                                class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-100 transition-colors">
+                          <i class="fa-solid fa-pen text-[10px]"></i>
+                        </button>
                       }
+                      <button (click)="deleteNote(note.id)" title="Delete"
+                              class="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-100 transition-colors">
+                        <i class="fa-solid fa-trash text-[10px]"></i>
+                      </button>
                     </div>
-                    <p class="text-xs text-gray-400 mt-0.5">
-                      <i class="fa-regular fa-clock mr-1"></i>{{ formatNoteDate(note.createdAt) }}
-                    </p>
-                  </div>
-                </div>
-                <!-- Actions on hover -->
-                <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  @if (!note.isVoice && editingNoteId() !== note.id) {
-                    <button (click)="startEditNote(note)"
-                            class="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Edit">
-                      <i class="fa-solid fa-pen text-xs"></i>
-                    </button>
                   }
-                  <button (click)="deleteNote(note.id)"
-                          class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete">
-                    <i class="fa-solid fa-trash text-xs"></i>
-                  </button>
                 </div>
               </div>
 
-              <!-- Content or inline edit -->
-              @if (editingNoteId() === note.id) {
-                <div class="ml-12 space-y-2">
-                  <input type="text" placeholder="Note title..."
-                         [ngModel]="editNoteTitle()" (ngModelChange)="editNoteTitle.set($event)"
-                         class="w-full bg-gray-50 border-2 border-amber-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                  <textarea rows="3"
-                            [ngModel]="editNoteContent()"
-                            (ngModelChange)="editNoteContent.set($event)"
-                            class="w-full bg-gray-50 border-2 border-amber-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
-                  <div class="flex items-center justify-end space-x-2">
-                    <button (click)="cancelEditNote()"
-                            class="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                      Cancel
-                    </button>
-                    <button (click)="saveEditNote(note.id)"
-                            [disabled]="!editNoteContent().trim()"
-                            class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors"
-                            [ngClass]="editNoteContent().trim()
-                              ? 'bg-amber-500 text-white hover:bg-amber-600'
-                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
-                      <i class="fa-solid fa-check mr-1"></i>Save
-                    </button>
+              <!-- Card body: content or edit form -->
+              <div class="px-4 py-3 flex-1">
+                @if (editingNoteId() === note.id) {
+                  <div class="space-y-2">
+                    <input type="text" placeholder="Note title..."
+                           [ngModel]="editNoteTitle()" (ngModelChange)="editNoteTitle.set($event)"
+                           class="w-full bg-gray-50 border-2 border-amber-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                    <textarea rows="3"
+                              [ngModel]="editNoteContent()" (ngModelChange)="editNoteContent.set($event)"
+                              class="w-full bg-gray-50 border-2 border-amber-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
+                    <div class="flex items-center justify-end gap-2">
+                      <button (click)="cancelEditNote()"
+                              class="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                        Cancel
+                      </button>
+                      <button (click)="saveEditNote(note.id)" [disabled]="!editNoteContent().trim()"
+                              class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors"
+                              [ngClass]="editNoteContent().trim() ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+                        <i class="fa-solid fa-check mr-1"></i>Save
+                      </button>
+                    </div>
                   </div>
+                } @else {
+                  <p class="text-sm text-gray-700 leading-relaxed line-clamp-5 whitespace-pre-wrap">{{ getNoteBody(note) }}</p>
+                }
+              </div>
+
+              <!-- Card footer: author + date -->
+              <div class="px-4 pb-3 flex items-center justify-between flex-shrink-0">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center">
+                    <i class="fa-solid fa-user text-[8px] text-gray-500"></i>
+                  </div>
+                  <span class="text-xs text-gray-500 font-medium">{{ note.author }}</span>
                 </div>
-              } @else {
-                <div class="ml-12">
-                  @if (note.title) {
-                    <p class="text-sm font-semibold text-gray-900 mb-1">{{ note.title }}</p>
-                  }
-                  <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{{ note.content }}</p>
-                </div>
-              }
+                <span class="text-[10px] text-gray-400">
+                  <i class="fa-regular fa-clock mr-0.5"></i>{{ formatNoteDate(note.createdAt) }}
+                </span>
+              </div>
+
             </div>
           }
         </div>
@@ -631,49 +739,163 @@
   ══════════════════════════════════════════ -->
   @if (activeTab() === 'Billing') {
     <div class="px-8 py-6">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-6">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 pt-5 pb-4 flex items-center justify-between border-b border-gray-200">
           <div>
-            <h2 class="text-lg font-bold text-gray-900">Billing & Time Tracking</h2>
+            <h2 class="text-lg font-bold text-gray-900">Billings</h2>
             <p class="text-sm text-gray-500 mt-0.5">Total billed: <span class="font-semibold text-gray-800">{{ totalBilled }}</span></p>
           </div>
-          <button (click)="openLogTimeModal()"
-                  class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
-            <i class="fa-solid fa-clock"></i>
-            <span>Log Time</span>
+          <button (click)="openNewInvoiceModal()"
+                  class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-sm font-medium hover:shadow-md transition-all">
+            <i class="fa-solid fa-file-invoice"></i>
+            <span>Add Invoice</span>
           </button>
         </div>
-        <div class="overflow-x-auto">
-          <table class="w-full">
-            <thead class="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Hours</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Rate</th>
-                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Amount</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100">
-              @for (entry of billingEntries; track entry.date + entry.desc) {
-                <tr class="hover:bg-gray-50">
-                  <td class="px-4 py-3 text-sm text-gray-900">{{ entry.date }}</td>
-                  <td class="px-4 py-3 text-sm text-gray-700">{{ entry.desc }}</td>
-                  <td class="px-4 py-3 text-sm text-gray-900">{{ entry.hours }}h</td>
-                  <td class="px-4 py-3 text-sm text-gray-900">{{ entry.rate }}</td>
-                  <td class="px-4 py-3 text-sm font-semibold text-gray-900 text-right">{{ entry.amount }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
+        <!-- Filter bar -->
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+          <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+            <i class="fa-solid fa-filter mr-1 text-amber-500"></i>Filter:
+          </span>
+          <div class="flex items-center bg-gray-100 rounded-xl p-1 gap-1 flex-wrap">
+            @for (f of [
+              { key: 'all',       label: 'All',       icon: 'fa-solid fa-layer-group' },
+              { key: 'paid',      label: 'Paid',      icon: 'fa-solid fa-circle-check' },
+              { key: 'pending',   label: 'Pending',   icon: 'fa-solid fa-clock' },
+              { key: 'overdue',   label: 'Overdue',   icon: 'fa-solid fa-triangle-exclamation' },
+              { key: 'draft',     label: 'Draft',     icon: 'fa-solid fa-file-lines' },
+              { key: 'cancelled', label: 'Cancelled', icon: 'fa-solid fa-ban' }
+            ]; track f.key) {
+              <button (click)="invoiceFilter.set($any(f.key))"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                [ngClass]="invoiceFilter() === f.key ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-white hover:shadow-sm'">
+                <i [ngClass]="f.icon" class="text-xs"></i>
+                <span>{{ f.label }}</span>
+                @if (f.key === 'overdue' && overdueInvoiceCount > 0) {
+                  <span class="min-w-[18px] h-[18px] px-1 rounded-full text-xs font-bold flex items-center justify-center"
+                    [ngClass]="invoiceFilter() === 'overdue' ? 'bg-white text-amber-600' : 'bg-red-100 text-red-700'">
+                    {{ overdueInvoiceCount }}
+                  </span>
+                }
+              </button>
+            }
+          </div>
         </div>
-        @if (billingEntries.length === 0) {
-          <div class="text-center py-12 text-gray-400">
-            <i class="fa-solid fa-file-invoice text-4xl mb-3 block"></i>
-            <p class="font-medium">No billing entries yet. Log your first time entry above.</p>
+
+        @if (invoicesLoading()) {
+          <div class="flex items-center justify-center py-12 text-gray-400">
+            <i class="fa-solid fa-spinner fa-spin mr-2"></i>
+            <span class="text-sm">Loading invoices…</span>
+          </div>
+        } @else if (filteredSentInvoices().length === 0) {
+          <div class="flex flex-col items-center py-12">
+            <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+              <i class="fa-solid fa-file-invoice text-gray-400 text-lg"></i>
+            </div>
+            <p class="text-sm font-medium text-gray-600">No invoices found</p>
+          </div>
+        } @else {
+          <div class="overflow-x-auto">
+            <table class="w-full table-fixed">
+              <colgroup>
+                <col class="w-[13%]">
+                <col class="w-[22%]">
+                <col class="w-[11%]">
+                <col class="w-[13%]">
+                <col class="w-[18%]">
+                <col class="w-[11%]">
+                <col class="w-[12%]">
+              </colgroup>
+              <thead class="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Invoice #</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Client</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Issue Date</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Due Date</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                  <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                @for (inv of filteredSentInvoices(); track inv.id) {
+                  <tr class="hover:bg-gray-50 transition-colors border-l-4" [ngClass]="invStatusBadgeCls(inv.status).includes('green') ? 'border-green-400' : invStatusBadgeCls(inv.status).includes('amber') ? 'border-amber-400' : invStatusBadgeCls(inv.status).includes('red') ? 'border-red-400' : 'border-gray-200'">
+                    <td class="px-6 py-4">
+                      <p class="text-sm font-semibold text-gray-900">{{ inv.invoice_number }}</p>
+                    </td>
+                    <td class="px-6 py-4">
+                      <p class="text-sm font-medium text-gray-900">{{ inv.client ? (inv.client.first_name + ' ' + inv.client.last_name) : '—' }}</p>
+                      <p class="text-xs text-gray-500">{{ inv.client?.email ?? '' }}</p>
+                    </td>
+                    <td class="px-6 py-4">
+                      <p class="text-sm font-bold text-gray-900">{{ fmtInvoiceAmount(inv) }}</p>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-900">{{ fmtInvoiceDate(inv.issue_date) }}</td>
+                    <td class="px-6 py-4">
+                      <p class="text-sm text-gray-900">{{ fmtInvoiceDate(inv.due_date) }}</p>
+                      @if (getInvDueNote(inv).text) {
+                        <p class="text-xs font-medium mt-0.5" [ngClass]="getInvDueNote(inv).cls">{{ getInvDueNote(inv).text }}</p>
+                      }
+                    </td>
+                    <td class="px-6 py-4">
+                      <span class="text-xs px-3 py-1 rounded-full font-medium {{ invStatusBadgeCls(inv.status) }}">
+                        {{ invStatusLabel(inv.status) }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                      <div class="flex items-center justify-end space-x-1">
+                        <button (click)="openViewInvoice(inv)"
+                          class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Invoice">
+                          <i class="fa-solid fa-eye"></i>
+                        </button>
+                        @if ((inv.status === 'PENDING' || inv.status === 'OVERDUE') && isInvoiceOwner(inv)) {
+                          <button (click)="sendCaseReminder(inv)" [disabled]="sendingReminderId() === inv.id"
+                            class="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Send Reminder">
+                            <i [class]="sendingReminderId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-bell'"></i>
+                          </button>
+
+                        }
+                        @if (inv.status === 'DRAFT' && isInvoiceOwner(inv)) {
+                          <button (click)="sendCaseInvoice(inv)" [disabled]="sendingInvoiceId() === inv.id"
+                            class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50" title="Send Invoice">
+                            <i [class]="sendingInvoiceId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
+                          </button>
+                        }
+                        <button (click)="printInvoice(inv)" class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Download PDF">
+                          <i class="fa-solid fa-download"></i>
+                        </button>
+                        @if (inv.status === 'DRAFT' && isInvoiceOwner(inv)) {
+                          <button (click)="cancelCaseInvoice(inv)" [disabled]="cancellingInvoiceId() === inv.id"
+                            class="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50" title="Cancel Invoice">
+                            <i [class]="cancellingInvoiceId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-ban'"></i>
+                          </button>
+                        }
+                        @if (!['DRAFT', 'PAID'].includes(inv.status) && isInvoiceOwner(inv)) {
+                          <button (click)="deleteCaseInvoice(inv)" [disabled]="deletingInvoiceId() === inv.id"
+                            class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Delete Invoice">
+                            <i [class]="deletingInvoiceId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-trash'"></i>
+                          </button>
+                        }
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+            <!-- Footer: count + filtered total -->
+            <div class="p-6 border-t border-gray-200 flex items-center justify-between">
+              <p class="text-sm text-gray-600">
+                Showing <span class="font-medium">{{ filteredSentInvoices().length }}</span> of
+                <span class="font-medium">{{ caseInvoices().length }}</span> invoices
+              </p>
+              <div class="flex items-center space-x-3 text-sm">
+                <span class="text-gray-500">Filtered total:</span>
+                <span class="font-bold text-gray-900 text-base">{{ filteredInvoiceTotalFormatted }}</span>
+              </div>
+            </div>
           </div>
         }
       </div>
+
     </div>
   }
 
@@ -759,6 +981,106 @@
 }
 
 <!-- ══════════════════════════════════════════════════════════
+     MODAL — CONFIRM STATUS CHANGE
+══════════════════════════════════════════════════════════ -->
+@if (confirmStepKey()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.45)"
+     (click)="cancelLifecycleChange()">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" (click)="$event.stopPropagation()">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+        <i class="fa-solid fa-arrows-rotate text-amber-600"></i>
+      </div>
+      <h3 class="text-base font-bold text-gray-900">Change Case Status</h3>
+    </div>
+    <p class="text-sm text-gray-600 mb-1">
+      You are about to move this case to:
+    </p>
+    <p class="text-sm font-bold text-amber-600 mb-4">{{ confirmStepLabel() }}</p>
+    <p class="text-xs text-gray-400 mb-6">This action will be recorded in the case timeline.</p>
+    <div class="flex gap-3 justify-end">
+      <button (click)="cancelLifecycleChange()"
+              class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button (click)="confirmLifecycleChange()"
+              class="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors">
+        Confirm
+      </button>
+    </div>
+  </div>
+</div>
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — CONFIRM RESTORE
+══════════════════════════════════════════════════════════ -->
+@if (confirmRestore()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.45)"
+     (click)="cancelRestore()">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" (click)="$event.stopPropagation()">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+        <i class="fa-solid fa-rotate-left text-green-600"></i>
+      </div>
+      <h3 class="text-base font-bold text-gray-900">Restore this case?</h3>
+    </div>
+    <p class="text-sm text-gray-600 mb-6">
+      The case will be reopened and its status set back to <span class="font-semibold text-gray-800">Investigation</span>.
+    </p>
+    <div class="flex gap-3 justify-end">
+      <button (click)="cancelRestore()"
+              class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button (click)="confirmAndRestore()"
+              class="px-4 py-2 text-sm font-medium text-white bg-green-500 hover:bg-green-600 rounded-lg transition-colors">
+        <i class="fa-solid fa-rotate-left mr-1.5"></i>Restore
+      </button>
+    </div>
+  </div>
+</div>
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — CONFIRM ARCHIVE
+══════════════════════════════════════════════════════════ -->
+@if (confirmArchive()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.45)"
+     (click)="cancelArchive()">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" (click)="$event.stopPropagation()">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+        <i class="fa-solid fa-box-archive text-red-600"></i>
+      </div>
+      <h3 class="text-base font-bold text-gray-900">Archive this case?</h3>
+    </div>
+    <p class="text-sm text-gray-600 mb-6">
+      This will permanently mark the case as <span class="font-semibold text-gray-800">Closed</span>. This action cannot be undone from the stepper.
+    </p>
+    <div class="flex gap-3 justify-end">
+      <button (click)="cancelArchive()"
+              class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button (click)="confirmAndArchive()"
+              class="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">
+        <i class="fa-solid fa-box-archive mr-1.5"></i>Archive
+      </button>
+    </div>
+  </div>
+</div>
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — AI ASSISTANT (RAG Chat)
+══════════════════════════════════════════════════════════ -->
+<app-ai-chat-modal />
+
+<!-- ══════════════════════════════════════════════════════════
      MODAL — EDIT CASE  (2 steps)
 ══════════════════════════════════════════════════════════ -->
 @if (showEditModal()) {
@@ -834,28 +1156,37 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Status <span class="text-red-500">*</span></label>
-              <div class="relative">
-                <select [ngModel]="editF1().status" (ngModelChange)="editF1.update(v=>({...v,status:$event}))"
-                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
-                  @for (s of statusList; track s) { <option [value]="s">{{ statusLabel(s) }}</option> }
-                </select>
-                <i class="fa-solid fa-circle-info absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-              </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Status <span class="text-red-500">*</span></label>
+            <div class="relative">
+              <select [ngModel]="editF1().status" (ngModelChange)="editF1.update(v=>({...v,status:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                @for (s of statusList; track s) { <option [value]="s">{{ statusLabel(s) }}</option> }
+              </select>
+              <i class="fa-solid fa-circle-info absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
             </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Priority</label>
-              <div class="relative">
-                <select [ngModel]="editF1().priority" (ngModelChange)="editF1.update(v=>({...v,priority:$event}))"
-                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
-                  @for (p of priorityList; track p) { <option [value]="p">{{ priorityLabel(p) }}</option> }
-                </select>
-                <i class="fa-solid fa-flag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-              </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Priority <span class="text-red-500">*</span></label>
+            <div class="grid grid-cols-5 gap-2">
+              @for (p of [
+                ['URGENT', 'Urgent', 'bg-red-50',    'border-red-300',    'text-red-700'],
+                ['HIGH',   'High',   'bg-orange-50', 'border-orange-300', 'text-orange-700'],
+                ['MEDIUM', 'Medium', 'bg-amber-50',  'border-amber-300',  'text-amber-700'],
+                ['NORMAL', 'Normal', 'bg-green-50',  'border-green-300',  'text-green-700'],
+                ['LOW',    'Low',    'bg-blue-50',   'border-blue-300',   'text-blue-700']
+              ]; track p[0]) {
+                <button (click)="editF1.update(v=>({...v,priority:p[0]}))"
+                        class="border-2 rounded-xl py-2.5 text-xs font-semibold transition-all flex flex-col items-center gap-1"
+                        [ngClass]="editF1().priority === p[0]
+                          ? [p[2], p[3], p[4], 'ring-2 ring-offset-1']
+                          : [p[2], p[3], p[4]]">
+                  <i class="fa-solid fa-circle text-[10px]"></i>
+                  {{ p[1] }}
+                </button>
+              }
             </div>
           </div>
 
@@ -979,6 +1310,182 @@
 </div><!-- /backdrop -->
 }
 
+<!-- ══════════════════════════════════════════
+     TAB: TEAM
+══════════════════════════════════════════ -->
+@if (activeTab() === 'Team') {
+  <div class="px-8 py-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Case Team</h2>
+          <p class="text-sm text-gray-500 mt-0.5">
+            {{ team().length }} member{{ team().length === 1 ? '' : 's' }} assigned to this case
+          </p>
+        </div>
+        <button (click)="openTeamModal()"
+                class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all text-sm font-semibold">
+          <i class="fa-solid fa-user-plus"></i>
+          <span>Add Member</span>
+        </button>
+      </div>
+
+      <!-- Members list -->
+      <div class="divide-y divide-gray-100">
+        @if (team().length === 0) {
+          <div class="text-center py-16">
+            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i class="fa-solid fa-users text-2xl text-gray-300"></i>
+            </div>
+            <p class="text-base font-medium text-gray-500 mb-1">No team members yet</p>
+            <p class="text-sm text-gray-400 mb-4">Add lawyers and staff to collaborate on this case.</p>
+            <button (click)="openTeamModal()"
+                    class="px-5 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold hover:bg-amber-600 transition-colors">
+              <i class="fa-solid fa-user-plus mr-2"></i>Add First Member
+            </button>
+          </div>
+        }
+
+        @for (m of team(); track m.user_id) {
+          <div class="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
+            <div class="flex items-center space-x-4">
+              @if (m.avatar_url) {
+                <img [src]="m.avatar_url" class="w-11 h-11 rounded-full object-cover border-2 border-gray-200">
+              } @else {
+                <div class="w-11 h-11 rounded-full bg-amber-100 border-2 border-amber-200 flex items-center justify-center">
+                  <span class="text-sm font-bold text-amber-700">{{ memberInitials(m.full_name) }}</span>
+                </div>
+              }
+              <div>
+                <p class="text-sm font-semibold text-gray-900">{{ m.full_name }}</p>
+                <p class="text-xs text-gray-500 mt-0.5">{{ m.email }}</p>
+              </div>
+            </div>
+            <div class="flex items-center space-x-3">
+              <span class="text-xs px-2.5 py-1 rounded-full font-semibold" [ngClass]="memberRoleCls(m.role)">
+                {{ memberRoleLabel(m.role) }}
+              </span>
+              @if (m.user_id === case()!.assignedTo) {
+                <span class="text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-100 text-amber-700">
+                  <i class="fa-solid fa-crown mr-1 text-[10px]"></i>Lead
+                </span>
+              }
+              <button (click)="openConfirmRemove(m)"
+                      [disabled]="isRemovingMember() === m.user_id || m.user_id === case()!.assignedTo || m.user_id === currentUserId"
+                      class="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                      [ngClass]="(m.user_id === case()!.assignedTo || m.user_id === currentUserId)
+                        ? 'bg-gray-100 cursor-not-allowed opacity-40'
+                        : 'bg-red-50 hover:bg-red-100'"
+                      [title]="m.user_id === case()!.assignedTo
+                        ? 'Cannot remove the lead lawyer'
+                        : m.user_id === currentUserId
+                          ? 'Cannot remove yourself'
+                          : 'Remove from case'">
+                @if (isRemovingMember() === m.user_id) {
+                  <i class="fa-solid fa-spinner fa-spin text-red-400 text-xs"></i>
+                } @else {
+                  <i class="fa-solid fa-user-minus text-xs"
+                     [ngClass]="(m.user_id === case()!.assignedTo || m.user_id === currentUserId) ? 'text-gray-400' : 'text-red-500'"></i>
+                }
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+
+    </div>
+  </div>
+}
+
+<!-- ══════════════════════════════════════════
+     MODAL: ADD TEAM MEMBER
+══════════════════════════════════════════ -->
+@if (showTeamModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background:rgba(0,0,0,0.45)">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" style="max-height:85vh">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100 flex-shrink-0">
+      <div>
+        <h3 class="text-lg font-bold text-gray-900">Add Team Member</h3>
+        <p class="text-xs text-gray-500 mt-0.5">Select a firm member to add to this case</p>
+      </div>
+      <button (click)="closeTeamModal()" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors">
+        <i class="fa-solid fa-times text-gray-500"></i>
+      </button>
+    </div>
+
+    <!-- Search -->
+    <div class="px-6 py-3 border-b border-gray-100 flex-shrink-0">
+      <div class="relative">
+        <input type="text" placeholder="Search by name or email..."
+               [ngModel]="teamSearch()" (ngModelChange)="teamSearch.set($event)"
+               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 pl-10 text-sm focus:outline-none focus:border-amber-400 focus:bg-white transition-all">
+        <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+      </div>
+    </div>
+
+    <!-- Members to add -->
+    <div class="overflow-y-auto flex-1 px-2 py-2">
+      @if (isLoadingFirm()) {
+        <div class="flex items-center justify-center py-12">
+          <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
+          <span class="text-sm text-gray-500">Loading members...</span>
+        </div>
+      } @else if (filteredFirmMembers().length === 0) {
+        <div class="text-center py-10">
+          <i class="fa-solid fa-user-check text-3xl text-gray-200 mb-2 block"></i>
+          <p class="text-sm text-gray-400">
+            {{ teamSearch() ? 'No members match your search.' : 'All firm members are already on this case.' }}
+          </p>
+        </div>
+      } @else {
+        @for (m of filteredFirmMembers(); track m.id) {
+          <div class="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 transition-colors">
+            <div class="flex items-center space-x-3">
+              @if (m.avatar_url) {
+                <img [src]="m.avatar_url" class="w-10 h-10 rounded-full object-cover border border-gray-200">
+              } @else {
+                <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                  <span class="text-xs font-bold text-amber-700">{{ memberInitials(m.full_name) }}</span>
+                </div>
+              }
+              <div>
+                <p class="text-sm font-semibold text-gray-900">{{ m.full_name }}</p>
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium" [ngClass]="memberRoleCls(m.role)">
+                  {{ memberRoleLabel(m.role) }}
+                </span>
+              </div>
+            </div>
+            <button (click)="addTeamMember(m.id)"
+                    [disabled]="isAddingMember() === m.id"
+                    class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50">
+              @if (isAddingMember() === m.id) {
+                <i class="fa-solid fa-spinner fa-spin"></i>
+              } @else {
+                <i class="fa-solid fa-plus mr-1"></i>Add
+              }
+            </button>
+          </div>
+        }
+      }
+    </div>
+
+    <!-- Footer -->
+    <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex-shrink-0">
+      <button (click)="closeTeamModal()"
+              class="w-full bg-gray-100 text-gray-700 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-colors">
+        Done
+      </button>
+    </div>
+
+  </div>
+</div>
+}
+
 <!-- Upload Modal (shared) -->
 <app-upload-modal />
 
@@ -988,76 +1495,27 @@
   (saved)="onVoiceNoteSaved()">
 </app-voice-note-modal>
 
-<!-- ══════════════════════════════════════════════════════════
-     MODAL — ADD NOTE
-══════════════════════════════════════════════════════════ -->
-@if (showAddNoteModal()) {
-  <div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" (click)="closeAddNoteModal()">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg" (click)="$event.stopPropagation()">
+<app-new-invoice-modal (invoiceCreated)="loadCaseInvoices()"></app-new-invoice-modal>
 
-      <!-- Header -->
-      <div class="flex items-center justify-between p-6 border-b border-gray-200">
-        <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-            <i class="fa-solid fa-note-sticky text-yellow-600"></i>
-          </div>
-          <h3 class="text-lg font-bold text-gray-900">New Note</h3>
-        </div>
-        <button (click)="closeAddNoteModal()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <i class="fa-solid fa-xmark text-gray-500"></i>
-        </button>
-      </div>
-
-      <!-- Body -->
-      <div class="p-6 space-y-4">
-
-        <!-- Linked case (read-only chip) -->
-        <div>
-          <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Linked Case</label>
-          <div class="flex items-center gap-2 px-3 py-3 border border-gray-200 rounded-lg bg-gray-50">
-            <i class="fa-solid fa-briefcase text-gray-400 text-sm"></i>
-            <span class="text-sm text-gray-700 font-medium">{{ case()?.title ?? '—' }}</span>
-            <span class="ml-auto text-xs text-gray-400 font-medium">{{ case()?.caseNumber ?? '' }}</span>
-          </div>
-        </div>
-
-        <!-- Title -->
-        <div>
-          <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Title</label>
-          <input type="text" placeholder="Note title..."
-                 [ngModel]="newNoteTitle()" (ngModelChange)="newNoteTitle.set($event)"
-                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm">
-        </div>
-
-        <!-- Content -->
-        <div>
-          <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Content</label>
-          <textarea rows="5" placeholder="Write your note here..."
-                    [ngModel]="newNoteContent()" (ngModelChange)="newNoteContent.set($event)"
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent text-sm resize-none"></textarea>
-        </div>
-
-      </div>
-
-      <!-- Footer -->
-      <div class="flex items-center justify-end space-x-3 px-6 pb-6">
-        <button (click)="closeAddNoteModal()"
-                class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-          Cancel
-        </button>
-        <button (click)="saveNote()"
-                [disabled]="!newNoteContent().trim() || isSavingNote()"
-                class="px-6 py-2 bg-yellow-500 text-white text-sm font-medium rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-          @if (isSavingNote()) {
-            <span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-          }
-          Save Note
-        </button>
-      </div>
-
-    </div>
-  </div>
+<!-- ══ MODAL — INVOICE DETAIL ══ -->
+@if (viewingInvoice()) {
+  <app-invoice-view-modal
+    [invoice]="viewingInvoice()!"
+    [cases]="[case()]"
+    [sendingId]="sendingInvoiceId()"
+    [deletingId]="deletingInvoiceId()"
+    (closed)="closeViewInvoice()"
+    (print)="printInvoice(viewingInvoice()!)"
+    (sendDraft)="sendCaseInvoice(viewingInvoice()!); closeViewInvoice()"
+    (deleteDraft)="cancelCaseInvoice(viewingInvoice()!)"
+  />
 }
+
+<app-new-note-modal
+  [lockedCaseId]="case()?.id ?? ''"
+  [lockedCaseTitle]="case()?.title ?? ''"
+  (saved)="onNoteSaved()">
+</app-new-note-modal>
 
 <!-- ══════════════════════════════════════════════════════════
      MODAL — DOCUMENT PREVIEW
@@ -1078,7 +1536,7 @@
         </div>
         <div class="min-w-0">
           <p class="text-sm font-bold text-gray-900 truncate max-w-xs">{{ previewDoc()!.name }}</p>
-          <p class="text-xs text-gray-500">{{ previewDoc()!.size }} · Uploaded {{ previewDoc()!.ago }}</p>
+          <p class="text-xs text-gray-500">{{ previewDoc()!.size }} · {{ previewDoc()!.modified }}</p>
         </div>
       </div>
       <button (click)="closePreview()"
@@ -1095,7 +1553,7 @@
       </div>
       <p class="text-sm font-semibold text-gray-700 mb-1">{{ previewDoc()!.name }}</p>
       <p class="text-xs text-gray-400 mb-6">Preview not available — download to open</p>
-      <button (click)="downloadDoc(previewDoc()!); closePreview()"
+      <button (click)="closePreview(); confirmDownload(previewDoc()!)"
               class="flex items-center space-x-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl text-sm font-semibold hover:shadow-md transition-all">
         <i class="fa-solid fa-download"></i>
         <span>Download File</span>
@@ -1105,6 +1563,13 @@
   </div>
 </div>
 }
+
+<!-- Request Doc Modal (shared component) -->
+<app-request-doc-modal
+  [lockedCaseId]="case()?.id ?? ''"
+  [lockedCaseTitle]="case()?.title ?? ''"
+  (sent)="loadDocuments(_caseId)"
+/>
 
 <!-- ══════════════════════════════════════════════════════════
      MODAL — CONFIRM DELETE
@@ -1124,13 +1589,14 @@
       <p class="text-sm text-gray-500 mb-1">Are you sure you want to delete</p>
       <p class="text-sm font-semibold text-gray-800 truncate px-4 mb-5">{{ deletingDoc()?.name }}</p>
       <div class="flex items-center space-x-3">
-        <button (click)="cancelDelete()"
-                class="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">
+        <button (click)="cancelDelete()" [disabled]="docIsDeleting()"
+                class="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50">
           Cancel
         </button>
-        <button (click)="deleteDoc()"
-                class="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-semibold hover:bg-red-600 transition-colors">
-          <i class="fa-solid fa-trash mr-2"></i>Delete
+        <button (click)="deleteDoc()" [disabled]="docIsDeleting()"
+                class="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+          @if (docIsDeleting()) { <i class="fa-solid fa-spinner fa-spin text-xs"></i> }
+          <i class="fa-solid fa-trash"></i>Delete
         </button>
       </div>
     </div>
@@ -1317,3 +1783,101 @@
   </div><!-- /panel -->
 </div><!-- /backdrop -->
 }
+
+<!-- ══════════════════════════════════════════
+     MODAL: CONFIRM REMOVE TEAM MEMBER
+══════════════════════════════════════════ -->
+@if (confirmRemoveMember()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background:rgba(0,0,0,0.45)">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+
+    <div class="flex items-center justify-center w-14 h-14 rounded-full bg-red-100 mx-auto mb-4">
+      <i class="fa-solid fa-user-minus text-2xl text-red-500"></i>
+    </div>
+
+    <h3 class="text-lg font-bold text-gray-900 text-center mb-1">Remove Team Member</h3>
+    <p class="text-sm text-gray-500 text-center mb-6">
+      Are you sure you want to remove
+      <span class="font-semibold text-gray-800">{{ confirmRemoveMember()?.full_name }}</span>
+      from this case? They will lose access to all case documents and tasks.
+    </p>
+
+    <div class="flex items-center gap-3">
+      <button (click)="cancelConfirmRemove()"
+              class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button (click)="confirmAndRemove()"
+              class="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition-colors">
+        <i class="fa-solid fa-user-minus mr-2"></i>Yes, Remove
+      </button>
+    </div>
+
+  </div>
+</div>
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — DOWNLOAD CONFIRMATION
+══════════════════════════════════════════════════════════ -->
+@if (confirmDownloadDoc()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color:rgba(0,0,0,0.45)"
+     (click)="cancelDownload()">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="px-6 pt-6 pb-4 flex items-center gap-3">
+      <div class="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+           [ngClass]="confirmDownloadDoc()!.iconBg">
+        <i class="fa-solid text-lg" [ngClass]="[confirmDownloadDoc()!.icon, confirmDownloadDoc()!.iconColor]"></i>
+      </div>
+      <div class="min-w-0">
+        <p class="text-sm font-bold text-gray-900 truncate">{{ confirmDownloadDoc()!.name }}</p>
+        <p class="text-xs text-gray-500">{{ confirmDownloadDoc()!.size }} · {{ confirmDownloadDoc()!.type }}</p>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="mx-6 mb-5 bg-gray-50 rounded-xl divide-y divide-gray-100">
+      <div class="flex justify-between px-4 py-2.5 text-xs">
+        <span class="text-gray-500">Uploaded by</span>
+        <span class="font-medium text-gray-800">{{ confirmDownloadDoc()!.uploader }}</span>
+      </div>
+      <div class="flex justify-between px-4 py-2.5 text-xs">
+        <span class="text-gray-500">Modified</span>
+        <span class="font-medium text-gray-800">{{ confirmDownloadDoc()!.modified }}</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="px-6 pb-6 flex gap-3">
+      <button (click)="cancelDownload()"
+        class="flex-1 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button (click)="downloadDoc(confirmDownloadDoc()!)"
+        class="flex-1 py-2.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors flex items-center justify-center gap-2">
+        <i class="fa-solid fa-download text-xs"></i>
+        Download
+      </button>
+    </div>
+
+  </div>
+</div>
+}
+
+@if (pendingConfirm()) {
+  <app-confirm-dialog
+    [title]="pendingConfirm()!.title"
+    [message]="pendingConfirm()!.message"
+    [confirmLabel]="pendingConfirm()!.confirmLabel"
+    [type]="pendingConfirm()!.type"
+    (confirmed)="confirmPending()"
+    (dismissed)="dismissConfirm()"
+  />
+}
+
+<app-ai-summary-modal />

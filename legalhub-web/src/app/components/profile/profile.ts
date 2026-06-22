@@ -1,4 +1,4 @@
-import { Component, signal, inject, ElementRef, ViewChild } from '@angular/core';
+import { Component, signal, inject, ElementRef, ViewChild, OnInit } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -11,7 +11,7 @@ import { AuthService, AppUser } from '../../services/auth.service';
   imports: [FormsModule, NgClass],
   templateUrl: './profile.html',
 })
-export class Profile {
+export class Profile implements OnInit {
   private authService = inject(AuthService);
   private router      = inject(Router);
   private sanitizer   = inject(DomSanitizer);
@@ -20,19 +20,22 @@ export class Profile {
 
   currentUser = this.authService.currentUser;
 
-  // Edit form fields
-  editName  = signal('');
-  editPhone = signal('');
-  editTitle = signal('');
+  // ── Edit form fields ──────────────────────────────────────────
+  editName        = signal('');
+  editPhone       = signal('');
+  editTitle       = signal('');
+  editWhatsapp    = signal('');
+  editGender      = signal('');
+  editNationality = signal('');
+  editDateOfBirth = signal('');
+  editAddress     = signal('');
 
   // ── Avatar ────────────────────────────────────────────────────
-  /** Fichier sélectionné (conservé pour l'envoi multipart) */
   selectedFile     = signal<File | null>(null);
-  /** base64 preview locale avant envoi */
   avatarPreview    = signal<string | null>(null);
-  /** true si l'image stockée a échoué à charger */
   avatarLoadFailed = signal(false);
   showLightbox     = signal(false);
+  showAvatarMenu   = signal(false);
   avatarSaving     = signal(false);
   avatarSuccess    = signal(false);
   avatarError      = signal('');
@@ -44,6 +47,10 @@ export class Profile {
   showCurrent = signal(false);
   showNew     = signal(false);
   showConfirm = signal(false);
+
+  // ── Login history ─────────────────────────────────────────────
+  loginHistory        = signal<{ id: string; logged_in_at: string }[]>([]);
+  loginHistoryLoading = signal(false);
 
   // ── UI state ──────────────────────────────────────────────────
   activeTab   = signal<'info' | 'security'>('info');
@@ -102,8 +109,12 @@ export class Profile {
     return !!this.confirmPwd() && this.newPwd() !== this.confirmPwd();
   }
 
-  // ── Avatar — sélection ────────────────────────────────────────
+  get shortUserId(): string {
+    const id = this.user?.id ?? '';
+    return id ? `${id.slice(0, 8)}…${id.slice(-4)}` : '—';
+  }
 
+  // ── Avatar — sélection ────────────────────────────────────────
   triggerAvatarPicker(): void { this.avatarInput.nativeElement.click(); }
 
   onAvatarSelected(event: Event): void {
@@ -125,7 +136,6 @@ export class Profile {
     this.avatarError.set('');
   }
 
-  /** Upload le fichier vers le backend → URL Supabase persistée en DB */
   async confirmAvatar(): Promise<void> {
     const file = this.selectedFile();
     if (!file) return;
@@ -145,7 +155,6 @@ export class Profile {
     }
   }
 
-  /** Supprime la photo — met avatar_url à null en base */
   async removeAvatar(): Promise<void> {
     this.avatarPreview.set(null);
     this.selectedFile.set(null);
@@ -153,7 +162,6 @@ export class Profile {
       await this.authService.updateProfile({ avatar_url: null });
       this.avatarLoadFailed.set(false);
     } catch {
-      // Échec silencieux — on nettoie quand même localement
       const u = this.user;
       if (u) {
         const cleaned = { ...u, avatar: '' };
@@ -187,10 +195,18 @@ export class Profile {
         full_name: this.editName().trim(),
         phone:     this.editPhone() || undefined,
       });
-      // title est local uniquement (pas en base)
+      // Persist local-only fields into signal + localStorage
       const u = this.user;
-      if (u && this.editTitle() !== u.title) {
-        const updated = { ...u, title: this.editTitle() };
+      if (u) {
+        const updated = {
+          ...u,
+          title:          this.editTitle(),
+          whatsappNumber: this.editWhatsapp()    || undefined,
+          gender:         this.editGender()      || undefined,
+          nationality:    this.editNationality() || undefined,
+          dateOfBirth:    this.editDateOfBirth() || undefined,
+          address:        this.editAddress()     || undefined,
+        };
         this.authService.currentUser.set(updated);
         localStorage.setItem('current_user', JSON.stringify(updated));
       }
@@ -222,11 +238,57 @@ export class Profile {
     }
   }
 
+  // ── Login history ─────────────────────────────────────────────
+  async loadLoginHistory(): Promise<void> {
+    this.loginHistoryLoading.set(true);
+    try {
+      const history = await this.authService.getLoginHistory();
+      if (history.length > 0) {
+        this.loginHistory.set(history.slice(0, 5));
+        return;
+      }
+
+      const userId = this.user?.id ?? '';
+      let local = userId ? this.authService.getLocalLoginHistory(userId) : [];
+
+      // Seed with lastLoginAt when no local entries exist yet
+      if (local.length === 0 && this.user?.lastLoginAt) {
+        local = [{ id: 'seed', logged_in_at: this.user.lastLoginAt }];
+      }
+
+      this.loginHistory.set(local);
+    } catch { /* silent */ }
+    finally { this.loginHistoryLoading.set(false); }
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────
+  copyUserId(): void {
+    const id = this.user?.id;
+    if (id) navigator.clipboard.writeText(id).catch(() => {});
+  }
+
+  formatDate(dateStr: string | null | undefined): string {
+    if (!dateStr) return '—';
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      }).format(new Date(dateStr));
+    } catch { return '—'; }
+  }
+
   goBack(): void { this.router.navigate(['/dashboard']); }
 
   ngOnInit(): void {
     this.editName.set(this.user?.name ?? '');
     this.editPhone.set(this.user?.phone ?? '');
     this.editTitle.set(this.user?.title ?? '');
+    this.editWhatsapp.set(this.user?.whatsappNumber ?? '');
+    this.editGender.set(this.user?.gender ?? '');
+    this.editNationality.set(this.user?.nationality ?? '');
+    this.editDateOfBirth.set(this.user?.dateOfBirth ?? '');
+    this.editAddress.set(this.user?.address ?? '');
+    this.authService.refreshCurrentUser();
+    this.loadLoginHistory();
   }
 }

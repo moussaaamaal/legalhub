@@ -1,10 +1,10 @@
-<div class="min-h-screen flex font-sans">
+<div class="h-screen flex font-sans overflow-hidden">
 
   <!-- ══════════════════════════════════
        LEFT PANEL — dark branding
   ══════════════════════════════════ -->
-  <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
-    <div class="absolute inset-0" style="opacity:0.10">
+  <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden h-full flex-shrink-0">
+    <div class="absolute inset-0 opacity-10">
       <div class="absolute top-0 left-0 w-96 h-96 bg-amber-500 rounded-full filter blur-3xl"></div>
       <div class="absolute bottom-0 right-0 w-96 h-96 bg-blue-500 rounded-full filter blur-3xl"></div>
     </div>
@@ -17,7 +17,7 @@
           <i class="fa-solid fa-scale-balanced text-white text-2xl"></i>
         </div>
         <div>
-          <h1 class="text-2xl font-bold text-white">LegalFlow</h1>
+          <h1 class="text-2xl font-bold text-white">LegalHub</h1>
           <p class="text-sm text-slate-300">Practice Management</p>
         </div>
       </div>
@@ -25,58 +25,43 @@
       <!-- Hero text + feature cards -->
       <div class="space-y-8">
         <div>
-          <h2 class="text-4xl font-bold text-white mb-4 leading-tight">Streamline Your Legal Practice</h2>
-          <p class="text-lg text-slate-300">Comprehensive multi-tenant platform designed for modern law offices</p>
+          <h2 class="text-4xl font-bold text-white mb-4 leading-tight">Your legal practice, fully connected</h2>
+          <p class="text-lg text-slate-300">One platform to manage cases, clients, billing and documents built for modern law firms.</p>
         </div>
 
         <div class="space-y-4">
-          <div class="flex items-start space-x-4 backdrop-blur-sm rounded-xl p-5 border border-white border-opacity-10 bg-white bg-opacity-5">
-            <div class="w-11 h-11 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div class="flex items-start space-x-4 backdrop-blur-sm rounded-xl p-5 border border-white/10 bg-white/5">
+            <div class="w-11 h-11 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <i class="fa-solid fa-briefcase text-blue-400 text-lg"></i>
             </div>
             <div>
-              <h3 class="text-white font-semibold mb-1">Case Management</h3>
-              <p class="text-slate-400 text-sm">Organize cases, track deadlines, and manage documents efficiently</p>
+              <h3 class="text-white font-semibold mb-1">Smart case management</h3>
+              <p class="text-slate-400 text-sm">Track every case, deadline and document from a single workspace</p>
             </div>
           </div>
-          <div class="flex items-start space-x-4 backdrop-blur-sm rounded-xl p-5 border border-white border-opacity-10 bg-white bg-opacity-5">
-            <div class="w-11 h-11 bg-amber-500 bg-opacity-20 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div class="flex items-start space-x-4 backdrop-blur-sm rounded-xl p-5 border border-white/10 bg-white/5">
+            <div class="w-11 h-11 bg-amber-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <i class="fa-solid fa-robot text-amber-400 text-lg"></i>
             </div>
             <div>
-              <h3 class="text-white font-semibold mb-1">AI-Powered Assistant</h3>
-              <p class="text-slate-400 text-sm">Generate legal documents and analyze cases with advanced AI</p>
+              <h3 class="text-white font-semibold mb-1">AI legal assistant</h3>
+              <p class="text-slate-400 text-sm">Draft documents, analyze cases and get instant insights</p>
             </div>
           </div>
-          <div class="flex items-start space-x-4 backdrop-blur-sm rounded-xl p-5 border border-white border-opacity-10 bg-white bg-opacity-5">
-            <div class="w-11 h-11 bg-green-500 bg-opacity-20 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div class="flex items-start space-x-4 backdrop-blur-sm rounded-xl p-5 border border-white/10 bg-white/5">
+            <div class="w-11 h-11 bg-green-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <i class="fa-solid fa-file-invoice-dollar text-green-400 text-lg"></i>
             </div>
             <div>
-              <h3 class="text-white font-semibold mb-1">Billing & Payments</h3>
-              <p class="text-slate-400 text-sm">Track billable hours and manage invoices seamlessly</p>
+              <h3 class="text-white font-semibold mb-1">Client & billing hub</h3>
+              <p class="text-slate-400 text-sm">Manage clients, invoices and payments with ease</p>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Stats footer -->
-      <div class="flex items-center space-x-8">
-        <div>
-          <p class="text-2xl font-bold text-white">500+</p>
-          <p class="text-xs text-slate-400">Law Firms</p>
-        </div>
-        <div class="h-8 w-px bg-white bg-opacity-10"></div>
-        <div>
-          <p class="text-2xl font-bold text-white">50k+</p>
-          <p class="text-xs text-slate-400">Cases Managed</p>
-        </div>
-        <div class="h-8 w-px bg-white bg-opacity-10"></div>
-        <div>
-          <p class="text-2xl font-bold text-white">99.9%</p>
-          <p class="text-xs text-slate-400">Uptime</p>
-        </div>
-      </div>
+      <!-- Spacer to replace stats -->
+      <div></div>
 
     </div>
   </div>
@@ -84,7 +69,17 @@
   <!-- ══════════════════════════════════
        RIGHT PANEL — forms
   ══════════════════════════════════ -->
-  <div class="w-full lg:w-1/2 flex flex-col items-center justify-between p-8 bg-white overflow-y-auto min-h-screen">
+  <div class="relative w-full lg:w-1/2 flex flex-col items-center justify-between p-8 bg-white overflow-y-auto h-full">
+
+  <!-- OAuth processing overlay -->
+  @if (processingOAuth()) {
+    <div class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/90">
+      <div class="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-5"></div>
+      <p class="text-gray-700 font-semibold text-sm">Signing you in…</p>
+      <p class="text-gray-400 text-xs mt-1">Verifying your account with LegalHub</p>
+      <button (click)="cancelOAuth()" class="mt-6 text-xs text-gray-400 hover:text-gray-600 underline">Cancel</button>
+    </div>
+  }
     <div class="w-full max-w-md py-8">
 
       <!-- Mobile logo -->
@@ -93,53 +88,32 @@
           <i class="fa-solid fa-scale-balanced text-white text-2xl"></i>
         </div>
         <div>
-          <h1 class="text-2xl font-bold text-gray-900">LegalFlow</h1>
+          <h1 class="text-2xl font-bold text-gray-900">LegalHub</h1>
           <p class="text-sm text-gray-500">Practice Management</p>
         </div>
       </div>
 
-      <!-- ══════════════════════════════════
-           WEB-AUTH-06 — Admin mode header
-           OR standard mode toggle
-      ══════════════════════════════════ -->
-      @if (mode() === 'admin') {
-        <div class="flex items-center justify-between mb-8 bg-red-50 border border-red-200 rounded-xl p-4">
-          <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-              <i class="fa-solid fa-shield-halved text-red-600 text-lg"></i>
-            </div>
-            <div>
-              <p class="text-sm font-bold text-red-900">Administrator Portal</p>
-              <p class="text-xs text-red-600">Restricted access · All sessions logged</p>
-            </div>
-          </div>
-          <button (click)="switchTo('login')"
-            class="text-xs text-red-500 hover:text-red-700 flex items-center space-x-1 font-medium">
-            <i class="fa-solid fa-arrow-left text-xs mr-1"></i>User login
-          </button>
-        </div>
-      } @else if (authStep() === 'credentials') {
+      @if (authStep() === 'credentials') {
         <div class="flex bg-gray-100 rounded-xl p-1 mb-8">
           <button (click)="switchTo('login')"
             class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all"
             [ngClass]="mode() === 'login'
               ? 'bg-white text-gray-900 shadow-sm'
               : 'text-gray-500 hover:text-gray-700'">
-            Sign In
+            Sign in
           </button>
           <button (click)="switchTo('signup')"
             class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all"
             [ngClass]="mode() === 'signup'
               ? 'bg-white text-gray-900 shadow-sm'
               : 'text-gray-500 hover:text-gray-700'">
-            Create Account
+            Sign up 
           </button>
         </div>
       }
 
       <!-- ══════════════════════════════════
            WEB-AUTH-04 — 2FA / MFA step
-           (shared for login and admin)
       ══════════════════════════════════ -->
       @if (authStep() === 'mfa') {
 
@@ -147,8 +121,8 @@
           <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
             <i class="fa-solid fa-mobile-screen-button text-amber-600 text-2xl"></i>
           </div>
-          <h2 class="text-2xl font-bold text-gray-900 mb-1">Two-Factor Verification</h2>
-          <p class="text-gray-500 text-sm">Enter the 6-digit code from your authenticator app or the SMS sent to your phone</p>
+          <h2 class="text-2xl font-bold text-gray-900 mb-1">Two-Factor authentification</h2>
+          <p class="text-gray-500 text-sm">Enter the 6-digit code from your authenticator app</p>
         </div>
 
         @if (error()) {
@@ -159,7 +133,7 @@
         }
 
         <div class="mb-5">
-          <label class="block text-sm font-semibold text-gray-700 mb-2 text-center">Authentication Code (TOTP / SMS)</label>
+          <label class="block text-sm font-semibold text-gray-700 mb-2 text-center">Authentication code (TOTP)</label>
           <input type="text" inputmode="numeric" maxlength="6" pattern="[0-9]*"
             [ngModel]="mfaCode()" (ngModelChange)="mfaCode.set($event)"
             placeholder="000000"
@@ -175,7 +149,7 @@
           @if (loading()) {
             <i class="fa-solid fa-spinner fa-spin"></i><span>Verifying…</span>
           } @else {
-            <i class="fa-solid fa-shield-check"></i><span>Verify & Sign In</span>
+            <i class="fa-solid fa-shield-check"></i><span>Verify & Sign in</span>
           }
         </button>
 
@@ -192,7 +166,7 @@
       @if (mode() === 'login' && authStep() === 'credentials') {
 
         <div class="text-center mb-7">
-          <h2 class="text-2xl font-bold text-gray-900 mb-1">Welcome Back</h2>
+          <h2 class="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
           <p class="text-gray-500 text-sm">Sign in to access your workspace</p>
         </div>
 
@@ -207,11 +181,12 @@
         <!-- WEB-AUTH-02 — Email / password form -->
         <form (ngSubmit)="login()" class="space-y-4">
           <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email address</label>
             <div class="relative">
               <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
               <input type="email" [ngModel]="email()" (ngModelChange)="email.set($event)" name="email"
-                placeholder="you@yourfirm.com"
+                autocomplete="email"
+                placeholder="Enter your email"
                 class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm">
             </div>
           </div>
@@ -220,6 +195,9 @@
             <div class="relative">
               <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
               <input [type]="showPassword() ? 'text' : 'password'" [ngModel]="password()" (ngModelChange)="password.set($event)" name="password"
+                autocomplete="new-password"
+                [attr.readonly]="pwdLocked() ? '' : null"
+                (focus)="pwdLocked.set(false)" (mousedown)="pwdLocked.set(false)"
                 placeholder="Enter your password"
                 class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm">
               <button type="button" (click)="togglePassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -229,7 +207,7 @@
           </div>
           <div class="flex items-center justify-between">
             <label class="flex items-center space-x-2 cursor-pointer">
-              <input type="checkbox" class="w-4 h-4 accent-amber-500 rounded">
+              <input type="checkbox" [ngModel]="rememberMe()" (ngModelChange)="rememberMe.set($event)" name="rememberMe" class="w-4 h-4 accent-amber-500 rounded">
               <span class="text-sm text-gray-600">Remember me</span>
             </label>
             <!-- WEB-AUTH-05 — Forgot password -->
@@ -242,7 +220,7 @@
             @if (loading()) {
               <i class="fa-solid fa-spinner fa-spin"></i><span>Signing in…</span>
             } @else {
-              <span>Sign In</span><i class="fa-solid fa-arrow-right"></i>
+              <span>Sign in</span><i class="fa-solid fa-arrow-right"></i>
             }
           </button>
         </form>
@@ -250,33 +228,21 @@
         <!-- WEB-AUTH-03 — SSO divider -->
         <div class="relative flex items-center my-5">
           <div class="flex-1 h-px bg-gray-200"></div>
-          <span class="mx-4 text-xs text-gray-400 font-medium bg-white px-1">or continue with</span>
+          <span class="mx-4 text-xs text-gray-400 font-medium bg-white px-1">or</span>
           <div class="flex-1 h-px bg-gray-200"></div>
         </div>
 
-        <!-- WEB-AUTH-03 — Google & Microsoft OAuth buttons -->
-        <div class="grid grid-cols-2 gap-3">
-          <button (click)="loginWithGoogle()" [disabled]="loading()"
-            class="flex items-center justify-center space-x-2 py-3 px-4 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50">
-            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-            </svg>
-            <span>Google</span>
-          </button>
-          <button (click)="loginWithMicrosoft()" [disabled]="loading()"
-            class="flex items-center justify-center space-x-2 py-3 px-4 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50">
-            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 21 21">
-              <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-              <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-              <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-              <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-            </svg>
-            <span>Microsoft</span>
-          </button>
-        </div>
+        <!-- WEB-AUTH-03 — Google OAuth button -->
+        <button (click)="loginWithGoogle()" [disabled]="loading()"
+          class="w-full flex items-center justify-center space-x-2 py-3 px-4 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50">
+          <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          <span>continue with Google</span>
+        </button>
 
         <p class="text-center text-sm text-gray-500 mt-6">
           Don't have an account?
@@ -285,64 +251,6 @@
 
       }<!-- /login -->
 
-      <!-- ══════════════════════════════════
-           WEB-AUTH-06 — Admin login form
-      ══════════════════════════════════ -->
-      @if (mode() === 'admin' && authStep() === 'credentials') {
-
-        <div class="text-center mb-6">
-          <h2 class="text-xl font-bold text-gray-900 mb-1">Administrator Sign In</h2>
-          <p class="text-gray-500 text-sm">Use your admin credentials to access the management console</p>
-        </div>
-
-        @if (error()) {
-          <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
-            <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
-            <p class="text-sm text-red-700">{{ error() }}</p>
-          </div>
-        }
-
-        <form (ngSubmit)="adminLogin()" class="space-y-4">
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Admin Email</label>
-            <div class="relative">
-              <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              <input type="email" [ngModel]="adminEmail()" (ngModelChange)="adminEmail.set($event)" name="adminEmail"
-                placeholder="admin@lawwise.com"
-                class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm">
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Admin Password</label>
-            <div class="relative">
-              <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              <input [type]="showAdminPwd() ? 'text' : 'password'" [ngModel]="adminPassword()" (ngModelChange)="adminPassword.set($event)" name="adminPassword"
-                placeholder="Enter admin password"
-                class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm">
-              <button type="button" (click)="showAdminPwd.update(v => !v)" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                <i [ngClass]="showAdminPwd() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
-              </button>
-            </div>
-          </div>
-          <button type="submit" [disabled]="loading()"
-            class="w-full py-3.5 bg-gradient-to-r from-red-600 to-red-700 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-70 flex items-center justify-center space-x-2 text-sm mt-2">
-            @if (loading()) {
-              <i class="fa-solid fa-spinner fa-spin"></i><span>Signing in…</span>
-            } @else {
-              <i class="fa-solid fa-shield-halved"></i><span>Admin Sign In</span>
-            }
-          </button>
-        </form>
-
-        <div class="mt-5 p-3.5 bg-gray-50 border border-gray-200 rounded-xl">
-          <p class="text-xs text-gray-500 text-center leading-relaxed">
-            <i class="fa-solid fa-circle-info text-gray-400 mr-1"></i>
-            Unauthorized access attempts are logged and may result in account suspension.
-            Contact IT support at <span class="font-semibold text-gray-700">security&#64;lawwise.com</span>
-          </p>
-        </div>
-
-      }<!-- /admin -->
 
       <!-- ══════════════════════════════════
            SIGN UP FORM
@@ -352,7 +260,7 @@
         <!-- ── Step 0 — Account type selector ── -->
         @if (signupType() === null) {
           <div class="text-center mb-7">
-            <h2 class="text-2xl font-bold text-gray-900 mb-1">Create Your Account</h2>
+            <h2 class="text-2xl font-bold text-gray-900 mb-1">Create your account</h2>
             <p class="text-gray-500 text-sm">Choose the type of account that matches your role</p>
           </div>
 
@@ -364,8 +272,8 @@
                 <i class="fa-solid fa-building-columns text-amber-600 text-xl"></i>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-base font-bold text-gray-900 mb-0.5">Law Firm Administrator</p>
-                <p class="text-sm text-gray-500 leading-snug">Register your firm and manage your team. An <span class="font-semibold text-amber-700">office code</span> will be generated automatically for your lawyers to join.</p>
+                <p class="text-base font-bold text-gray-900 mb-0.5">Law firm administrator</p>
+                <p class="text-sm text-gray-500 leading-snug">Register your firm, a unique <span class="font-medium text-amber-600">office code</span> will be generated to invite your lawyers.</p>
               </div>
               <i class="fa-solid fa-chevron-right text-gray-300 group-hover:text-amber-500 mt-1 flex-shrink-0 transition-colors"></i>
             </button>
@@ -377,8 +285,8 @@
                 <i class="fa-solid fa-scale-balanced text-blue-600 text-xl"></i>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-base font-bold text-gray-900 mb-0.5">Lawyer / Attorney</p>
-                <p class="text-sm text-gray-500 leading-snug">Join your firm's existing workspace. You'll need the <span class="font-semibold text-blue-700">office code</span> provided by your firm administrator.</p>
+                <p class="text-base font-bold text-gray-900 mb-0.5">Lawyer</p>
+                <p class="text-sm text-gray-500 leading-snug">Join your firm's workspace using an <span class="font-medium text-blue-600">office code</span> or an <span class="font-medium text-blue-600">invitation token</span>.</p>
               </div>
               <i class="fa-solid fa-chevron-right text-gray-300 group-hover:text-blue-500 mt-1 flex-shrink-0 transition-colors"></i>
             </button>
@@ -438,14 +346,14 @@
           <!-- Step title -->
           <div class="mb-5">
             @if (signupStep() === 1) {
-              <h2 class="text-xl font-bold text-gray-900 mb-1">Personal Information</h2>
+              <h2 class="text-xl font-bold text-gray-900 mb-1">Personal information</h2>
               <p class="text-gray-500 text-sm">Tell us who you are — all fields are required</p>
             } @else if (signupType() === 'admin') {
-              <h2 class="text-xl font-bold text-gray-900 mb-1">Your Firm Details</h2>
-              <p class="text-gray-500 text-sm">Set up your law firm workspace</p>
+              <h2 class="text-xl font-bold text-gray-900 mb-1">Your firm details</h2>
+              <p class="text-gray-500 text-sm">Set up your workspace — a unique <strong class="text-amber-600">office code</strong> will be generated for you to invite your lawyers.</p>
             } @else {
-              <h2 class="text-xl font-bold text-gray-900 mb-1">Join Your Firm</h2>
-              <p class="text-gray-500 text-sm">Enter the office code provided by your administrator</p>
+              <h2 class="text-xl font-bold text-gray-900 mb-1">Join your firm</h2>
+              <p class="text-gray-500 text-sm">Enter your <strong class="text-gray-700">office code</strong> or your <strong class="text-gray-700">invitation token</strong> to access your firm's workspace.</p>
             }
           </div>
 
@@ -464,12 +372,14 @@
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1.5">First Name <span class="text-red-400">*</span></label>
                   <input type="text" [ngModel]="su_firstName()" (ngModelChange)="su_firstName.set($event)"
+                    autocomplete="given-name"
                     placeholder="John"
                     class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
                 </div>
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1.5">Last Name <span class="text-red-400">*</span></label>
                   <input type="text" [ngModel]="su_lastName()" (ngModelChange)="su_lastName.set($event)"
+                    autocomplete="family-name"
                     placeholder="Smith"
                     class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
                 </div>
@@ -479,16 +389,18 @@
                 <div class="relative">
                   <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                   <input type="email" [ngModel]="su_email()" (ngModelChange)="su_email.set($event)"
-                    placeholder="you@yourfirm.com"
+                    autocomplete="email"
+                    placeholder="Enter your email"
                     class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
                 </div>
               </div>
               <!-- Phone — required for both types -->
               <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone Number <span class="text-red-400">*</span></label>
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone number <span class="text-red-400">*</span></label>
                 <div class="relative">
                   <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                   <input type="tel" [ngModel]="su_phone()" (ngModelChange)="su_phone.set($event)"
+                    autocomplete="tel"
                     placeholder="+1 (555) 000-0000"
                     class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
                 </div>
@@ -498,6 +410,7 @@
                 <div class="relative">
                   <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                   <input [type]="showPassword() ? 'text' : 'password'" [ngModel]="su_password()" (ngModelChange)="su_password.set($event)"
+                    autocomplete="new-password"
                     placeholder="Min. 8 characters"
                     class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
                   <button type="button" (click)="togglePassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -524,6 +437,7 @@
                 <div class="relative">
                   <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                   <input [type]="showConfirm() ? 'text' : 'password'" [ngModel]="su_confirm()" (ngModelChange)="su_confirm.set($event)"
+                    autocomplete="new-password"
                     placeholder="Repeat your password"
                     class="w-full pl-11 pr-12 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm transition-colors"
                     [ngClass]="passwordMismatch ? 'border-red-400 bg-red-50' : 'border-gray-300'">
@@ -568,21 +482,6 @@
                   <input type="text" [ngModel]="su_firmName()" (ngModelChange)="su_firmName.set($event)"
                     placeholder="Morrison & Associates"
                     class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Firm Size <span class="text-red-400">*</span></label>
-                <div class="grid grid-cols-5 gap-2">
-                  @for (size of firmSizes; track size) {
-                    <button (click)="su_firmSize.set(size)"
-                      class="py-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-center"
-                      [ngClass]="su_firmSize() === size
-                        ? 'border-amber-500 bg-amber-50 text-amber-700 shadow-sm'
-                        : 'border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50'">
-                      {{ size }}
-                    </button>
-                  }
                 </div>
               </div>
 
@@ -633,23 +532,62 @@
           @if (signupStep() === 2 && signupType() === 'lawyer') {
             <div class="space-y-5">
 
-              <!-- Office code field -->
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Office Code <span class="text-red-400">*</span>
-                </label>
-                <div class="relative">
-                  <i class="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                  <input type="text" [ngModel]="su_officeCode()" (ngModelChange)="su_officeCode.set($event.toUpperCase())"
-                    placeholder="LF-XXXX-XXXX"
-                    maxlength="11"
-                    class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono tracking-widest uppercase">
-                </div>
-                <p class="text-xs text-gray-400 mt-1.5 flex items-center space-x-1">
-                  <i class="fa-solid fa-circle-info"></i>
-                  <span>Ask your firm administrator for the office code (format: LF-XXXX-XXXX)</span>
-                </p>
+              <!-- Join method toggle -->
+              <div class="flex bg-gray-100 rounded-xl p-1">
+                <button (click)="su_joinMethod.set('code')"
+                  class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-2"
+                  [ngClass]="su_joinMethod() === 'code'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'">
+                  <i class="fa-solid fa-key text-xs"></i><span>Office code</span>
+                </button>
+                <button (click)="su_joinMethod.set('token')"
+                  class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-2"
+                  [ngClass]="su_joinMethod() === 'token'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'">
+                  <i class="fa-solid fa-envelope-open-text text-xs"></i><span>Invitation token</span>
+                </button>
               </div>
+
+              <!-- Office code method -->
+              @if (su_joinMethod() === 'code') {
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Office code <span class="text-red-400">*</span>
+                  </label>
+                  <div class="relative">
+                    <i class="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="text" [ngModel]="su_officeCode()" (ngModelChange)="su_officeCode.set($event.toUpperCase())"
+                      placeholder="LF-XXXX-XXXX"
+                      maxlength="11"
+                      class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono tracking-widest uppercase">
+                  </div>
+                  <p class="text-xs text-gray-400 mt-1.5 flex items-center space-x-1">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span>Code provided by your firm administrator</span>
+                  </p>
+                </div>
+              }
+
+              <!-- Invitation token method -->
+              @if (su_joinMethod() === 'token') {
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Invitation token <span class="text-red-400">*</span>
+                    </label>
+                    <div class="relative">
+                      <i class="fa-solid fa-ticket absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                      <input type="text" [ngModel]="su_inviteToken()" (ngModelChange)="su_inviteToken.set($event)"
+                        placeholder="Paste your invitation token"
+                        class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono">
+                    </div>                  <p class="text-xs text-gray-400 mt-1.5 flex items-center space-x-1">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span>Token provided by your firm administrator</span>
+                  </p>
+                  </div>
+         
+              }
 
               <!-- Terms -->
               <label class="flex items-start space-x-3 cursor-pointer p-3.5 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors">
@@ -687,7 +625,7 @@
                   @if (loading()) {
                     <i class="fa-solid fa-spinner fa-spin"></i><span>Joining…</span>
                   } @else {
-                    <i class="fa-solid fa-right-to-bracket"></i><span>Join Firm</span>
+                    <i class="fa-solid fa-right-to-bracket"></i><span>Join firm</span>
                   }
                 </button>
               </div>
@@ -711,7 +649,7 @@
           <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5 shadow-sm">
             <i class="fa-solid fa-check text-green-500 text-4xl"></i>
           </div>
-          <h2 class="text-2xl font-bold text-gray-900 mb-1">Account Created!</h2>
+          <h2 class="text-2xl font-bold text-gray-900 mb-1">Account created!</h2>
           <p class="text-gray-500 mb-5 text-sm">
             Welcome, <strong class="text-gray-800">{{ su_firstName() }} {{ su_lastName() }}</strong>
           </p>
@@ -721,7 +659,7 @@
             <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 mb-5 text-left">
               <div class="flex items-center space-x-2 mb-2">
                 <i class="fa-solid fa-key text-amber-600"></i>
-                <p class="text-sm font-bold text-amber-800">Your Firm's Office Code</p>
+                <p class="text-sm font-bold text-amber-800">Your firm's office code</p>
               </div>
               <p class="text-2xl font-mono font-bold text-amber-900 tracking-widest text-center py-2">
                 {{ generatedOfficeCode() }}
@@ -745,48 +683,12 @@
           </p>
           <button (click)="switchTo('login')"
             class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all text-sm flex items-center justify-center space-x-2">
-            <i class="fa-solid fa-arrow-right"></i><span>Go to Sign In</span>
+            <i class="fa-solid fa-arrow-right"></i><span>Go to Sign in</span>
           </button>
         </div>
       }
 
-      <!-- WEB-AUTH-06 — Admin portal link (shown on user-facing modes only) -->
-      @if (mode() !== 'admin' && authStep() === 'credentials') {
-        <div class="text-center mt-8">
-          <button (click)="switchTo('admin')"
-            class="text-xs text-gray-400 hover:text-gray-600 flex items-center space-x-1.5 mx-auto transition-colors">
-            <i class="fa-solid fa-shield-halved"></i>
-            <span>Administrator Portal</span>
-          </button>
-        </div>
-      }
 
-      <!-- ══════════════════════════════════
-           WEB-AUTH-07 — Security & GDPR notice
-      ══════════════════════════════════ -->
-      <div class="mt-8 pt-6 border-t border-gray-100">
-        <div class="flex items-center justify-center flex-wrap gap-x-4 gap-y-2 mb-3">
-          <div class="flex items-center space-x-1.5 text-xs text-gray-400">
-            <i class="fa-solid fa-lock text-green-500"></i>
-            <span>256-bit AES · TLS 1.3</span>
-          </div>
-          <div class="w-px h-3 bg-gray-300 hidden sm:block"></div>
-          <div class="flex items-center space-x-1.5 text-xs text-gray-400">
-            <i class="fa-solid fa-shield-check text-blue-500"></i>
-            <span>GDPR Compliant</span>
-          </div>
-          <div class="w-px h-3 bg-gray-300 hidden sm:block"></div>
-          <div class="flex items-center space-x-1.5 text-xs text-gray-400">
-            <i class="fa-solid fa-certificate text-amber-500"></i>
-            <span>ISO 27001</span>
-          </div>
-        </div>
-        <p class="text-xs text-gray-400 text-center leading-relaxed">
-          Your connection is encrypted and all data is processed in accordance with the
-          <a href="#" class="text-amber-600 hover:underline">Privacy Policy</a> and
-          <a href="#" class="text-amber-600 hover:underline">GDPR Data Processing Agreement</a>.
-        </p>
-      </div>
 
     </div><!-- /form container -->
   </div><!-- /right panel -->
@@ -798,20 +700,22 @@
      (includes workspace context)
 ══════════════════════════════════ -->
 @if (showForgotModal()) {
-  <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
     (click)="closeForgotModal()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8" (click)="$event.stopPropagation()">
+
+      <!-- Step 1 — Enter email -->
       @if (!resetSent()) {
         <div class="text-center mb-6">
           <div class="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <i class="fa-solid fa-lock-open text-amber-600 text-2xl"></i>
           </div>
-          <h3 class="text-xl font-bold text-gray-900 mb-1">Forgot Password?</h3>
-          <p class="text-sm text-gray-500">We'll send a reset link to your inbox</p>
+          <h3 class="text-xl font-bold text-gray-900 mb-1">Forgot password?</h3>
+          <p class="text-sm text-gray-500">We'll send a 6-digit code to your inbox</p>
         </div>
 
         <div class="mb-5">
-          <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email address</label>
           <div class="relative">
             <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
             <input type="email" [ngModel]="resetEmail()" (ngModelChange)="resetEmail.set($event)"
@@ -829,26 +733,104 @@
             [ngClass]="resetEmail()
               ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-md'
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
-            Send Reset Link
-          </button>
-        </div>
-      } @else {
-        <div class="text-center">
-          <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i class="fa-solid fa-paper-plane text-green-600 text-2xl"></i>
-          </div>
-          <h3 class="text-xl font-bold text-gray-900 mb-2">Email Sent!</h3>
-          <p class="text-sm text-gray-500 mb-1">Check your inbox at</p>
-          <p class="text-sm font-bold text-gray-800 mb-5">{{ resetEmail() }}</p>
-          <p class="text-xs text-gray-400 mb-6">
-            The reset link has been sent to your inbox.
-          </p>
-          <button (click)="closeForgotModal()"
-            class="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-md text-sm">
-            Done
+            Send Code
           </button>
         </div>
       }
+
+      <!-- Step 2 — Enter code + new password -->
+      @if (resetSent() && !resetSuccess()) {
+        <div class="text-center mb-5">
+          <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fa-solid fa-key text-blue-600 text-2xl"></i>
+          </div>
+          <h3 class="text-xl font-bold text-gray-900 mb-1">Enter Reset Code</h3>
+          <p class="text-sm text-gray-500">We sent a 6-digit code to <strong class="text-gray-700">{{ resetEmail() }}</strong></p>
+        </div>
+
+        @if (resetError()) {
+          <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
+            <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
+            <p class="text-sm text-red-700">{{ resetError() }}</p>
+          </div>
+        }
+
+        <div class="space-y-4 mb-5">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1.5">6-Digit Code</label>
+            <input type="text" inputmode="numeric" maxlength="6" pattern="[0-9]*"
+              [ngModel]="resetCode()" (ngModelChange)="resetCode.set($event)"
+              placeholder="000000"
+              class="w-full text-center text-2xl font-mono tracking-[0.4em] py-3 px-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-amber-500 transition-colors">
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1.5">New Password</label>
+            <div class="relative">
+              <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+              <input [type]="showResetPwd() ? 'text' : 'password'" [ngModel]="resetNewPwd()" (ngModelChange)="resetNewPwd.set($event)"
+                autocomplete="new-password" placeholder="Min. 8 characters"
+                class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              <button type="button" (click)="showResetPwd.update(v => !v)" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <i [ngClass]="showResetPwd() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Confirm New Password</label>
+            <div class="relative">
+              <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+              <input type="password" [ngModel]="resetConfirmPwd()" (ngModelChange)="resetConfirmPwd.set($event)"
+                autocomplete="new-password" placeholder="Repeat new password"
+                class="w-full pl-11 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm transition-colors"
+                [ngClass]="resetConfirmPwd() && resetNewPwd() !== resetConfirmPwd() ? 'border-red-400 bg-red-50' : 'border-gray-300'">
+            </div>
+            @if (resetConfirmPwd() && resetNewPwd() !== resetConfirmPwd()) {
+              <p class="text-xs text-red-500 mt-1 flex items-center space-x-1">
+                <i class="fa-solid fa-circle-exclamation"></i><span>Passwords do not match</span>
+              </p>
+            }
+          </div>
+        </div>
+
+        <div class="flex space-x-3">
+          <button (click)="resetSent.set(false)"
+            class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50">
+            <i class="fa-solid fa-arrow-left mr-1"></i>Back
+          </button>
+          <button (click)="submitResetPassword()" [disabled]="resetLoading() || resetCode().length < 6 || resetNewPwd().length < 8 || resetNewPwd() !== resetConfirmPwd()"
+            class="flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center space-x-2"
+            [ngClass]="!resetLoading() && resetCode().length === 6 && resetNewPwd().length >= 8 && resetNewPwd() === resetConfirmPwd()
+              ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-md'
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+            @if (resetLoading()) {
+              <i class="fa-solid fa-spinner fa-spin"></i><span>Resetting…</span>
+            } @else {
+              <span>Reset Password</span>
+            }
+          </button>
+        </div>
+
+        <p class="text-center text-xs text-gray-400 mt-4">
+          Didn't receive the code?
+          <button (click)="sendReset()" class="text-amber-600 hover:underline font-medium ml-1">Resend</button>
+        </p>
+      }
+
+      <!-- Step 3 — Success -->
+      @if (resetSuccess()) {
+        <div class="text-center">
+          <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fa-solid fa-circle-check text-green-600 text-2xl"></i>
+          </div>
+          <h3 class="text-xl font-bold text-gray-900 mb-2">Password Reset!</h3>
+          <p class="text-sm text-gray-500 mb-6">Your password has been updated. You can now sign in with your new password.</p>
+          <button (click)="closeForgotModal()"
+            class="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-md text-sm">
+            Sign in
+          </button>
+        </div>
+      }
+
     </div>
   </div>
 }

@@ -14,26 +14,30 @@ export class CaseService {
 
   // ── Mapper réponse backend → Case local ───────────────────
   private _map(raw: Record<string, unknown>): Case {
-    const client = raw['client'] as Record<string, string> | null;
+    const client    = raw['client'] as Record<string, unknown> | null;
+    const appUser   = client?.['app_user'] as Record<string, unknown> | null;
     return {
-      id:          String(raw['id']),
-      caseNumber:  String(raw['case_number'] ?? ''),
-      title:       String(raw['title'] ?? ''),
-      client:      client
-                     ? `${client['first_name']} ${client['last_name']}`.trim()
-                     : String(raw['client_id'] ?? ''),
-      clientId:    String(raw['client_id'] ?? ''),
+      id:              String(raw['id']),
+      caseNumber:      String(raw['case_number'] ?? ''),
+      title:           String(raw['title'] ?? ''),
+      client:          client
+                         ? `${client['first_name']} ${client['last_name']}`.trim()
+                         : String(raw['client_id'] ?? ''),
+      clientId:        String(raw['client_id'] ?? ''),
+      clientAvatarUrl: appUser?.['avatar_url'] ? String(appUser['avatar_url']) : undefined,
       type:        String(raw['case_type'] ?? ''),
       status:      String(raw['status'] ?? 'NEW'),
       priority:    String(raw['priority'] ?? 'NORMAL'),
-      assignedTo:  String(raw['lawyer_id'] ?? ''),
-      openDate:    raw['created_at'] ? new Date(String(raw['created_at'])) : new Date(),
+      assignedTo:   String(raw['lawyer_id'] ?? ''),
+      practiceArea: String(raw['practice_area'] ?? '') || undefined,
+      openDate:     raw['created_at'] ? new Date(String(raw['created_at'])) : new Date(),
       nextHearing: raw['first_hearing_date']
                      ? new Date(String(raw['first_hearing_date']))
                      : undefined,
       court:       String(raw['court_name'] ?? '') || undefined,
       description: String(raw['description'] ?? '') || undefined,
       tags:        Array.isArray(raw['tags']) ? raw['tags'] as string[] : [],
+      billingType: String(raw['billing_type'] ?? '') || undefined,
     };
   }
 
@@ -96,5 +100,55 @@ export class CaseService {
     return firstValueFrom(
       this.http.get<Record<string, unknown>[]>(`${this.api}/api/cases/${caseId}/timeline`)
     );
+  }
+
+  async fetchTeam(caseId: string): Promise<Record<string, unknown>[]> {
+    return firstValueFrom(
+      this.http.get<Record<string, unknown>[]>(`${this.api}/api/cases/${caseId}/team`)
+    );
+  }
+
+  async addTeamMember(caseId: string, userId: string): Promise<void> {
+    await firstValueFrom(
+      this.http.post(`${this.api}/api/cases/${caseId}/team`, { user_id: userId })
+    );
+  }
+
+  async removeTeamMember(caseId: string, userId: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete(`${this.api}/api/cases/${caseId}/team/${userId}`)
+    );
+  }
+
+  async restoreCase(caseId: string): Promise<Case> {
+    const raw = await firstValueFrom(
+      this.http.patch<Record<string, unknown>>(`${this.api}/api/cases/${caseId}/restore`, {})
+    );
+    const restored = this._map(raw);
+    this.casesSignal.update(list => list.map(c => c.id === caseId ? restored : c));
+    return restored;
+  }
+
+  async fetchCasesByClient(clientId: string): Promise<Case[]> {
+    const raw = await firstValueFrom(
+      this.http.get<Record<string, unknown>[]>(`${this.api}/api/cases/client/${clientId}`)
+    );
+    return raw.map(r => this._map(r));
+  }
+
+  async exportCase(caseId: string): Promise<void> {
+    const url  = `${this.api}/api/cases/${caseId}/export`;
+    const token = localStorage.getItem('access_token') ?? '';
+    const resp  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) throw new Error('Export failed');
+    const blob     = await resp.blob();
+    const filename = resp.headers.get('Content-Disposition')
+      ?.match(/filename="?([^"]+)"?/)?.[1] ?? `case_${caseId}.pdf`;
+    const objUrl = URL.createObjectURL(blob);
+    const a      = document.createElement('a');
+    a.href       = objUrl;
+    a.download   = filename;
+    a.click();
+    URL.revokeObjectURL(objUrl);
   }
 }

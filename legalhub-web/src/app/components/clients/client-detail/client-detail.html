@@ -1,3 +1,4 @@
+
 <!-- TOPBAR -->
 <header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
   <div class="px-8 py-4 flex items-center justify-between">
@@ -6,12 +7,6 @@
         <i class="fa-solid fa-arrow-left text-lg"></i>
         <span class="text-sm font-medium">Back to Clients</span>
       </button>
-      <div class="h-6 w-px bg-gray-300 mx-2"></div>
-      <div class="relative w-80">
-        <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-        <input type="text" placeholder="Search clients, cases, documents..."
-          class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
-      </div>
     </div>
     <div class="flex items-center space-x-2">
 
@@ -25,92 +20,92 @@
   </div>
 </header>
 
-<main class="flex-1 overflow-y-auto">
+<main class="flex-1 overflow-y-auto bg-gray-50">
 
-  @if (client()) {
+  <!-- Loading -->
+  @if (isLoading()) {
+    <div class="flex items-center justify-center h-64">
+      <div class="text-center">
+        <i class="fa-solid fa-spinner fa-spin text-4xl text-amber-500 mb-4 block"></i>
+        <p class="text-gray-500">Loading client...</p>
+      </div>
+    </div>
+  }
+
+  @if (!isLoading() && client()) {
 
     <!-- CLIENT HERO -->
-    <section class="px-8 pt-6 pb-4 bg-white border-b border-gray-200">
-      <div class="flex items-start justify-between">
-        <div class="flex items-start space-x-6">
-          <div class="relative group">
-            <img [src]="avatarPreview() ?? client()!.avatar"
-                 [alt]="client()!.name"
-                 class="w-24 h-24 rounded-full border-4 border-gray-200 shadow-lg object-cover">
-            @if (isUploadingAvatar()) {
-              <div class="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
-                <i class="fa-solid fa-spinner fa-spin text-white text-xl"></i>
+    <section class="bg-gray-50 border-b border-gray-200 px-8 py-6">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+
+        <!-- Row 1: Avatar · Info · Actions -->
+        <div class="flex items-start justify-between">
+          <div class="flex items-start gap-5">
+            <!-- Avatar -->
+            <div class="relative flex-shrink-0">
+              <button type="button" (click)="openAvatarLightbox()"
+                      class="block w-16 h-16 rounded-2xl overflow-hidden focus:outline-none cursor-pointer group">
+                <img [src]="avatarPreview() ?? client()!.avatar"
+                     [alt]="client()!.name"
+                     class="w-full h-full object-cover border-2 rounded-2xl border-gray-200 shadow-sm group-hover:opacity-90 transition-opacity">
+              </button>
+              <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-gray-700 rounded-full flex items-center justify-center shadow pointer-events-none">
+                <i class="fa-solid fa-camera text-white" style="font-size:9px"></i>
               </div>
+              <input #avatarInput type="file" accept="image/*" class="hidden"
+                     (change)="onAvatarSelected($event)">
+            </div>
+
+            <!-- Name · Badges · Contact -->
+            <div>
+
+              <h1 class="text-2xl font-bold text-gray-900 leading-tight mb-2">{{ client()!.name }}</h1>
+              <p class="text-xs font-bold text-gray-400 tracking-widest uppercase mb-1">
+                Client Since {{ client()!.since }}
+              </p>
+              <div class="flex items-center flex-wrap gap-2 mb-3">
+                <span class="text-xs px-2.5 py-1 rounded-full font-semibold"
+                      [ngClass]="[client()!.statusBg, client()!.statusColor]">
+                  <i class="fa-solid fa-circle text-xs mr-1"></i>{{ client()!.status }}
+                </span>
+                <span class="text-xs px-2.5 py-1 rounded-full font-semibold"
+                      [ngClass]="[client()!.typeBg, client()!.typeColor]">{{ client()!.type }}</span>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-2 flex-shrink-0">
+            @if (client()!.email) {
+              <button (click)="openGmail()"
+                      class="px-3 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-sm font-medium text-white transition-colors flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-envelope"></i>Email
+              </button>
             }
-            <input #avatarInput type="file" accept="image/*" class="hidden"
-                   (change)="onAvatarSelected($event)">
-            <button (click)="triggerAvatarInput(avatarInput)"
-                    [disabled]="isUploadingAvatar()"
-                    class="absolute bottom-0 right-0 w-8 h-8 bg-amber-500 text-white rounded-full flex items-center justify-center hover:bg-amber-600 transition-colors shadow-lg disabled:opacity-60"
-                    title="Change photo">
-              <i class="fa-solid fa-camera text-sm"></i>
-            </button>
-          </div>
-          <div>
-            <div class="flex items-center space-x-3 mb-2">
-              <h1 class="text-3xl font-bold text-gray-900">{{ client()!.name }}</h1>
-              <span class="px-3 py-1 text-xs font-semibold rounded-full" [ngClass]="[client()!.statusBg, client()!.statusColor]">{{ client()!.status }}</span>
-              <span class="px-3 py-1 text-xs font-semibold rounded-full" [ngClass]="[client()!.typeBg, client()!.typeColor]">{{ client()!.type }}</span>
-            </div>
-            <div class="flex items-center space-x-6 text-sm text-gray-600 mb-3">
-              <span><i class="fa-solid fa-envelope mr-2 text-gray-400"></i>{{ client()!.email }}</span>
-              <span><i class="fa-solid fa-phone mr-2 text-gray-400"></i>{{ client()!.phone }}</span>
-              <span><i class="fa-solid fa-building mr-2 text-gray-400"></i>{{ client()!.company }}</span>
-            </div>
-            <div class="flex items-center space-x-4 text-xs">
-              <span class="text-gray-500">Client Since: <span class="font-semibold text-gray-900">{{ client()!.since }}</span></span>
-              <div class="h-4 w-px bg-gray-300"></div>
-              <span class="text-gray-500">Cases: <span class="font-semibold text-gray-900">{{ backendCases().length }}</span></span>
-              <div class="h-4 w-px bg-gray-300"></div>
-              <span class="text-gray-500">Invoices: <span class="font-semibold text-gray-900">{{ backendInvoices().length }}</span></span>
-            </div>
+            @if (client()!.phone || client()!.whatsappNumber) {
+              <button (click)="openWhatsapp()"
+                      class="px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 shadow-sm">
+                <i class="fa-brands fa-whatsapp"></i>WhatsApp
+              </button>
+            }
           </div>
         </div>
-        <div class="flex items-center space-x-3">
-          <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-            <i class="fa-solid fa-envelope mr-2"></i>Send Email
-          </button>
-          <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-            <i class="fa-solid fa-phone mr-2"></i>Call
-          </button>
-        </div>
+
       </div>
     </section>
 
     <!-- TABS -->
-    <section class="px-8 bg-white border-b border-gray-200">
+    <section class="bg-slate-100 border-b border-slate-200 px-8">
       <div class="flex items-center space-x-1">
         @for (t of tabs; track t) {
           <button (click)="setTab(t)"
-            class="px-6 py-4 text-sm font-medium transition-colors"
+            class="px-4 py-3 text-sm font-medium transition-colors border-b-2"
             [ngClass]="activeTab() === t
-              ? 'text-amber-600 border-b-2 border-amber-600'
-              : 'text-gray-600 border-b-2 border-transparent hover:bg-gray-50 hover:border-gray-300'">
+              ? 'text-amber-600 border-amber-600'
+              : 'text-gray-600 border-transparent hover:text-gray-900'">
             {{ t }}
           </button>
-        }
-      </div>
-    </section>
-
-    <!-- QUICK STATS -->
-    <section class="px-8 py-6">
-      <div class="grid grid-cols-5 gap-6">
-        @for (s of dynamicStats(); track s.label) {
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-            <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4" [ngClass]="s.iconBg">
-              <i [ngClass]="[s.icon, s.iconColor]" class="text-xl"></i>
-            </div>
-            <h3 class="text-2xl font-bold text-gray-900 mb-1">{{ s.value }}</h3>
-            <p class="text-sm text-gray-600">{{ s.label }}</p>
-            <div class="mt-4 pt-4 border-t border-gray-100">
-              <p class="text-xs text-gray-500">{{ s.note }}</p>
-            </div>
-          </div>
         }
       </div>
     </section>
@@ -120,338 +115,250 @@
 
       <!-- ══════════════════════════════ OVERVIEW ══════════════════════════════ -->
       @case ('Overview') {
-        <section class="px-8 pb-6">
-          <div class="grid grid-cols-3 gap-6">
+        <section class="px-8 py-6 space-y-6">
 
-            <!-- LEFT 2/3 -->
-            <div class="col-span-2 space-y-6">
+          <!-- Client Stats -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="px-6 py-4 flex items-center gap-3">
+              <h3 class="text-base font-bold text-gray-900">Client summary</h3>
+            </div>
+            <div class="px-6 pb-5 grid grid-cols-5 gap-3">
 
-              <!-- Active Cases (backend) -->
-              <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-                  <div>
-                    <h2 class="text-lg font-bold text-gray-900">Active Cases</h2>
-                    <p class="text-sm text-gray-600 mt-1">Current legal matters for this client</p>
-                  </div>
-                  <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
-                    <i class="fa-solid fa-plus mr-2"></i>New Case
-                  </button>
+              <!-- Active Cases -->
+              <button (click)="setTab('Cases'); casesFilter.set('Active')"
+                      class="flex items-center gap-3 bg-blue-50 rounded-xl p-3 border border-blue-100 hover:border-blue-300 hover:bg-blue-100 hover:shadow-sm transition-all text-left group">
+                <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 transition-colors">
+                  <i class="fa-solid fa-briefcase text-blue-600 text-xs"></i>
                 </div>
-                <div class="p-6">
-                  @if (casesLoading()) {
-                    <div class="flex items-center justify-center py-12">
-                      <i class="fa-solid fa-spinner fa-spin text-amber-500 text-xl mr-3"></i>
-                      <span class="text-gray-500">Loading cases…</span>
-                    </div>
-                  } @else if (backendCases().length === 0) {
-                    <div class="text-center py-12">
-                      <i class="fa-solid fa-briefcase text-4xl text-gray-300 mb-3"></i>
-                      <p class="text-gray-500">No cases found for this client</p>
-                    </div>
-                  } @else {
-                    <div class="space-y-4">
-                      @for (c of backendCases().slice(0, 3); track c.id) {
-                        <div class="border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
-                          <div class="flex items-start justify-between mb-3">
-                            <div class="flex-1">
-                              <div class="flex items-center space-x-3 mb-2">
-                                <h3 class="text-base font-semibold text-gray-900">{{ c.title }}</h3>
-                                <span class="px-2 py-0.5 text-xs font-semibold rounded-full"
-                                      [ngClass]="[getCaseTypeInfo(c.case_type).bg, getCaseTypeInfo(c.case_type).color]">
-                                  {{ getCaseTypeInfo(c.case_type).label }}
-                                </span>
-                              </div>
-                              <p class="text-sm text-gray-600 mb-3">{{ c.description || 'No description provided.' }}</p>
-                              <div class="flex items-center space-x-6 text-sm text-gray-600">
-                                <span><i class="fa-solid fa-hashtag mr-2 text-gray-400"></i>{{ c.case_number }}</span>
-                                <span><i class="fa-solid fa-calendar mr-2 text-gray-400"></i>{{ formatDate(c.created_at) }}</span>
-                                @if (c.first_hearing_date) {
-                                  <span><i class="fa-solid fa-gavel mr-2 text-gray-400"></i>Hearing: {{ formatDate(c.first_hearing_date) }}</span>
-                                }
-                              </div>
-                            </div>
-                            <span class="px-3 py-1 text-xs font-semibold rounded-full ml-4"
-                                  [ngClass]="[getCaseStatusInfo(c.status).bg, getCaseStatusInfo(c.status).color]">
-                              {{ getCaseStatusInfo(c.status).label }}
-                            </span>
-                          </div>
-                          <div class="flex items-center justify-between pt-4 border-t border-gray-100">
-                            <div class="flex items-center space-x-4">
-                              <button class="text-sm text-amber-600 hover:text-amber-700 font-medium">View Details</button>
-                            </div>
-                            <span class="text-xs px-2 py-1 rounded-full"
-                                  [ngClass]="c.priority === 'URGENT' ? 'bg-red-100 text-red-700' : c.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'">
-                              {{ c.priority || 'NORMAL' }}
-                            </span>
-                          </div>
-                        </div>
-                      }
-                      @if (backendCases().length > 3) {
-                        <div class="text-center pt-2">
-                          <button (click)="setTab('Cases')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
-                            View All {{ backendCases().length }} Cases <i class="fa-solid fa-arrow-right ml-1"></i>
-                          </button>
-                        </div>
-                      }
-                    </div>
-                  }
+                <div>
+                  <p class="text-lg font-bold text-gray-900 leading-none">{{ dynamicStats()[0].value }}</p>
+                  <p class="text-[10px] text-gray-500 mt-0.5">Active cases</p>
                 </div>
-              </div>
+              </button>
 
-              <!-- Recent Documents (static preview) -->
-              <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-                  <div>
-                    <h2 class="text-lg font-bold text-gray-900">Recent Documents</h2>
-                    <p class="text-sm text-gray-600 mt-1">Latest uploaded files and legal documents</p>
-                  </div>
-                  <button (click)="upload.open()" class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
-                    <i class="fa-solid fa-upload mr-2"></i>Upload Document
-                  </button>
+              <!-- Closed Cases -->
+              <button (click)="setTab('Cases'); casesFilter.set('Closed')"
+                      class="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-200 hover:border-gray-400 hover:bg-gray-100 hover:shadow-sm transition-all text-left group">
+                <div class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-gray-300 transition-colors">
+                  <i class="fa-solid fa-box-archive text-gray-500 text-xs"></i>
                 </div>
-                <div class="p-6 space-y-3">
-                  @for (d of documents; track d.name) {
-                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <div class="flex items-center space-x-4">
-                        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="d.iconBg">
-                          <i [ngClass]="[d.icon, d.iconColor]"></i>
-                        </div>
-                        <div>
-                          <p class="text-sm font-semibold text-gray-900">{{ d.name }}</p>
-                          <div class="flex items-center space-x-4 mt-1">
-                            <span class="text-xs text-gray-600">{{ d.case }}</span>
-                            <span class="text-xs text-gray-500">{{ d.size }}</span>
-                            <span class="text-xs text-gray-500">{{ d.when }}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="flex items-center space-x-1">
-                        <button class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100"><i class="fa-solid fa-download"></i></button>
-                        <button class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100"><i class="fa-solid fa-eye"></i></button>
-                        <button class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100"><i class="fa-solid fa-share-nodes"></i></button>
-                      </div>
-                    </div>
-                  }
-                  <div class="mt-2 pt-4 border-t border-gray-100 text-center">
-                    <button (click)="setTab('Documents')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
-                      View All Documents <i class="fa-solid fa-arrow-right ml-1"></i>
-                    </button>
-                  </div>
+                <div>
+                  <p class="text-lg font-bold text-gray-900 leading-none">{{ dynamicStats()[1].value }}</p>
+                  <p class="text-[10px] text-gray-500 mt-0.5">Closed cases</p>
                 </div>
-              </div>
+              </button>
 
-              <!-- Payment History (backend) -->
-              <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-                  <div>
-                    <h2 class="text-lg font-bold text-gray-900">Payment History &amp; Invoices</h2>
-                    <p class="text-sm text-gray-600 mt-1">Billing records and payment tracking</p>
-                  </div>
-                  <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
-                    <i class="fa-solid fa-plus mr-2"></i>New Invoice
-                  </button>
+              <!-- Doc Requests -->
+              <button (click)="setTab('Documents'); setDocFilter('pending')"
+                      class="flex items-center gap-3 rounded-xl p-3 border hover:shadow-sm transition-all text-left group"
+                      [ngClass]="docPendingCount() > 0 ? 'bg-orange-50 border-orange-300' : 'bg-orange-50 border-orange-100 hover:border-orange-300'">
+                <div class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-orange-200 transition-colors">
+                  <i class="fa-solid fa-inbox text-orange-500 text-xs"></i>
                 </div>
-                @if (invoicesLoading()) {
-                  <div class="flex items-center justify-center py-12">
-                    <i class="fa-solid fa-spinner fa-spin text-amber-500 text-xl mr-3"></i>
-                    <span class="text-gray-500">Loading invoices…</span>
-                  </div>
-                } @else if (backendInvoices().length === 0) {
-                  <div class="text-center py-12">
-                    <i class="fa-solid fa-file-invoice text-4xl text-gray-300 mb-3"></i>
-                    <p class="text-gray-500">No invoices found for this client</p>
-                  </div>
-                } @else {
-                  <div class="overflow-x-auto">
-                    <table class="w-full">
-                      <thead class="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Invoice #</th>
-                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Issue Date</th>
-                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Due Date</th>
-                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Amount</th>
-                          <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                          <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody class="divide-y divide-gray-100">
-                        @for (inv of backendInvoices().slice(0, 5); track inv.id) {
-                          <tr class="hover:bg-gray-50">
-                            <td class="px-6 py-4"><p class="text-sm font-semibold text-gray-900">{{ inv.invoice_number }}</p></td>
-                            <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ formatDate(inv.issue_date) }}</p></td>
-                            <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ formatDate(inv.due_date) }}</p></td>
-                            <td class="px-6 py-4"><p class="text-sm font-semibold text-gray-900">{{ formatAmount(inv.total_amount, inv.currency) }}</p></td>
-                            <td class="px-6 py-4">
-                              <span class="text-xs px-2 py-1 rounded-full font-medium"
-                                    [ngClass]="[getInvoiceStatusInfo(inv.status).bg, getInvoiceStatusInfo(inv.status).color]">
-                                {{ getInvoiceStatusInfo(inv.status).label }}
-                              </span>
-                            </td>
-                            <td class="px-6 py-4 text-right">
-                              @if (inv.status === 'OVERDUE' || inv.status === 'PENDING') {
-                                <button class="text-amber-600 hover:text-amber-700 mr-3 text-sm font-medium">Send Reminder</button>
-                              } @else {
-                                <button class="text-gray-500 hover:text-gray-700 mr-3"><i class="fa-solid fa-download"></i></button>
-                              }
-                              <button class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-eye"></i></button>
-                            </td>
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
-                  </div>
-                  @if (backendInvoices().length > 5) {
-                    <div class="p-6 border-t border-gray-100 flex items-center justify-between">
-                      <p class="text-sm text-gray-600">Showing 5 of {{ backendInvoices().length }} invoices</p>
-                      <button (click)="setTab('Payments')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">View All Invoices</button>
-                    </div>
-                  }
-                }
-              </div>
+                <div>
+                  <p class="text-lg font-bold leading-none" [ngClass]="docPendingCount() > 0 ? 'text-orange-600' : 'text-gray-900'">
+                    {{ docPendingCount() }}
+                  </p>
+                  <p class="text-[10px] text-gray-500 mt-0.5">Doc requests</p>
+                </div>
+              </button>
 
-              <!-- Communication Log (static) -->
-              <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-                  <div>
-                    <h2 class="text-lg font-bold text-gray-900">Communication Log</h2>
-                    <p class="text-sm text-gray-600 mt-1">Complete history of interactions</p>
-                  </div>
-                  <div class="flex items-center space-x-2">
-                    <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"><i class="fa-solid fa-filter mr-2"></i>Filter</button>
-                    <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600"><i class="fa-solid fa-plus mr-2"></i>Add Note</button>
-                  </div>
+              <!-- Total Billed -->
+              <button (click)="setTab('Payments')"
+                      class="flex items-center gap-3 bg-green-50 rounded-xl p-3 border border-green-100 hover:border-green-300 hover:bg-green-100 hover:shadow-sm transition-all text-left group">
+                <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-green-200 transition-colors">
+                  <i class="fa-solid fa-dollar-sign text-green-600 text-xs"></i>
                 </div>
-                <div class="p-6 space-y-6">
-                  @for (c of communications.slice(0, 3); track c.title) {
-                    <div class="flex items-start space-x-4">
-                      <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" [ngClass]="c.iconBg">
-                        <i [ngClass]="[c.icon, c.iconColor]"></i>
-                      </div>
-                      <div class="flex-1">
-                        <div class="flex items-start justify-between mb-2">
-                          <div>
-                            <p class="text-sm font-semibold text-gray-900">{{ c.title }}</p>
-                            <p class="text-xs text-gray-600 mt-0.5">{{ c.by }}</p>
-                          </div>
-                          <span class="text-xs text-gray-500 whitespace-nowrap ml-4">{{ c.when }}</span>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-4"><p class="text-sm text-gray-700">{{ c.body }}</p></div>
-                        <div class="flex items-center space-x-3 mt-3">
-                          <span class="text-xs px-2 py-1 rounded-full" [ngClass]="c.tagBg">{{ c.tag }}</span>
-                          <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">{{ c.case }}</span>
-                        </div>
-                      </div>
-                    </div>
-                  }
-                  <div class="text-center pt-2">
-                    <button (click)="setTab('Communication')" class="text-sm text-amber-600 hover:text-amber-700 font-medium">
-                      View Full Communication Log <i class="fa-solid fa-arrow-right ml-1"></i>
-                    </button>
-                  </div>
+                <div class="min-w-0">
+                  <p class="text-lg font-bold text-gray-900 leading-none truncate">{{ dynamicStats()[2].value }}</p>
+                  <p class="text-[10px] text-gray-500 mt-0.5">Total billed</p>
                 </div>
-              </div>
-
-            </div><!-- /col-span-2 -->
-
-            <!-- RIGHT SIDEBAR -->
-            <div class="space-y-6">
-
-              <!-- Contact Info -->
-              <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h3 class="text-lg font-bold text-gray-900 mb-4">Contact Information</h3>
-                <div class="space-y-4">
-                  <div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Email</label><p class="text-sm text-gray-900">{{ client()!.email }}</p></div>
-                  <div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Phone</label><p class="text-sm text-gray-900">{{ client()!.phone }}</p></div>
-                  <div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Address</label><p class="text-sm text-gray-900">{{ client()!.address || '—' }}</p></div>
-                  <div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Company</label><p class="text-sm text-gray-900">{{ client()!.company }}</p></div>
-                </div>
-              </div>
-
-              <!-- Assigned Team -->
-              <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-lg font-bold text-gray-900">Assigned Team</h3>
-                  <button class="text-sm text-amber-600 hover:text-amber-700 font-medium"><i class="fa-solid fa-plus mr-1"></i>Add</button>
-                </div>
-                <div class="space-y-4">
-                  @for (m of team; track m.name; let last = $last) {
-                    <div class="flex items-center space-x-3" [ngClass]="!last ? 'pb-4 border-b border-gray-100' : ''">
-                      <img [src]="m.avatar" [alt]="m.name" class="w-10 h-10 rounded-full border-2" [ngClass]="m.border">
-                      <div class="flex-1">
-                        <p class="text-sm font-semibold text-gray-900">{{ m.name }}</p>
-                        <p class="text-xs text-gray-600">{{ m.role }}</p>
-                      </div>
-                      <button class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-ellipsis-vertical"></i></button>
-                    </div>
-                  }
-                </div>
-              </div>
+              </button>
 
               <!-- Upcoming Events -->
-              <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h3 class="text-lg font-bold text-gray-900 mb-4">Upcoming Events</h3>
-                <div class="space-y-4">
-                  @for (e of events; track e.title; let last = $last) {
-                    <div class="flex items-start space-x-3" [ngClass]="!last ? 'pb-4 border-b border-gray-100' : ''">
-                      <div class="flex-shrink-0 w-12 h-12 rounded-lg flex flex-col items-center justify-center" [ngClass]="e.monthBg">
-                        <span class="text-xs font-semibold uppercase" [ngClass]="e.monthColor">{{ e.month }}</span>
-                        <span class="text-sm font-bold" [ngClass]="e.dayColor">{{ e.day }}</span>
-                      </div>
-                      <div class="flex-1">
-                        <p class="text-sm font-semibold text-gray-900">{{ e.title }}</p>
-                        <p class="text-xs text-gray-600 mt-0.5">{{ e.sub }}</p>
-                        <p class="text-xs text-gray-500 mt-0.5">{{ e.time }}</p>
-                      </div>
-                    </div>
-                  }
+              <button (click)="setTab('Communication')"
+                      class="flex items-center gap-3 bg-indigo-50 rounded-xl p-3 border border-indigo-100 hover:border-indigo-300 hover:bg-indigo-100 hover:shadow-sm transition-all text-left group">
+                <div class="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
+                  <i class="fa-solid fa-calendar-days text-indigo-600 text-xs"></i>
+                </div>
+                <div>
+                  <p class="text-lg font-bold text-gray-900 leading-none">{{ dynamicStats()[4].value }}</p>
+                  <p class="text-[10px] text-gray-500 mt-0.5">Upcoming events</p>
+                </div>
+              </button>
+
+            </div>
+          </div>
+
+          <!-- Contact Information -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-6">Contact information</h3>
+            <div class="grid grid-cols-4 gap-4">
+
+              <!-- Email -->
+              <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <i class="fa-solid fa-envelope text-blue-600"></i>
+                </div>
+                <div class="min-w-0">
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Email</p>
+                  <p class="text-sm font-medium text-gray-900 truncate">{{ client()!.email }}</p>
                 </div>
               </div>
 
-              <!-- Tags -->
-              <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-lg font-bold text-gray-900">Client Tags</h3>
-                  <button class="text-sm text-amber-600 hover:text-amber-700 font-medium"><i class="fa-solid fa-plus mr-1"></i>Add</button>
+              <!-- Phone -->
+              <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+                <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <i class="fa-solid fa-phone text-amber-600"></i>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                  @for (tag of client()!.tags; track tag) {
-                    <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">{{ tag }}</span>
-                  }
-                  @if (client()!.tags.length === 0) {
-                    <span class="text-sm text-gray-400">No tags yet</span>
-                  }
+                <div class="min-w-0">
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Phone</p>
+                  <p class="text-sm font-medium text-gray-900">{{ client()!.phone || '—' }}</p>
                 </div>
               </div>
 
-              <!-- Quick Actions -->
-              <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-6 text-white">
-                <h3 class="text-lg font-bold mb-4">Quick Actions</h3>
-                <div class="space-y-3">
-                  <button class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 py-3 rounded-lg font-medium transition-colors text-left px-4"><i class="fa-solid fa-file-invoice mr-3"></i>Generate Invoice</button>
-                  <button class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 py-3 rounded-lg font-medium transition-colors text-left px-4"><i class="fa-solid fa-calendar-plus mr-3"></i>Schedule Meeting</button>
-                  <button (click)="upload.open()" class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 py-3 rounded-lg font-medium transition-colors text-left px-4"><i class="fa-solid fa-upload mr-3"></i>Upload Document</button>
-                  <button class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 py-3 rounded-lg font-medium transition-colors text-left px-4"><i class="fa-solid fa-plus mr-3"></i>Create New Case</button>
+              <!-- WhatsApp -->
+              @if (client()!.whatsappNumber) {
+                <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+                  <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fa-brands fa-whatsapp text-green-600"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">WhatsApp</p>
+                    <p class="text-sm font-medium text-gray-900">{{ client()!.whatsappNumber }}</p>
+                  </div>
+                </div>
+              }
+
+              <!-- Address -->
+              <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-transparent">
+                <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <i class="fa-solid fa-location-dot text-purple-600"></i>
+                </div>
+                <div class="min-w-0">
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Address</p>
+                  <p class="text-sm font-medium text-gray-900">{{ client()!.address || '—' }}</p>
                 </div>
               </div>
 
-            </div><!-- /right sidebar -->
-          </div><!-- /grid -->
+              <!-- Company -->
+              <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-transparent">
+                <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <i class="fa-solid fa-building text-indigo-600"></i>
+                </div>
+                <div class="min-w-0">
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Company</p>
+                  <p class="text-sm font-medium text-gray-900">{{ client()!.company || '—' }}</p>
+                </div>
+              </div>
+
+              <!-- Occupation -->
+              @if (client()!.occupation) {
+                <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-transparent">
+                  <div class="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-briefcase text-teal-600"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Occupation</p>
+                    <p class="text-sm font-medium text-gray-900">{{ client()!.occupation }}</p>
+                  </div>
+                </div>
+              }
+
+              <!-- Nationality -->
+              @if (client()!.nationality) {
+                <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-transparent">
+                  <div class="w-10 h-10 bg-rose-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-flag text-rose-600"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Nationality</p>
+                    <p class="text-sm font-medium text-gray-900">{{ client()!.nationality }}</p>
+                  </div>
+                </div>
+              }
+
+              <!-- Date of Birth -->
+              @if (client()!.dateOfBirth) {
+                <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-transparent">
+                  <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-cake-candles text-orange-600"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Date of Birth</p>
+                    <p class="text-sm font-medium text-gray-900">{{ formatDate(client()!.dateOfBirth) }}</p>
+                  </div>
+                </div>
+              }
+
+              <!-- Gender -->
+              @if (client()!.gender) {
+                <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-transparent">
+                  <div class="w-10 h-10 bg-sky-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-person text-sky-600"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Gender</p>
+                    <p class="text-sm font-medium text-gray-900 capitalize">{{ client()!.gender!.toLowerCase() }}</p>
+                  </div>
+                </div>
+              }
+
+              <!-- ID / Passport -->
+              @if (client()!.nationalId) {
+                <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-transparent">
+                  <div class="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-id-card text-gray-600"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">ID / Passport</p>
+                    <p class="text-sm font-medium text-gray-900">{{ client()!.nationalId }}</p>
+                  </div>
+                </div>
+              }
+
+            </div>
+          </div>
+
         </section>
       }
 
       <!-- ══════════════════════════════ CASES ══════════════════════════════ -->
       @case ('Cases') {
-        <section class="px-8 pb-6">
+        <section class="px-8 py-6">
           <div class="bg-white rounded-xl shadow-sm border border-gray-200">
             <div class="p-6 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h2 class="text-lg font-bold text-gray-900">All Cases</h2>
-                <p class="text-sm text-gray-600 mt-1">{{ backendCases().length }} case(s) for this client</p>
+                <p class="text-sm text-gray-600 mt-1">{{ filteredCases().length }} case(s) for this client</p>
               </div>
-              <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+              <button (click)="openNewCaseModal()" class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
                 <i class="fa-solid fa-plus mr-2"></i>New Case
               </button>
             </div>
+
+            <!-- Filter tabs -->
+            <div class="px-6 py-3 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+              @for (tab of [
+                { key: 'All',    icon: 'fa-solid fa-list',         activeCls: 'border-amber-500 text-amber-600',  badgeCls: 'bg-amber-100 text-amber-700'  },
+                { key: 'Active', icon: 'fa-solid fa-circle-check', activeCls: 'border-blue-500 text-blue-600',    badgeCls: 'bg-blue-100 text-blue-700'    },
+                { key: 'Closed', icon: 'fa-solid fa-folder-closed',activeCls: 'border-gray-500 text-gray-700',   badgeCls: 'bg-gray-200 text-gray-600'    },
+                { key: 'Urgent', icon: 'fa-solid fa-circle-exclamation', activeCls: 'border-red-500 text-red-600', badgeCls: 'bg-red-100 text-red-700' },
+                { key: 'High',   icon: 'fa-solid fa-arrow-up',     activeCls: 'border-orange-500 text-orange-600',badgeCls: 'bg-orange-100 text-orange-700'}
+              ]; track tab.key) {
+                <button (click)="casesFilter.set($any(tab.key))"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border-b-2 transition-colors"
+                  [ngClass]="casesFilter() === tab.key ? tab.activeCls : 'border-transparent text-gray-500 hover:text-gray-700'">
+                  <i [ngClass]="tab.icon" class="text-xs"></i>
+                  {{ tab.key }}
+                  <span class="ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold"
+                    [ngClass]="casesFilter() === tab.key ? tab.badgeCls : 'bg-gray-100 text-gray-500'">
+                    {{ $any(casesFilterCounts())[tab.key] }}
+                  </span>
+                </button>
+              }
+            </div>
+
             <div class="p-6">
               @if (casesLoading()) {
                 <div class="flex items-center justify-center py-20">
@@ -464,61 +371,115 @@
                   <p class="text-gray-500 text-lg font-medium">No cases found</p>
                   <p class="text-gray-400 text-sm mt-1">This client has no cases yet.</p>
                 </div>
+              } @else if (filteredCases().length === 0) {
+                <div class="text-center py-16">
+                  <i class="fa-solid fa-filter text-4xl text-gray-300 mb-3"></i>
+                  <p class="text-gray-500 font-medium">No cases match this filter</p>
+                </div>
               } @else {
-                <div class="space-y-4">
-                  @for (c of backendCases(); track c.id) {
-                    <div class="border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
-                      <div class="flex items-start justify-between mb-3">
-                        <div class="flex-1">
-                          <div class="flex items-center space-x-3 mb-2">
-                            <h3 class="text-base font-semibold text-gray-900">{{ c.title }}</h3>
-                            <span class="px-2 py-0.5 text-xs font-semibold rounded-full"
+                <div class="space-y-3">
+                  @for (c of filteredCases(); track c.id) {
+                    <div class="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-all cursor-pointer group"
+                         (click)="goToCase(c.id)">
+
+                      <!-- Colored top bar based on priority -->
+                      <div class="h-1 w-full"
+                           [ngClass]="c.priority === 'URGENT' ? 'bg-red-500' : c.priority === 'HIGH' ? 'bg-orange-400' : c.priority === 'MEDIUM' ? 'bg-amber-400' : 'bg-gray-300'">
+                      </div>
+
+                      <div class="p-5">
+                        <!-- Row 1 : title + badges -->
+                        <div class="flex items-start justify-between gap-3 mb-3">
+                          <div class="flex items-center gap-3 min-w-0">
+                            <!-- Case type icon -->
+                            <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                                 [ngClass]="getCaseTypeInfo(c.case_type).bg">
+                              <i class="fa-solid fa-briefcase text-sm"
+                                 [ngClass]="getCaseTypeInfo(c.case_type).color"></i>
+                            </div>
+                            <div class="min-w-0">
+                              <h3 class="text-sm font-bold text-gray-900 truncate group-hover:text-amber-600 transition-colors">
+                                {{ c.title || c.case_number }}
+                              </h3>
+                              <p class="text-xs text-gray-400 mt-0.5">#{{ c.case_number }}</p>
+                            </div>
+                          </div>
+                          <div class="flex items-center gap-2 flex-shrink-0">
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
                                   [ngClass]="[getCaseTypeInfo(c.case_type).bg, getCaseTypeInfo(c.case_type).color]">
                               {{ getCaseTypeInfo(c.case_type).label }}
                             </span>
-                          </div>
-                          <p class="text-sm text-gray-600 mb-3">{{ c.description || 'No description provided.' }}</p>
-                          <div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-600">
-                            <span><i class="fa-solid fa-hashtag mr-2 text-gray-400"></i>{{ c.case_number }}</span>
-                            <span><i class="fa-solid fa-calendar mr-2 text-gray-400"></i>Opened: {{ formatDate(c.created_at) }}</span>
-                            @if (c.filing_date) {
-                              <span><i class="fa-solid fa-file-signature mr-2 text-gray-400"></i>Filed: {{ formatDate(c.filing_date) }}</span>
-                            }
-                            @if (c.first_hearing_date) {
-                              <span><i class="fa-solid fa-gavel mr-2 text-gray-400"></i>Hearing: {{ formatDate(c.first_hearing_date) }}</span>
-                            }
-                            @if (c.court_name) {
-                              <span><i class="fa-solid fa-landmark mr-2 text-gray-400"></i>{{ c.court_name }}</span>
-                            }
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
+                                  [ngClass]="[getCaseStatusInfo(c.status).bg, getCaseStatusInfo(c.status).color]">
+                              {{ getCaseStatusInfo(c.status).label }}
+                            </span>
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
+                                  [ngClass]="c.priority === 'URGENT' ? 'bg-red-100 text-red-700' : c.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' : c.priority === 'MEDIUM' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'">
+                              {{ c.priority || 'NORMAL' }}
+                            </span>
                           </div>
                         </div>
-                        <div class="flex flex-col items-end gap-2 ml-4">
-                          <span class="px-3 py-1 text-xs font-semibold rounded-full"
-                                [ngClass]="[getCaseStatusInfo(c.status).bg, getCaseStatusInfo(c.status).color]">
-                            {{ getCaseStatusInfo(c.status).label }}
+
+                        <!-- Description -->
+                        @if (c.description) {
+                          <p class="text-xs text-gray-500 mb-3 line-clamp-2">{{ c.description }}</p>
+                        }
+
+                        <!-- Meta row -->
+                        <div class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-gray-500 mb-3">
+                          <span class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-calendar text-gray-400"></i>
+                            Opened {{ formatDate(c.created_at) }}
                           </span>
-                          <span class="text-xs px-2 py-1 rounded-full"
-                                [ngClass]="c.priority === 'URGENT' ? 'bg-red-100 text-red-700' : c.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' : c.priority === 'MEDIUM' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'">
-                            {{ c.priority || 'NORMAL' }}
-                          </span>
+                          @if (c.filing_date) {
+                            <span class="flex items-center gap-1.5">
+                              <i class="fa-solid fa-file-signature text-gray-400"></i>
+                              Filed {{ formatDate(c.filing_date) }}
+                            </span>
+                          }
+                          @if (c.first_hearing_date) {
+                            <span class="flex items-center gap-1.5">
+                              <i class="fa-solid fa-gavel text-gray-400"></i>
+                              Hearing {{ formatDate(c.first_hearing_date) }}
+                            </span>
+                          }
+                          @if (c.court_name) {
+                            <span class="flex items-center gap-1.5">
+                              <i class="fa-solid fa-landmark text-gray-400"></i>
+                              {{ c.court_name }}
+                            </span>
+                          }
                         </div>
-                      </div>
-                      <div class="flex items-center space-x-4 pt-4 border-t border-gray-100">
-                        <button class="text-sm text-amber-600 hover:text-amber-700 font-medium">
-                          <i class="fa-solid fa-eye mr-1"></i>View Details
-                        </button>
-                        <button class="text-sm text-gray-600 hover:text-gray-700 font-medium">
-                          <i class="fa-solid fa-folder mr-1"></i>Documents
-                        </button>
+
+                        <!-- Progress bar -->
                         @if (c.progress_percent != null) {
-                          <div class="flex items-center space-x-2 ml-auto">
-                            <span class="text-xs text-gray-500">Progress:</span>
-                            <div class="w-32 bg-gray-200 rounded-full h-2">
-                              <div class="h-2 rounded-full bg-amber-500" [style.width]="c.progress_percent + '%'"></div>
+                          <div class="mb-3">
+                            <div class="flex items-center justify-between mb-1">
+                              <span class="text-xs text-gray-500">Progress</span>
+                              <span class="text-xs font-bold text-gray-700">{{ c.progress_percent }}%</span>
                             </div>
-                            <span class="text-xs font-semibold text-gray-700">{{ c.progress_percent }}%</span>
+                            <div class="w-full bg-gray-100 rounded-full h-1.5">
+                              <div class="h-1.5 rounded-full transition-all"
+                                   [ngClass]="c.progress_percent >= 75 ? 'bg-green-500' : c.progress_percent >= 40 ? 'bg-amber-500' : 'bg-red-400'"
+                                   [style.width]="c.progress_percent + '%'"></div>
+                            </div>
                           </div>
                         }
+
+                        <!-- Footer -->
+                        <div class="flex items-center justify-between pt-3 border-t border-gray-100">
+                          @if (c.assigned_to_name || c.lawyer_name) {
+                            <span class="flex items-center gap-1.5 text-xs text-gray-500">
+                              <i class="fa-solid fa-user-tie text-gray-400"></i>
+                              {{ c.assigned_to_name || c.lawyer_name }}
+                            </span>
+                          } @else {
+                            <span></span>
+                          }
+                          <span class="text-xs text-amber-600 font-semibold group-hover:underline flex items-center gap-1">
+                            View Details <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                          </span>
+                        </div>
                       </div>
                     </div>
                   }
@@ -531,197 +492,557 @@
 
       <!-- ══════════════════════════════ DOCUMENTS ══════════════════════════════ -->
       @case ('Documents') {
-        <section class="px-8 pb-6">
+        <section class="px-8 py-6">
           <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+
+            <!-- Card header -->
+            <div class="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
               <div>
                 <h2 class="text-lg font-bold text-gray-900">All Documents</h2>
-                <p class="text-sm text-gray-600 mt-1">{{ backendDocuments().length }} document(s) across all cases</p>
+                <p class="text-sm text-gray-500 mt-0.5">
+                  {{ docFilter() === 'by-case' && !selectedCaseIdDoc() ? backendDocuments().length : filteredClientDocs().length }}
+                  document{{ (docFilter() === 'by-case' && !selectedCaseIdDoc() ? backendDocuments().length : filteredClientDocs().length) !== 1 ? 's' : '' }} found
+                </p>
               </div>
-              <button (click)="upload.open()" class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
-                <i class="fa-solid fa-upload mr-2"></i>Upload Document
-              </button>
+              <div class="flex items-center gap-2">
+                <button (click)="openRequestDocModal()"
+                        class="flex items-center space-x-2 px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm font-medium hover:bg-amber-100 transition-colors">
+                  <i class="fa-solid fa-inbox"></i><span>Request Doc</span>
+                </button>
+                <button (click)="openUploadDocModal()"
+                        class="flex items-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+                  <i class="fa-solid fa-cloud-arrow-up"></i><span>Upload Document</span>
+                </button>
+              </div>
             </div>
-            <div class="p-6">
-              @if (docsLoading()) {
-                <div class="flex items-center justify-center py-20">
-                  <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
-                  <span class="text-gray-500 text-lg">Loading documents…</span>
-                </div>
-              } @else if (backendDocuments().length === 0) {
-                <div class="text-center py-20">
-                  <i class="fa-solid fa-folder-open text-5xl text-gray-300 mb-4"></i>
-                  <p class="text-gray-500 text-lg font-medium">No documents found</p>
-                  <p class="text-gray-400 text-sm mt-1">Upload a document to get started.</p>
-                  <button (click)="upload.open()" class="mt-4 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
-                    <i class="fa-solid fa-upload mr-2"></i>Upload First Document
+
+            <!-- Filter bar -->
+            <div class="px-6 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+              <div class="flex items-center gap-3 flex-wrap">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                  <i class="fa-solid fa-filter mr-1 text-amber-500"></i>Filter:
+                </span>
+                <div class="flex items-center bg-gray-100 rounded-xl p-1 gap-1 flex-wrap">
+                  <button (click)="setDocFilter('all')"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                    [ngClass]="docFilter() === 'all' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-white hover:shadow-sm'">
+                    <i class="fa-solid fa-layer-group text-xs"></i>All
+                  </button>
+                  <button (click)="setDocFilter('by-case')"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                    [ngClass]="docFilter() === 'by-case' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-white hover:shadow-sm'">
+                    <i class="fa-solid fa-briefcase text-xs"></i>By Case
+                  </button>
+                  <button (click)="setDocFilter('pending')"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                    [ngClass]="docFilter() === 'pending' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-white hover:shadow-sm'">
+                    <i class="fa-solid fa-clock text-xs"></i>Pending Review
+                    @if (docPendingCount() > 0) {
+                      <span class="min-w-[18px] h-[18px] px-1 rounded-full text-xs font-bold flex items-center justify-center"
+                        [ngClass]="docFilter() === 'pending' ? 'bg-white text-amber-600' : 'bg-orange-100 text-orange-700'">
+                        {{ docPendingCount() }}
+                      </span>
+                    }
+                  </button>
+                  <button (click)="setDocFilter('approved')"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                    [ngClass]="docFilter() === 'approved' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-white hover:shadow-sm'">
+                    <i class="fa-solid fa-circle-check text-xs"></i>Approved
+                  </button>
+                  <button (click)="setDocFilter('shared')"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                    [ngClass]="docFilter() === 'shared' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-white hover:shadow-sm'">
+                    <i class="fa-solid fa-share-nodes text-xs"></i>Shared with Client
                   </button>
                 </div>
-              } @else {
-                <div class="space-y-3">
-                  @for (d of backendDocuments(); track d.id) {
-                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <div class="flex items-center space-x-4">
-                        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                             [ngClass]="getDocIconInfo(d.file_type).bg">
-                          <i [ngClass]="[getDocIconInfo(d.file_type).icon, getDocIconInfo(d.file_type).color]"></i>
+              </div>
+            </div>
+
+            <!-- By Case: case folder grid -->
+            @if (docFilter() === 'by-case' && !selectedCaseIdDoc()) {
+              <div class="px-6 py-5">
+                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                  <i class="fa-solid fa-folder mr-1 text-amber-500"></i>Select a case folder
+                </p>
+                @if (docCaseGroups().length === 0 && !docsLoading()) {
+                  <div class="py-12 text-center text-gray-400 text-sm">
+                    <i class="fa-solid fa-folder-open text-3xl mb-2 block"></i>
+                    No folders yet — upload documents to a case to see them here.
+                  </div>
+                }
+                <div class="grid grid-cols-3 gap-4">
+                  @for (g of docCaseGroups(); track g.id) {
+                    <div (click)="selectedCaseIdDoc.set(g.id)"
+                      class="border border-gray-200 rounded-xl p-4 hover:border-amber-400 hover:shadow-md transition-all cursor-pointer group">
+                      <div class="flex items-start justify-between mb-3">
+                        <div class="w-11 h-11 rounded-lg bg-amber-100 flex items-center justify-center group-hover:scale-105 transition-transform">
+                          <i class="fa-solid fa-folder text-xl text-amber-500"></i>
                         </div>
-                        <div>
-                          <p class="text-sm font-semibold text-gray-900">{{ d.file_name }}</p>
-                          <div class="flex items-center space-x-4 mt-1">
-                            <span class="text-xs text-gray-600">{{ d.case_file?.title || 'No case' }}</span>
-                            <span class="text-xs text-gray-500">{{ d.file_size_mb ? (d.file_size_mb | number:'1.1-2') + ' MB' : '—' }}</span>
-                            <span class="text-xs text-gray-500">{{ formatDate(d.created_at) }}</span>
-                            <span class="text-xs px-2 py-0.5 rounded-full"
-                                  [ngClass]="d.status === 'APPROVED' ? 'bg-green-100 text-green-700' : d.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">
-                              {{ d.status === 'APPROVED' ? 'Approved' : d.status === 'REJECTED' ? 'Rejected' : 'Pending Review' }}
-                            </span>
-                          </div>
-                        </div>
+                        <i class="fa-solid fa-arrow-right text-gray-300 group-hover:text-amber-500 transition-colors text-xs mt-1.5"></i>
                       </div>
-                      <div class="flex items-center space-x-1">
-                        <a [href]="d.storage_url" target="_blank"
-                           class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100">
-                          <i class="fa-solid fa-download"></i>
-                        </a>
-                        <a [href]="d.storage_url" target="_blank"
-                           class="p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100">
-                          <i class="fa-solid fa-eye"></i>
-                        </a>
-                      </div>
+                      <h3 class="font-semibold text-gray-900 text-sm truncate mb-1">{{ g.title }}</h3>
+                      <span class="text-xs text-gray-500"><i class="fa-solid fa-file mr-1"></i>{{ g.count }} file{{ g.count !== 1 ? 's' : '' }}</span>
                     </div>
                   }
                 </div>
-              }
-            </div>
+              </div>
+            }
+
+            <!-- By Case: breadcrumb when folder open -->
+            @if (docFilter() === 'by-case' && selectedCaseIdDoc()) {
+              <div class="px-6 py-3 border-b border-amber-100 bg-amber-50 flex items-center gap-2">
+                <button (click)="selectedCaseIdDoc.set('')"
+                  class="flex items-center gap-1.5 text-sm text-amber-600 hover:text-amber-800 font-medium transition-colors">
+                  <i class="fa-solid fa-arrow-left text-xs"></i>All Folders
+                </button>
+                <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                <i class="fa-solid fa-folder text-amber-500 text-sm"></i>
+                <span class="text-sm font-semibold text-gray-800">{{ selectedCaseName }}</span>
+                <span class="ml-1 text-xs text-gray-500">· {{ filteredClientDocs().length }} file{{ filteredClientDocs().length !== 1 ? 's' : '' }}</span>
+              </div>
+            }
+
+            <!-- Table — hidden when by-case with no folder selected -->
+            @if (docFilter() !== 'by-case' || selectedCaseIdDoc()) {
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Document Name</th>
+                      <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Case</th>
+                      <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                      <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Size</th>
+                      <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Uploaded By</th>
+                      <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Modified</th>
+                      <th class="px-5 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                      <th class="px-5 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+
+                    <!-- Loading skeleton -->
+                    @if (docsLoading()) {
+                      @for (_ of [1,2,3]; track $index) {
+                        <tr class="animate-pulse">
+                          <td class="px-5 py-4">
+                            <div class="flex items-center space-x-3">
+                              <div class="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                              <div><div class="h-4 bg-gray-200 rounded w-40 mb-1"></div><div class="h-3 bg-gray-100 rounded w-24"></div></div>
+                            </div>
+                          </td>
+                          <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
+                          <td class="px-5 py-4"><div class="h-6 bg-gray-200 rounded-full w-12"></div></td>
+                          <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
+                          <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-24"></div></td>
+                          <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
+                          <td class="px-5 py-4"><div class="h-6 bg-gray-200 rounded-full w-20"></div></td>
+                          <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-20 ml-auto"></div></td>
+                        </tr>
+                      }
+                    }
+
+                    <!-- Rows -->
+                    @for (d of filteredClientDocs(); track d.id) {
+                      <tr class="hover:bg-gray-50 transition-colors border-l-4"
+                        [ngClass]="d.status === 'REJECTED' ? 'bg-red-50 border-red-400' : 'border-transparent'">
+
+                        <!-- Document Name -->
+                        <td class="px-5 py-4">
+                          <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" [ngClass]="getDocIconInfo(d.file_type).bg">
+                              <i [ngClass]="[getDocIconInfo(d.file_type).icon, getDocIconInfo(d.file_type).color]"></i>
+                            </div>
+                            <div class="min-w-0">
+                              <p class="text-sm font-medium text-gray-900 truncate max-w-xs">{{ d.file_name }}</p>
+                              <p class="text-xs text-gray-500">{{ isClientDoc(d) ? 'Client document' : 'Document' }}</p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <!-- Case -->
+                        <td class="px-5 py-4">
+                          <p class="text-sm text-gray-900 max-w-[130px] truncate">{{ d.case_file?.title || d.case_file?.case_number || '—' }}</p>
+                        </td>
+
+                        <!-- Type badge -->
+                        <td class="px-5 py-4">
+                          <span class="text-xs px-2.5 py-1 rounded-full font-medium"
+                            [ngClass]="[getDocTypeBadge(d.file_type).bg, getDocTypeBadge(d.file_type).color]">
+                            {{ getDocTypeBadge(d.file_type).label }}
+                          </span>
+                        </td>
+
+                        <!-- Size -->
+                        <td class="px-5 py-4">
+                          <p class="text-sm text-gray-900">{{ d.file_size_mb != null ? (d.file_size_mb | number:'1.1-1') + ' MB' : '—' }}</p>
+                        </td>
+
+                        <!-- Uploaded By -->
+                        <td class="px-5 py-4">
+                          <div class="flex items-center space-x-2">
+                            @if (d.uploader_avatar_url) {
+                              <img [src]="d.uploader_avatar_url" alt="" class="w-6 h-6 rounded-full flex-shrink-0 object-cover">
+                            } @else {
+                              <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-user text-gray-400 text-xs"></i>
+                              </div>
+                            }
+                            <span class="text-sm text-gray-900 whitespace-nowrap">{{ d.uploader_name || '—' }}</span>
+                          </div>
+                        </td>
+
+                        <!-- Modified -->
+                        <td class="px-5 py-4">
+                          <p class="text-sm text-gray-500">{{ getRelativeTime(d.created_at) }}</p>
+                        </td>
+
+                        <!-- Status -->
+                        <td class="px-5 py-4">
+                          @if (isClientDoc(d)) {
+                            <span class="text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 w-fit whitespace-nowrap"
+                              [ngClass]="getDocStatusCls(d.status)">
+                              <i [ngClass]="getDocStatusIcon(d.status)" class="text-xs"></i>
+                              {{ getDocStatusLabel(d.status) }}
+                            </span>
+                            @if (d.status === 'PENDING_REVIEW') {
+                              <div class="flex items-center gap-1 mt-1.5">
+                                <button class="flex items-center gap-1 text-xs px-2 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors font-medium">
+                                  <i class="fa-solid fa-check text-[10px]"></i>Approve
+                                </button>
+                                <button class="flex items-center gap-1 text-xs px-2 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium">
+                                  <i class="fa-solid fa-times text-[10px]"></i>Reject
+                                </button>
+                              </div>
+                            }
+                          } @else {
+                            @if (isSharedWithClient(d)) {
+                              <span class="text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 w-fit whitespace-nowrap bg-green-100 text-green-700">
+                                <i class="fa-solid fa-circle-check text-xs"></i>Shared with client
+                              </span>
+                            } @else if (isCurrentUserUploader(d)) {
+                              <button class="flex items-center gap-1 text-xs px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors font-medium">
+                                <i class="fa-solid fa-share text-[10px]"></i>Share with client
+                              </button>
+                            } @else {
+                              <span class="text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 w-fit whitespace-nowrap bg-gray-100 text-gray-500">
+                                <i class="fa-solid fa-circle-xmark text-xs"></i>Not shared
+                              </span>
+                            }
+                          }
+                        </td>
+
+                        <!-- Actions -->
+                        <td class="px-5 py-4 text-right">
+                          <div class="flex items-center justify-end space-x-1">
+                            <button (click)="viewDoc(d)" class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View">
+                              <i class="fa-solid fa-eye text-sm"></i>
+                            </button>
+                            <button (click)="confirmDownload(d)"
+                              class="p-2 rounded-lg transition-colors"
+                              [ngClass]="downloadingDocId() === d.id ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:text-green-600 hover:bg-green-50'"
+                              title="Download">
+                              <i class="fa-solid text-sm" [ngClass]="downloadingDocId() === d.id ? 'fa-check' : 'fa-download'"></i>
+                            </button>
+                            <button (click)="aiSummarizeDoc(d)" class="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="AI Summarize">
+                              <i class="fa-solid fa-robot text-sm"></i>
+                            </button>
+                            @if (isCurrentUserUploader(d)) {
+                              <button class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                <i class="fa-solid fa-trash text-sm"></i>
+                              </button>
+                            }
+                          </div>
+                        </td>
+
+                      </tr>
+                    }
+
+                    <!-- Empty state -->
+                    @if (!docsLoading() && filteredClientDocs().length === 0) {
+                      <tr>
+                        <td colspan="9" class="px-6 py-16 text-center">
+                          <div class="flex flex-col items-center">
+                            <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                              <i class="fa-solid fa-file-slash text-gray-400 text-xl"></i>
+                            </div>
+                            <p class="text-sm font-medium text-gray-600">No documents found</p>
+                          </div>
+                        </td>
+                      </tr>
+                    }
+
+                  </tbody>
+                </table>
+              </div>
+            }
+
           </div>
         </section>
       }
 
       <!-- ══════════════════════════════ PAYMENTS ══════════════════════════════ -->
       @case ('Payments') {
-        <section class="px-8 pb-6">
+        <section class="px-8 py-6">
           <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 class="text-lg font-bold text-gray-900">Payment History &amp; Invoices</h2>
-                <p class="text-sm text-gray-600 mt-1">{{ backendInvoices().length }} invoice(s) total</p>
+
+            <!-- Header -->
+            <div class="border-b border-gray-200">
+              <div class="px-6 pt-5 flex items-start justify-between gap-6 flex-wrap">
+                <div>
+                  <h2 class="text-lg font-bold text-gray-900">Invoices</h2>
+                  <p class="text-sm text-gray-500 mt-0.5">Total billed: <span class="font-semibold text-gray-800">{{ dynamicStats()[2].value }}</span></p>
+                </div>
+                <button (click)="openNewInvoiceModal()"
+                        class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-sm font-medium hover:shadow-md transition-all">
+                  <i class="fa-solid fa-file-invoice"></i>
+                  <span>Add Invoice</span>
+                </button>
               </div>
-              <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
-                <i class="fa-solid fa-plus mr-2"></i>New Invoice
-              </button>
+
+              <!-- Filter bar -->
+              <div class="px-6 py-4 flex items-center gap-3 flex-wrap">
+                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                  <i class="fa-solid fa-filter mr-1 text-amber-500"></i>Filter:
+                </span>
+                <div class="flex items-center bg-gray-100 rounded-xl p-1 gap-1 flex-wrap">
+                  @for (tab of paymentTabs; track tab.key) {
+                    <button (click)="paymentTabFilter.set(tab.key)"
+                      class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                      [ngClass]="paymentTabFilter() === tab.key ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-white hover:shadow-sm'">
+                      <i class="text-xs" [ngClass]="tab.key === 'All' ? 'fa-solid fa-layer-group' : tab.key === 'Paid' ? 'fa-solid fa-circle-check' : tab.key === 'Pending' ? 'fa-solid fa-clock' : tab.key === 'Overdue' ? 'fa-solid fa-triangle-exclamation' : tab.key === 'Draft' ? 'fa-solid fa-file-lines' : 'fa-solid fa-ban'"></i>
+                      <span>{{ tab.key }}</span>
+                      @if (tab.key === 'Overdue' && paymentTabCounts()[tab.key] > 0) {
+                        <span class="min-w-[18px] h-[18px] px-1 rounded-full text-xs font-bold flex items-center justify-center"
+                          [ngClass]="paymentTabFilter() === 'Overdue' ? 'bg-white text-amber-600' : 'bg-red-100 text-red-700'">
+                          {{ paymentTabCounts()[tab.key] }}
+                        </span>
+                      }
+                    </button>
+                  }
+                </div>
+              </div>
             </div>
-            @if (invoicesLoading()) {
-              <div class="flex items-center justify-center py-20">
-                <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
-                <span class="text-gray-500 text-lg">Loading invoices…</span>
-              </div>
-            } @else if (backendInvoices().length === 0) {
-              <div class="text-center py-20">
-                <i class="fa-solid fa-file-invoice text-5xl text-gray-300 mb-4"></i>
-                <p class="text-gray-500 text-lg font-medium">No invoices found</p>
-                <p class="text-gray-400 text-sm mt-1">Create an invoice for this client.</p>
-              </div>
-            } @else {
-              <!-- Summary bar -->
-              <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center space-x-8">
-                <div>
-                  <p class="text-xs text-gray-500 uppercase font-semibold">Total Invoiced</p>
-                  <p class="text-lg font-bold text-gray-900">
-                    {{ formatAmount(backendInvoices().reduce($any(0), $any(0)) || 0) }}
-                  </p>
-                </div>
-                <div>
-                  <p class="text-xs text-gray-500 uppercase font-semibold">Paid</p>
-                  <p class="text-lg font-bold text-green-600">
-                    {{ formatAmount(backendInvoices().filter($any(i => i.status === 'PAID')).reduce($any(0), $any(0)) || 0) }}
-                  </p>
-                </div>
-                <div>
-                  <p class="text-xs text-gray-500 uppercase font-semibold">Pending / Overdue</p>
-                  <p class="text-lg font-bold text-amber-600">
-                    {{ backendInvoices().filter($any(i => ['PENDING','OVERDUE'].includes(i.status))).length }} invoice(s)
-                  </p>
-                </div>
-              </div>
-              <div class="overflow-x-auto">
-                <table class="w-full">
-                  <thead class="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Invoice #</th>
-                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Issue Date</th>
-                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Due Date</th>
-                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Amount</th>
-                      <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                      <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-100">
-                    @for (inv of backendInvoices(); track inv.id) {
-                      <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4"><p class="text-sm font-semibold text-gray-900">{{ inv.invoice_number }}</p></td>
-                        <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ formatDate(inv.issue_date) }}</p></td>
-                        <td class="px-6 py-4"><p class="text-sm text-gray-900">{{ formatDate(inv.due_date) }}</p></td>
-                        <td class="px-6 py-4"><p class="text-sm font-semibold text-gray-900">{{ formatAmount(inv.total_amount, inv.currency) }}</p></td>
-                        <td class="px-6 py-4">
-                          <span class="text-xs px-2 py-1 rounded-full font-medium"
-                                [ngClass]="[getInvoiceStatusInfo(inv.status).bg, getInvoiceStatusInfo(inv.status).color]">
-                            {{ getInvoiceStatusInfo(inv.status).label }}
-                          </span>
-                        </td>
-                        <td class="px-6 py-4 text-right">
-                          @if (inv.status === 'OVERDUE' || inv.status === 'PENDING') {
-                            <button class="text-amber-600 hover:text-amber-700 mr-3 text-sm font-medium">Send Reminder</button>
-                          } @else {
-                            <button class="text-gray-500 hover:text-gray-700 mr-3"><i class="fa-solid fa-download"></i></button>
-                          }
-                          <button class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-eye"></i></button>
-                        </td>
+
+            <!-- Table -->
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Invoice #</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Case</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Issue Date</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Due Date</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+
+                  <!-- Loading -->
+                  @if (invoicesLoading()) {
+                    @for (_ of [1,2,3]; track $index) {
+                      <tr class="animate-pulse">
+                        <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
+                        <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-32"></div></td>
+                        <td class="px-6 py-4"><div class="h-6 bg-gray-200 rounded-full w-20"></div></td>
+                        <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
+                        <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
+                        <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
+                        <td class="px-6 py-4"><div class="h-6 bg-gray-200 rounded-full w-16"></div></td>
+                        <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-20 ml-auto"></div></td>
                       </tr>
                     }
-                  </tbody>
-                </table>
+                  }
+
+                  <!-- Rows -->
+                  @for (inv of filteredPayments(); track inv.id) {
+                    <tr class="hover:bg-gray-50 transition-colors border-l-4" [ngClass]="getInvBorderCls(inv.status)">
+
+                      <!-- Invoice # -->
+                      <td class="px-6 py-4">
+                        <p class="text-sm font-semibold text-gray-900">{{ inv.invoice_number }}</p>
+                      </td>
+
+                      <!-- Case -->
+                      <td class="px-6 py-4">
+                        <p class="text-sm text-gray-900 max-w-[140px] truncate">
+                          {{ getInvCaseTitle(inv) }}
+                        </p>
+                        @if (getInvCaseType(inv)) {
+                          <p class="text-xs text-gray-500">{{ getInvCaseType(inv) }}</p>
+                        }
+                      </td>
+
+                      <!-- Amount -->
+                      <td class="px-6 py-4">
+                        <p class="text-sm font-bold text-gray-900">{{ formatAmount(inv.total_amount, inv.currency) }}</p>
+                      </td>
+
+                      <!-- Issue Date -->
+                      <td class="px-6 py-4">
+                        <p class="text-sm text-gray-900">{{ formatDate(inv.issue_date) }}</p>
+                      </td>
+
+                      <!-- Due Date -->
+                      <td class="px-6 py-4">
+                        <p class="text-sm text-gray-900">{{ formatDate(inv.due_date) }}</p>
+                        @if (getInvDueNote(inv).text) {
+                          <p class="text-xs font-medium mt-0.5" [ngClass]="getInvDueNote(inv).cls">{{ getInvDueNote(inv).text }}</p>
+                        }
+                      </td>
+
+                      <!-- Status -->
+                      <td class="px-6 py-4">
+                        <span class="text-xs px-3 py-1 rounded-full font-medium"
+                          [ngClass]="[getInvoiceStatusInfo(inv.status).bg, getInvoiceStatusInfo(inv.status).color]">
+                          {{ getInvoiceStatusInfo(inv.status).label }}
+                        </span>
+                      </td>
+
+                      <!-- Actions -->
+                      <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end space-x-1">
+                          <button (click)="openViewInvoice(inv)" class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Invoice">
+                            <i class="fa-solid fa-eye"></i>
+                          </button>
+                          @if ((inv.status === 'PENDING' || inv.status === 'OVERDUE') && isInvoiceOwner(inv)) {
+                            <button (click)="sendClientReminder(inv)" [disabled]="sendingReminderId() === inv.id"
+                              class="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50" title="Send Reminder">
+                              <i [class]="sendingReminderId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-bell'"></i>
+                            </button>
+                          }
+                          @if (inv.status === 'DRAFT' && isInvoiceOwner(inv)) {
+                            <button (click)="sendClientDraft(inv)" [disabled]="sendingDraftId() === inv.id"
+                              class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50" title="Send Invoice">
+                              <i [class]="sendingDraftId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
+                            </button>
+                          }
+                          <button (click)="printInvoice(inv)" class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Download PDF">
+                            <i class="fa-solid fa-download"></i>
+                          </button>
+                          @if (inv.status === 'DRAFT' && isInvoiceOwner(inv)) {
+                            <button (click)="cancelClientDraft(inv)" [disabled]="cancellingDraftId() === inv.id"
+                              class="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50" title="Cancel Invoice">
+                              <i [class]="cancellingDraftId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-ban'"></i>
+                            </button>
+                          }
+                          @if (!['DRAFT', 'PAID'].includes(inv.status) && isInvoiceOwner(inv)) {
+                            <button (click)="deleteClientDraft(inv)" [disabled]="deletingDraftId() === inv.id"
+                              class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Delete Invoice">
+                              <i [class]="deletingDraftId() === inv.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-trash'"></i>
+                            </button>
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  }
+
+                  <!-- Empty -->
+                  @if (!invoicesLoading() && filteredPayments().length === 0) {
+                    <tr>
+                      <td colspan="8" class="px-6 py-12 text-center">
+                        <div class="flex flex-col items-center">
+                          <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                            <i class="fa-solid fa-file-invoice text-gray-400 text-lg"></i>
+                          </div>
+                          <p class="text-sm font-medium text-gray-600">No invoices found</p>
+                        </div>
+                      </td>
+                    </tr>
+                  }
+
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Footer -->
+            @if (!invoicesLoading()) {
+              <div class="p-6 border-t border-gray-200 flex items-center justify-between">
+                <p class="text-sm text-gray-600">
+                  Showing <span class="font-medium">{{ filteredPayments().length }}</span> of
+                  <span class="font-medium">{{ backendInvoices().length }}</span> invoices
+                </p>
+                <div class="flex items-center space-x-3 text-sm">
+                  <span class="text-gray-500">Filtered total:</span>
+                  <span class="font-bold text-gray-900 text-base">{{ formatAmount(paymentTotalFiltered()) }}</span>
+                </div>
               </div>
             }
+
           </div>
         </section>
+
       }
 
       <!-- ══════════════════════════════ COMMUNICATION ══════════════════════════════ -->
       @case ('Communication') {
-        <section class="px-8 pb-6">
+        <section class="px-8 py-6">
           <div class="bg-white rounded-xl shadow-sm border border-gray-200">
             <div class="p-6 border-b border-gray-200 flex items-center justify-between">
               <div>
-                <h2 class="text-lg font-bold text-gray-900">Communication Log</h2>
-                <p class="text-sm text-gray-600 mt-1">Complete history of interactions</p>
+                <h2 class="text-lg font-bold text-gray-900">Communication</h2>
+                <p class="text-sm text-gray-600 mt-1">{{ backendEvents().length }} event(s) linked to cases</p>
               </div>
-              <div class="flex items-center space-x-2">
-                <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"><i class="fa-solid fa-filter mr-2"></i>Filter</button>
-                <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600"><i class="fa-solid fa-plus mr-2"></i>Add Entry</button>
-              </div>
+              @if (client()!.phone || client()!.whatsappNumber) {
+                <button (click)="openWhatsapp()"
+                        class="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm">
+                  <i class="fa-brands fa-whatsapp text-base"></i>
+                  Send WhatsApp
+                </button>
+              }
             </div>
+
             <div class="p-6 space-y-6">
-              @for (c of communications; track c.title) {
-                <div class="flex items-start space-x-4">
-                  <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" [ngClass]="c.iconBg">
-                    <i [ngClass]="[c.icon, c.iconColor]"></i>
-                  </div>
-                  <div class="flex-1">
-                    <div class="flex items-start justify-between mb-2">
-                      <div>
-                        <p class="text-sm font-semibold text-gray-900">{{ c.title }}</p>
-                        <p class="text-xs text-gray-600 mt-0.5">{{ c.by }}</p>
-                      </div>
-                      <span class="text-xs text-gray-500 whitespace-nowrap ml-4">{{ c.when }}</span>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-4"><p class="text-sm text-gray-700">{{ c.body }}</p></div>
-                    <div class="flex items-center space-x-3 mt-3">
-                      <span class="text-xs px-2 py-1 rounded-full" [ngClass]="c.tagBg">{{ c.tag }}</span>
-                      <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">{{ c.case }}</span>
-                    </div>
-                  </div>
+              @if (eventsLoading()) {
+                <div class="flex items-center justify-center py-20">
+                  <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
+                  <span class="text-gray-500 text-lg">Loading events…</span>
                 </div>
+              } @else if (backendEvents().length === 0) {
+                <div class="text-center py-20">
+                  <i class="fa-solid fa-calendar-xmark text-5xl text-gray-300 mb-4"></i>
+                  <p class="text-gray-500 text-lg font-medium">No past events</p>
+                  <p class="text-gray-400 text-sm mt-1">No completed interactions found for this client.</p>
+                </div>
+              } @else {
+                @for (ev of backendEvents(); track ev.id) {
+                  <div class="flex items-start space-x-4">
+                    <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
+                         [ngClass]="getEventTypeInfo(ev.event_type).iconBg">
+                      <i [ngClass]="[getEventTypeInfo(ev.event_type).icon, getEventTypeInfo(ev.event_type).iconColor]"></i>
+                    </div>
+                    <div class="flex-1">
+                      <div class="flex items-start justify-between mb-2">
+                        <div>
+                          <p class="text-sm font-semibold text-gray-900">{{ ev.title }}</p>
+                          <p class="text-xs text-gray-600 mt-0.5">
+                            {{ getEventTypeInfo(ev.event_type).label }}
+                            @if (ev.location) { · {{ ev.location }} }
+                          </p>
+                        </div>
+                        <div class="text-right ml-4 flex-shrink-0">
+                          <span class="text-xs text-gray-500 block">{{ getRelativeTime(ev.start_datetime) }}</span>
+                          <span class="text-xs text-gray-400 block mt-0.5">{{ formatDateTime(ev.start_datetime) }}</span>
+                        </div>
+                      </div>
+                      @if (ev.description) {
+                        <div class="bg-gray-50 rounded-lg p-4 mb-3">
+                          <p class="text-sm text-gray-700">{{ ev.description }}</p>
+                        </div>
+                      }
+                      <div class="flex items-center flex-wrap gap-2">
+                        <span class="text-xs px-2 py-1 rounded-full"
+                              [ngClass]="[getEventTypeInfo(ev.event_type).tagBg, getEventTypeInfo(ev.event_type).tagColor]">
+                          {{ getEventTypeInfo(ev.event_type).label }}
+                        </span>
+                        @if (ev._caseTitle && ev._caseTitle !== '—') {
+                          <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">{{ ev._caseTitle }}</span>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                }
               }
             </div>
           </div>
@@ -730,33 +1051,96 @@
 
       <!-- ══════════════════════════════ NOTES ══════════════════════════════ -->
       @case ('Notes') {
-        <section class="px-8 pb-6">
+        <section class="px-8 py-6">
           <div class="bg-white rounded-xl shadow-sm border border-gray-200">
             <div class="p-6 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h2 class="text-lg font-bold text-gray-900">Internal Notes</h2>
-                <p class="text-sm text-gray-600 mt-1">Private notes and observations for this client</p>
+                <p class="text-sm text-gray-600 mt-1">{{ backendNotes().length }} note(s) across all cases</p>
               </div>
-              <button class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
-                <i class="fa-solid fa-plus mr-2"></i>Add Note
-              </button>
             </div>
-            <div class="p-6 space-y-4">
-              @for (n of notes; track n.author) {
-                <div class="border border-gray-200 rounded-lg p-5">
-                  <div class="flex items-start justify-between mb-3">
-                    <div class="flex items-center space-x-3">
-                      <img [src]="n.avatar" [alt]="n.author" class="w-8 h-8 rounded-full">
-                      <div>
-                        <p class="text-sm font-semibold text-gray-900">{{ n.author }}</p>
-                        <p class="text-xs text-gray-500">{{ n.when }}</p>
-                      </div>
-                    </div>
-                    <button class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+
+            <!-- Add note form -->
+            @if (showAddNoteForm()) {
+              <div class="p-6 border-b border-gray-100 bg-amber-50">
+                <h3 class="text-sm font-bold text-gray-900 mb-4">New Note</h3>
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Case</label>
+                    <select [ngModel]="newNoteCaseId()" (ngModelChange)="newNoteCaseId.set($event)"
+                            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+                      <option value="">Select a case</option>
+                      @for (c of backendCases(); track c.id) {
+                        <option [value]="c.id">{{ c.title || c.case_number }}</option>
+                      }
+                    </select>
                   </div>
-                  <p class="text-sm text-gray-700">{{ n.body }}</p>
-                  <div class="mt-3"><span class="text-xs px-2 py-1 rounded-full" [ngClass]="n.tagBg">{{ n.tag }}</span></div>
+                  <div>
+                    <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Content</label>
+                    <textarea rows="4" placeholder="Type your note..."
+                              [ngModel]="newNoteContent()" (ngModelChange)="newNoteContent.set($event)"
+                              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"></textarea>
+                  </div>
+                  @if (addNoteError()) {
+                    <p class="text-xs text-red-600">
+                      <i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ addNoteError() }}
+                    </p>
+                  }
+                  <div class="flex items-center space-x-3">
+                    <button (click)="submitNote()"
+                            [disabled]="!newNoteCaseId() || !newNoteContent().trim() || isAddingNote()"
+                            class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors">
+                      @if (isAddingNote()) {
+                        <i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...
+                      } @else {
+                        <i class="fa-solid fa-check mr-2"></i>Save
+                      }
+                    </button>
+                    <button (click)="showAddNoteForm.set(false)"
+                            class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
                 </div>
+              </div>
+            }
+
+            <div class="p-6 space-y-4">
+              @if (notesLoading()) {
+                <div class="flex items-center justify-center py-20">
+                  <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
+                  <span class="text-gray-500 text-lg">Loading notes…</span>
+                </div>
+              } @else if (backendNotes().length === 0) {
+                <div class="text-center py-20">
+                  <i class="fa-solid fa-note-sticky text-5xl text-gray-300 mb-4"></i>
+                  <p class="text-gray-500 text-lg font-medium">No notes</p>
+                  <p class="text-gray-400 text-sm mt-1">Add a note for this client through their cases.</p>
+                </div>
+              } @else {
+                @for (n of backendNotes(); track n.id) {
+                  <div class="border border-gray-200 rounded-lg p-5 hover:shadow-sm transition-shadow">
+                    <div class="flex items-start justify-between mb-3">
+                      <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                          <i class="fa-solid fa-user text-amber-600 text-xs"></i>
+                        </div>
+                        <div>
+                          <p class="text-sm font-semibold text-gray-900">
+                            {{ n.app_user?.full_name || 'Attorney' }}
+                          </p>
+                          <p class="text-xs text-gray-500">{{ formatDate(n.created_at) }}</p>
+                        </div>
+                      </div>
+                      @if (n._caseTitle) {
+                        <span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium flex-shrink-0 ml-3">
+                          {{ n._caseTitle }}
+                        </span>
+                      }
+                    </div>
+                    <p class="text-sm text-gray-700 whitespace-pre-line">{{ n.content }}</p>
+                  </div>
+                }
               }
             </div>
           </div>
@@ -765,57 +1149,129 @@
 
       <!-- ══════════════════════════════ ACTIVITY LOG ══════════════════════════════ -->
       @case ('Activity Log') {
-        <section class="px-8 pb-6">
+        <section class="px-8 py-6">
           <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 class="text-lg font-bold text-gray-900">Activity Timeline</h2>
-                <p class="text-sm text-gray-600 mt-1">Complete chronological history</p>
-              </div>
-              <button (click)="exportPdf()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
-                <i class="fa-solid fa-file-pdf mr-2 text-red-500"></i>Export Report
-              </button>
+
+            <!-- Header -->
+            <div class="p-6 border-b border-gray-200">
+              <h2 class="text-lg font-bold text-gray-900">Activity log</h2>
+              <p class="text-sm text-gray-600 mt-1">{{ filteredActivityFeed().length }} event(s) — complete client history</p>
             </div>
+
+            <!-- Filter tabs -->
+            <div class="px-6 pt-4 flex items-center gap-1 flex-wrap border-b border-gray-100">
+              @for (tab of activityFilterTabs; track tab.key) {
+                <button (click)="activityFilter.set(tab.key)"
+                        class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors -mb-px"
+                        [ngClass]="activityFilter() === tab.key
+                          ? tab.activeCls
+                          : 'border-transparent text-gray-500 hover:text-gray-700'">
+                  <i [ngClass]="tab.icon"></i>
+                  {{ tab.key }}
+                  <span class="px-1.5 py-0.5 rounded-full text-xs"
+                        [ngClass]="activityFilter() === tab.key ? tab.badgeActiveCls : 'bg-gray-100 text-gray-500'">
+                    {{ activityCounts()[tab.key] }}
+                  </span>
+                </button>
+              }
+            </div>
+
+            <!-- Timeline -->
             <div class="p-6">
-              <div class="relative">
-                <div class="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
-                <div class="space-y-8">
-                  @for (item of timeline; track item.title) {
-                    <div class="flex items-start space-x-4">
-                      <div class="relative z-10 flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg" [ngClass]="item.bg">
-                        <i [ngClass]="item.icon"></i>
-                      </div>
-                      <div class="flex-1 bg-gray-50 rounded-lg p-4">
-                        <div class="flex items-start justify-between mb-2">
-                          <div>
-                            <p class="text-sm font-semibold text-gray-900">{{ item.title }}</p>
-                            <p class="text-xs text-gray-600 mt-0.5">{{ item.desc }}</p>
-                          </div>
-                          <span class="text-xs text-gray-500 whitespace-nowrap ml-4">{{ item.when }}</span>
-                        </div>
-                        <span class="text-xs px-2 py-1 rounded-full" [ngClass]="item.tagBg">{{ item.tag }}</span>
-                      </div>
-                    </div>
-                  }
+              @if (activityLoading()) {
+                <div class="flex items-center justify-center py-20">
+                  <i class="fa-solid fa-spinner fa-spin text-amber-500 text-2xl mr-3"></i>
+                  <span class="text-gray-500 text-lg">Loading activity…</span>
                 </div>
-              </div>
+              } @else if (filteredActivityFeed().length === 0) {
+                <div class="text-center py-20">
+                  <i class="fa-solid fa-clock-rotate-left text-5xl text-gray-300 mb-4"></i>
+                  <p class="text-gray-500 text-lg font-medium">No activity found</p>
+                  <p class="text-gray-400 text-sm mt-1">No records match this filter for this client.</p>
+                </div>
+              } @else {
+                <div class="relative">
+                  <!-- Vertical line -->
+                  <div class="absolute left-4 top-2 bottom-2 w-0.5 bg-gray-100"></div>
+
+                  <div class="space-y-4">
+                    @for (entry of filteredActivityFeed(); track entry.id) {
+                      <div class="flex items-start gap-4">
+
+                        <!-- Icon -->
+                        <div class="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center z-10 ring-2 ring-white"
+                             [ngClass]="entry.iconBg">
+                          <i class="text-xs" [ngClass]="[entry.icon, entry.iconColor]"></i>
+                        </div>
+
+                        <!-- Card -->
+                        <div class="flex-1 min-w-0 bg-gray-50 border border-gray-100 rounded-lg p-4">
+                          <div class="flex items-start justify-between gap-4 mb-2">
+                            <p class="text-sm font-semibold text-gray-900 leading-snug">{{ entry.title }}</p>
+                            <div class="text-right flex-shrink-0">
+                              <span class="text-xs text-gray-500 block">{{ getRelativeTime(entry.date) }}</span>
+                              <span class="text-xs text-gray-400 block mt-0.5">{{ formatDateTime(entry.date) }}</span>
+                            </div>
+                          </div>
+
+                          @if (entry.subtitle) {
+                            <p class="text-xs text-gray-500 mb-2">{{ entry.subtitle }}</p>
+                          }
+
+                          <div class="flex flex-wrap items-center gap-1.5">
+                            <!-- Type -->
+                            <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                                  [ngClass]="[entry.typeBadge.bg, entry.typeBadge.color]">
+                              {{ entry.typeBadge.label }}
+                            </span>
+                            <!-- Status -->
+                            @if (entry.statusBadge) {
+                              <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                                    [ngClass]="[entry.statusBadge.bg, entry.statusBadge.color]">
+                                {{ entry.statusBadge.label }}
+                              </span>
+                            }
+                            <!-- Priority -->
+                            @if (entry.extraBadge) {
+                              <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                                    [ngClass]="[entry.extraBadge.bg, entry.extraBadge.color]">
+                                {{ entry.extraBadge.label }}
+                              </span>
+                            }
+                            <!-- Case name -->
+                            @if (entry.caseName) {
+                              <span class="text-xs bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                                <i class="fa-solid fa-briefcase mr-1 text-gray-300"></i>{{ entry.caseName }}
+                              </span>
+                            }
+                          </div>
+                        </div>
+
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
             </div>
+
           </div>
         </section>
       }
 
     }<!-- /switch activeTab -->
 
-  }<!-- /if client() -->
+  }<!-- /if !isLoading && client() -->
 
 </main>
+
+<app-new-case-modal (saved)="reloadCases()" />
 
 <!-- ══════════════════════════════════════════════════════════
      MODAL — EDIT CLIENT  (3 steps)
 ══════════════════════════════════════════════════════════ -->
 @if (showEditModal()) {
 <div class="fixed inset-0 z-50 flex items-center justify-center p-4"
-     style="background-color: rgba(0,0,0,0)"
+     style="background-color: rgba(0,0,0,0.5)"
      (click)="closeEditModal()">
 
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
@@ -861,213 +1317,170 @@
     <!-- Scrollable Body -->
     <div class="overflow-y-auto flex-1">
 
-      <!-- ════ STEP 1 — Identity ════ -->
+      <!-- ════ STEP 1 — Personal Info ════ -->
       @if (editStep() === 1) {
         <div class="px-6 py-5 space-y-5">
           <div class="flex items-center justify-between">
-            <h3 class="text-base font-bold text-gray-900">Personal & Contact Info</h3>
+            <h3 class="text-base font-bold text-gray-900">Personal Info</h3>
             <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
           </div>
 
-          <!-- Avatar -->
-          <div class="flex items-center space-x-4">
-            <img [src]="client()!.avatar" [alt]="client()!.name" class="w-16 h-16 rounded-full border-2 border-amber-200 flex-shrink-0">
-            <button class="flex-1 bg-amber-50 text-amber-700 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center space-x-2 hover:bg-amber-100 transition-colors border border-amber-200">
-              <i class="fa-solid fa-camera"></i><span>Change Photo</span>
-            </button>
+          <!-- First + Last Name -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">First Name <span class="text-red-500">*</span></label>
+              <div class="relative">
+                <input type="text" placeholder="First name"
+                       [ngModel]="eF1().firstName" (ngModelChange)="eF1.update(v=>({...v,firstName:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Last Name</label>
+              <div class="relative">
+                <input type="text" placeholder="Last name"
+                       [ngModel]="eF1().lastName" (ngModelChange)="eF1.update(v=>({...v,lastName:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
           </div>
 
-          <!-- Full Name -->
+          <!-- Date of Birth + Gender -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Date of Birth</label>
+              <div class="relative">
+                <input type="date"
+                       [ngModel]="eF1().dob" (ngModelChange)="eF1.update(v=>({...v,dob:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-cake-candles absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Gender</label>
+              <div class="grid grid-cols-3 gap-2">
+                @for (g of ['Male','Female','Other']; track g) {
+                  <button (click)="eF1.update(v=>({...v,gender:g}))"
+                          class="border-2 rounded-xl py-2.5 text-xs font-semibold transition-all"
+                          [ngClass]="eF1().gender === g ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                    {{ g }}
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- National ID + Nationality -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">ID / Passport</label>
+              <div class="relative">
+                <input type="text" placeholder="National ID or passport"
+                       [ngModel]="eF1().idNumber" (ngModelChange)="eF1.update(v=>({...v,idNumber:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Nationality</label>
+              <div class="relative">
+                <input type="text" placeholder="e.g. Tunisian"
+                       [ngModel]="eF1().nationality" (ngModelChange)="eF1.update(v=>({...v,nationality:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-flag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Occupation -->
           <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Full Name <span class="text-red-500">*</span></label>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Occupation</label>
             <div class="relative">
-              <input type="text"
-                     [ngModel]="eF1().name" (ngModelChange)="eF1.update(v=>({...v,name:$event}))"
+              <input type="text" placeholder="e.g. Engineer, Doctor..."
+                     [ngModel]="eF1().occupation" (ngModelChange)="eF1.update(v=>({...v,occupation:$event}))"
                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-
-          <!-- Email + Phone -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Email <span class="text-red-500">*</span></label>
-              <div class="relative">
-                <input type="email"
-                       [ngModel]="eF1().email" (ngModelChange)="eF1.update(v=>({...v,email:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Phone</label>
-              <div class="relative">
-                <input type="tel"
-                       [ngModel]="eF1().phone" (ngModelChange)="eF1.update(v=>({...v,phone:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-          </div>
-
-          <!-- Mobile + Company -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Mobile</label>
-              <div class="relative">
-                <input type="tel"
-                       [ngModel]="eF1().mobile" (ngModelChange)="eF1.update(v=>({...v,mobile:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-mobile absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Company</label>
-              <div class="relative">
-                <input type="text"
-                       [ngModel]="eF1().company" (ngModelChange)="eF1.update(v=>({...v,company:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-          </div>
-
-          <!-- Address + City -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Address</label>
-            <div class="relative">
-              <input type="text"
-                     [ngModel]="eF1().address" (ngModelChange)="eF1.update(v=>({...v,address:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">City / State / ZIP</label>
-              <input type="text"
-                     [ngModel]="eF1().city" (ngModelChange)="eF1.update(v=>({...v,city:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Tax ID</label>
-              <input type="text"
-                     [ngModel]="eF1().taxId" (ngModelChange)="eF1.update(v=>({...v,taxId:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-            </div>
-          </div>
-        </div>
-      }
-
-      <!-- ════ STEP 2 — Classification ════ -->
-      @if (editStep() === 2) {
-        <div class="px-6 py-5 space-y-5">
-          <div class="flex items-center justify-between">
-            <h3 class="text-base font-bold text-gray-900">Classification & Assignment</h3>
-            <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
-          </div>
-
-          <!-- Status -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Status</label>
-            <div class="grid grid-cols-3 gap-3">
-              @for (st of statusList; track st) {
-                <button (click)="eF2.update(v=>({...v,status:st}))"
-                        class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
-                        [ngClass]="eF2().status === st
-                          ? (st==='Active' ? 'border-green-500 bg-green-50 text-green-700' : st==='Pending' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-red-500 bg-red-50 text-red-700')
-                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
-                  <i class="fa-solid fa-circle text-xs mr-1.5"
-                     [ngClass]="st==='Active' ? 'text-green-500' : st==='Pending' ? 'text-amber-500' : 'text-red-400'"></i>
-                  {{ st }}
-                </button>
-              }
+              <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
             </div>
           </div>
 
           <!-- Client Type -->
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">Client Type</label>
-            <div class="relative">
-              <select [ngModel]="eF2().type" (ngModelChange)="eF2.update(v=>({...v,type:$event}))"
-                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
-                @for (t of clientTypes; track t) { <option>{{ t }}</option> }
-              </select>
-              <i class="fa-solid fa-star absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+            <div class="grid grid-cols-4 gap-2">
+              @for (t of editClientTypes; track t) {
+                <button (click)="eF1.update(v=>({...v,clientType:t}))"
+                        class="border-2 rounded-xl py-2.5 text-xs font-semibold transition-all"
+                        [ngClass]="eF1().clientType === t ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                  {{ t }}
+                </button>
+              }
             </div>
-          </div>
-
-          <!-- Assigned Attorney -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Assigned Attorney</label>
-            <div class="relative">
-              <select [ngModel]="eF2().attorney" (ngModelChange)="eF2.update(v=>({...v,attorney:$event}))"
-                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
-                @for (a of attorneys; track a) { <option>{{ a }}</option> }
-              </select>
-              <i class="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-            </div>
-          </div>
-
-          <!-- Client Since -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Since</label>
-            <div class="relative">
-              <input type="text" placeholder="e.g., Jan 15, 2023"
-                     [ngModel]="eF2().since" (ngModelChange)="eF2.update(v=>({...v,since:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-          </div>
-
-          <!-- Tags -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Tags <span class="text-xs text-gray-400 font-normal">(comma separated)</span></label>
-            <div class="relative">
-              <input type="text" placeholder="e.g., Corporate Client, Real Estate"
-                     [ngModel]="eF2().tags" (ngModelChange)="eF2.update(v=>({...v,tags:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-tags absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            </div>
-            @if (eF2().tags) {
-              <div class="flex flex-wrap gap-2 mt-2">
-                @for (tag of eF2().tags.split(','); track tag) {
-                  @if (tag.trim()) {
-                    <span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">{{ tag.trim() }}</span>
-                  }
-                }
-              </div>
-            }
           </div>
         </div>
       }
 
-      <!-- ════ STEP 3 — Notes & Preferences ════ -->
-      @if (editStep() === 3) {
+      <!-- ════ STEP 2 — Contact Info ════ -->
+      @if (editStep() === 2) {
         <div class="px-6 py-5 space-y-5">
           <div class="flex items-center justify-between">
-            <h3 class="text-base font-bold text-gray-900">Notes & Preferences</h3>
+            <h3 class="text-base font-bold text-gray-900">Contact Info</h3>
             <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
           </div>
 
-          <!-- Priority -->
+          <!-- Phone -->
           <div>
-            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Priority</label>
-            <div class="grid grid-cols-3 gap-3">
-              @for (p of ['Normal','High','VIP']; track p) {
-                <button (click)="eF3.update(v=>({...v,priority:p}))"
-                        class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
-                        [ngClass]="eF3().priority === p
-                          ? (p==='Normal' ? 'border-green-500 bg-green-50 text-green-700' : p==='High' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-purple-500 bg-purple-50 text-purple-700')
-                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
-                  <i class="fa-solid fa-circle text-xs mr-1.5"
-                     [ngClass]="p==='Normal' ? 'text-green-500' : p==='High' ? 'text-amber-500' : 'text-purple-500'"></i>
-                  {{ p }}
-                </button>
-              }
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Phone</label>
+            <div class="flex space-x-2">
+              <div class="relative w-28 flex-shrink-0">
+                <select [ngModel]="eF2().phoneCode" (ngModelChange)="eF2.update(v=>({...v,phoneCode:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-2 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
+                  @for (c of countryCodes; track c.code) {
+                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                  }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+              </div>
+              <div class="relative flex-1">
+                <input type="tel" placeholder="Phone number"
+                       [ngModel]="eF2().phone" (ngModelChange)="eF2.update(v=>({...v,phone:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- WhatsApp -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">WhatsApp</label>
+            <div class="flex space-x-2">
+              <div class="relative w-28 flex-shrink-0">
+                <select [ngModel]="eF2().waCode" (ngModelChange)="eF2.update(v=>({...v,waCode:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-2 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
+                  @for (c of countryCodes; track c.code) {
+                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                  }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+              </div>
+              <div class="relative flex-1">
+                <input type="tel" placeholder="WhatsApp number"
+                       [ngModel]="eF2().whatsapp" (ngModelChange)="eF2.update(v=>({...v,whatsapp:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-brands fa-whatsapp absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Email -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Email</label>
+            <div class="relative">
+              <input type="email" placeholder="email@example.com"
+                     [ngModel]="eF2().email" (ngModelChange)="eF2.update(v=>({...v,email:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
             </div>
           </div>
 
@@ -1076,45 +1489,80 @@
             <label class="block text-sm font-semibold text-gray-800 mb-2">Preferred Contact Method</label>
             <div class="grid grid-cols-3 gap-3">
               @for (m of [['Email','fa-envelope'],['Phone','fa-phone'],['In-Person','fa-users']]; track m[0]) {
-                <button (click)="eF3.update(v=>({...v,preferredContact:m[0]}))"
+                <button (click)="eF2.update(v=>({...v,contactPref:m[0]}))"
                         class="border-2 rounded-xl py-3 text-xs font-semibold transition-all flex flex-col items-center space-y-1"
-                        [ngClass]="eF3().preferredContact === m[0]
-                          ? 'border-amber-500 bg-amber-50 text-amber-700'
-                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                        [ngClass]="eF2().contactPref === m[0] ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
                   <i [ngClass]="'fa-solid ' + m[1]"></i>
                   <span>{{ m[0] }}</span>
                 </button>
               }
             </div>
           </div>
+        </div>
+      }
+
+      <!-- ════ STEP 3 — Additional ════ -->
+      @if (editStep() === 3) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Additional</h3>
+            <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+          </div>
+
+          <!-- Address -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Address</label>
+            <div class="relative">
+              <input type="text" placeholder="Street address"
+                     [ngModel]="eF3().address" (ngModelChange)="eF3.update(v=>({...v,address:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- City + State -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">City</label>
+              <input type="text" placeholder="City"
+                     [ngModel]="eF3().city" (ngModelChange)="eF3.update(v=>({...v,city:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">State / ZIP</label>
+              <input type="text" placeholder="State or ZIP"
+                     [ngModel]="eF3().state" (ngModelChange)="eF3.update(v=>({...v,state:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            </div>
+          </div>
 
           <!-- Notes -->
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">Internal Notes</label>
-            <textarea rows="5" placeholder="Notes about preferences, important details, special instructions..."
+            <textarea rows="5" placeholder="Notes about this client..."
                       [ngModel]="eF3().notes" (ngModelChange)="eF3.update(v=>({...v,notes:$event}))"
                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
           </div>
 
-          <!-- Summary card -->
+          <!-- Summary -->
           <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
             <p class="text-xs font-semibold text-amber-700 uppercase mb-3">Summary of Changes</p>
             <div class="space-y-1.5 text-xs text-gray-700">
               <div class="flex items-center space-x-2">
                 <i class="fa-solid fa-user text-amber-500 w-4"></i>
-                <span>{{ eF1().name }}</span>
+                <span>{{ eF1().firstName }} {{ eF1().lastName }}</span>
               </div>
               <div class="flex items-center space-x-2">
                 <i class="fa-solid fa-envelope text-amber-500 w-4"></i>
-                <span>{{ eF1().email }}</span>
+                <span>{{ eF2().email }}</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-phone text-amber-500 w-4"></i>
+                <span>{{ eF2().phoneCode }} {{ eF2().phone }}</span>
               </div>
               <div class="flex items-center space-x-2">
                 <i class="fa-solid fa-star text-amber-500 w-4"></i>
-                <span>{{ eF2().type }} · {{ eF2().status }}</span>
-              </div>
-              <div class="flex items-center space-x-2">
-                <i class="fa-solid fa-user-tie text-amber-500 w-4"></i>
-                <span>{{ eF2().attorney }}</span>
+                <span>{{ eF1().clientType }}</span>
               </div>
             </div>
           </div>
@@ -1151,5 +1599,113 @@
 
   </div><!-- /panel -->
 </div><!-- /backdrop -->
+}
+
 <app-upload-modal />
+<app-request-doc-modal (sent)="reloadDocuments()" />
+<app-new-invoice-modal (invoiceCreated)="reloadInvoices()" />
+
+<!-- ══ MODAL — DOWNLOAD CONFIRMATION ══ -->
+@if (confirmDownloadData()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+       (click)="cancelDownload()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+         (click)="$event.stopPropagation()">
+
+      <div class="px-6 pt-6 pb-4 flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+             [ngClass]="getDocIconInfo(confirmDownloadData()!.file_type).bg">
+          <i class="text-lg" [ngClass]="[getDocIconInfo(confirmDownloadData()!.file_type).icon, getDocIconInfo(confirmDownloadData()!.file_type).color]"></i>
+        </div>
+        <div class="min-w-0">
+          <p class="text-sm font-bold text-gray-900 truncate">{{ confirmDownloadData()!.file_name }}</p>
+          <p class="text-xs text-gray-500">
+            {{ confirmDownloadData()!.file_size_mb ? (confirmDownloadData()!.file_size_mb | number:'1.1-1') + ' MB' : '' }}
+            {{ confirmDownloadData()!.file_size_mb && confirmDownloadData()!.file_type ? ' · ' : '' }}
+            {{ confirmDownloadData()!.file_type }}
+          </p>
+        </div>
+      </div>
+
+      <div class="mx-6 mb-5 bg-gray-50 rounded-xl divide-y divide-gray-100">
+        <div class="flex justify-between px-4 py-2.5 text-xs">
+          <span class="text-gray-500">Uploaded by</span>
+          <span class="font-medium text-gray-800">{{ confirmDownloadData()!.uploader_name || '—' }}</span>
+        </div>
+        <div class="flex justify-between px-4 py-2.5 text-xs">
+          <span class="text-gray-500">Modified</span>
+          <span class="font-medium text-gray-800">{{ formatDate(confirmDownloadData()!.created_at) }}</span>
+        </div>
+      </div>
+
+      <div class="px-6 pb-6 flex gap-3">
+        <button (click)="cancelDownload()"
+          class="flex-1 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+          Cancel
+        </button>
+        <button (click)="downloadDoc(confirmDownloadData()!)"
+          class="flex-1 py-2.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors flex items-center justify-center gap-2">
+          <i class="fa-solid fa-download text-xs"></i>
+          Download
+        </button>
+      </div>
+
+    </div>
+  </div>
+}
+
+<!-- ══ MODAL — INVOICE DETAIL ══ -->
+@if (viewingInvoice()) {
+  <app-invoice-view-modal
+    [invoice]="viewingInvoice()!"
+    [clientName]="client()?.name ?? ''"
+    [clientEmail]="client()?.email ?? ''"
+    [cases]="backendCases()"
+    [sendingId]="sendingDraftId()"
+    [deletingId]="deletingDraftId()"
+    (closed)="closeViewInvoice()"
+    (print)="printInvoice(viewingInvoice()!)"
+    (sendDraft)="sendClientDraft(viewingInvoice()!); closeViewInvoice()"
+    (deleteDraft)="cancelClientDraft(viewingInvoice()!)"
+  />
+}
+
+@if (pendingConfirm()) {
+  <app-confirm-dialog
+    [title]="pendingConfirm()!.title"
+    [message]="pendingConfirm()!.message"
+    [confirmLabel]="pendingConfirm()!.confirmLabel"
+    [type]="pendingConfirm()!.type"
+    (confirmed)="confirmPending()"
+    (dismissed)="dismissConfirm()"
+  />
+}
+
+<app-ai-summary-modal />
+
+<!-- Avatar Lightbox -->
+@if (showAvatarLightbox()) {
+  <div class="fixed inset-0 bg-black/85 z-[9999] flex items-center justify-center p-6"
+       (click)="showAvatarLightbox.set(false)">
+    <div class="relative flex flex-col items-center" (click)="$event.stopPropagation()">
+      <button (click)="showAvatarLightbox.set(false)"
+              class="absolute -top-4 -right-4 w-9 h-9 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-700 hover:text-gray-900 transition-colors z-10">
+        <i class="fa-solid fa-xmark text-sm"></i>
+      </button>
+      <img [src]="client()!.avatar" [alt]="client()!.name"
+           style="max-width: 360px; max-height: 70vh; width: auto; height: auto; display: block;"
+           class="rounded-2xl shadow-2xl">
+      <div class="flex justify-center gap-3 mt-5">
+        <button (click)="showAvatarLightbox.set(false); triggerAvatarInput(avatarLightboxInput)"
+                class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white text-gray-800 text-sm font-semibold hover:bg-gray-100 transition-colors shadow">
+          <i class="fa-solid fa-pen"></i><span>Change</span>
+        </button>
+        <button (click)="removeClientAvatar(); showAvatarLightbox.set(false)"
+                class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors shadow">
+          <i class="fa-solid fa-trash"></i><span>Delete</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <input #avatarLightboxInput type="file" accept="image/*" class="hidden" (change)="onAvatarSelected($event)">
 }

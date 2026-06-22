@@ -2,19 +2,32 @@ import { Component, signal, computed, inject, OnInit } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { NotificationService } from '../../../services/notification.service';
+import { AuthService } from '../../../services/auth.service';
 import type { Notif, NotifCategory, NotifPriority } from '../../../services/notification.service';
+import { HighlightPipe } from '../../../shared/pipes/highlight.pipe';
+import { SearchNavigatorService } from '../../../shared/services/search-navigator.service';
 
 export type { NotifCategory, NotifPriority, Notif };
 
 @Component({
   selector: 'app-notifications',
   standalone: true,
-  imports: [NgClass, FormsModule],
+  imports: [NgClass, FormsModule, HighlightPipe],
   templateUrl: './notifications.html',
 })
 export class Notifications implements OnInit {
 
   private notifService = inject(NotificationService);
+  private authService  = inject(AuthService);
+  searchNav            = inject(SearchNavigatorService);
+
+  searchQuery = signal('');
+
+  onSearch(q: string): void {
+    this.searchQuery.set(q);
+    if (!q) { this.searchNav.reset(); return; }
+    setTimeout(() => this.searchNav.scan(), 50);
+  }
 
   readonly allNotifications = this.notifService.notifications;
   readonly loading          = this.notifService.loading;
@@ -110,7 +123,7 @@ export class Notifications implements OnInit {
     normal: { bar:'bg-transparent', badge:'', label:'' },
   };
 
-  // ── Delivery channels — colorful active state ─────────────
+  // ── Delivery channels ─────────────────────────────────────
   channels: {
     key: string; icon: string; label: string; desc: string;
     activeBg: string; activeBorder: string;
@@ -118,32 +131,39 @@ export class Notifications implements OnInit {
     toggleColor: string; labelColor: string; descColor: string;
   }[] = [
     {
-      key:'emailEnabled',   icon:'fa-solid fa-envelope',
-      label:'Email Alerts', desc:'Receive via email',
+      key:'email_notifications', icon:'fa-solid fa-envelope',
+      label:'Email', desc:'Receive via email',
       activeBg:'bg-blue-50',   activeBorder:'border-blue-300',
       iconBgActive:'bg-blue-500', iconColorActive:'text-white',
       toggleColor:'bg-blue-500', labelColor:'text-blue-800', descColor:'text-blue-500',
     },
     {
-      key:'pushEnabled',    icon:'fa-solid fa-mobile-screen',
-      label:'Push',         desc:'Instant mobile alerts',
+      key:'push_enabled', icon:'fa-solid fa-mobile-screen',
+      label:'Push',    desc:'Instant mobile alerts',
       activeBg:'bg-green-50',  activeBorder:'border-green-300',
       iconBgActive:'bg-green-500', iconColorActive:'text-white',
       toggleColor:'bg-green-500', labelColor:'text-green-800', descColor:'text-green-500',
     },
     {
-      key:'desktopEnabled', icon:'fa-solid fa-bell',
-      label:'Desktop',      desc:'Browser notifications',
+      key:'desktop_enabled', icon:'fa-solid fa-bell',
+      label:'Desktop', desc:'Browser notifications',
       activeBg:'bg-purple-50', activeBorder:'border-purple-300',
       iconBgActive:'bg-purple-500', iconColorActive:'text-white',
       toggleColor:'bg-purple-500', labelColor:'text-purple-800', descColor:'text-purple-500',
     },
     {
-      key:'smsEnabled',     icon:'fa-solid fa-comment',
-      label:'SMS',          desc:'Critical updates via text',
+      key:'sms_enabled', icon:'fa-solid fa-comment',
+      label:'SMS',     desc:'Critical updates via text',
       activeBg:'bg-amber-50',  activeBorder:'border-amber-300',
       iconBgActive:'bg-amber-500', iconColorActive:'text-white',
       toggleColor:'bg-amber-500', labelColor:'text-amber-800', descColor:'text-amber-500',
+    },
+    {
+      key:'whatsapp_updates', icon:'fa-brands fa-whatsapp',
+      label:'WhatsApp', desc:'Updates via WhatsApp',
+      activeBg:'bg-emerald-50', activeBorder:'border-emerald-300',
+      iconBgActive:'bg-emerald-500', iconColorActive:'text-white',
+      toggleColor:'bg-emerald-500', labelColor:'text-emerald-800', descColor:'text-emerald-500',
     },
   ];
 
@@ -151,10 +171,12 @@ export class Notifications implements OnInit {
   filteredNotifications = computed(() => {
     const ms: Record<string, number> = { today:86_400_000, '7days':7*86_400_000, '30days':30*86_400_000 };
     const cutoff = Date.now() - ms[this.selectedPeriod()];
+    const q = this.searchQuery().toLowerCase().trim();
     return this.allNotifications().filter(n => {
-      const catOk  = this.activeFilter() === 'all' || n.category === this.activeFilter();
-      const prioOk = this.selectedPriority() === 'all' || n.priority === this.selectedPriority();
-      return catOk && prioOk && n.time.getTime() >= cutoff;
+      const catOk   = this.activeFilter() === 'all' || n.category === this.activeFilter();
+      const prioOk  = this.selectedPriority() === 'all' || n.priority === this.selectedPriority();
+      const searchOk = !q || n.title.toLowerCase().includes(q) || n.body.toLowerCase().includes(q);
+      return catOk && prioOk && searchOk && n.time.getTime() >= cutoff;
     });
   });
 
@@ -182,31 +204,108 @@ export class Notifications implements OnInit {
   markRead(id: string) { this.notifService.markRead(id); }
   dismiss(id: string)  { this.notifService.dismiss(id); }
 
-  // ── WEB-NOTIF-05 — Settings ───────────────────────────────
-  showSettings = signal(false);
+  // ── WEB-NOTIF-05 — Settings (backend) ────────────────────
+  showSettings    = signal(false);
+  settingsLoading = signal(false);
+  settingsSaving  = signal(false);
+  settingsSaveError = signal('');
 
-  settingValues = signal<Record<string, boolean>>({
-    deadlineUrgent:true, deadlineHigh:true, deadlineNormal:false,
-    documentUploaded:true, documentSigned:true,
-    assignmentNew:true, assignmentChanged:true,
-    paymentOverdue:true, paymentDueSoon:true, paymentReceived:true,
-    systemUpdates:false, systemSecurity:true, systemStorage:true,
-    emailEnabled:true, pushEnabled:true, desktopEnabled:false, smsEnabled:true,
-  });
+  hearingReminderOffset = signal('1 hour before');
+
+  private readonly defaultSettings: Record<string, boolean> = {
+    deadline_urgent: true,  deadline_high: true,   deadline_normal: false,
+    hearing_reminders: true,
+    document_uploaded: true, document_signed: true,
+    assignment_new: true,   assignment_changed: true,
+    task_reminders: true,   client_messages: true,
+    payment_overdue: true,  payment_due_soon: true, payment_received: true,
+    system_updates: false,  system_security: true,  system_storage: true,
+    email_notifications: true, push_enabled: true, desktop_enabled: false,
+    sms_enabled: true,      whatsapp_updates: true,
+  };
+
+  settingValues = signal<Record<string, boolean>>({ ...this.defaultSettings });
+
   getSetting(k: string) { return this.settingValues()[k] ?? false; }
   toggleSetting(k: string) { this.settingValues.update(s => ({ ...s, [k]: !s[k] })); }
 
-  settingGroups = [
-    { label:'Deadline Alerts', icon:'fa-solid fa-hourglass-half',       iconBg:'bg-red-50',    iconColor:'text-red-600',
-      items:[{key:'deadlineUrgent',label:'Urgent (within 24h)'},{key:'deadlineHigh',label:'High (3 days before)'},{key:'deadlineNormal',label:'Normal (7 days before)'}] },
-    { label:'Documents',       icon:'fa-solid fa-file-lines',            iconBg:'bg-blue-50',   iconColor:'text-blue-600',
-      items:[{key:'documentUploaded',label:'Document uploaded'},{key:'documentSigned',label:'Document signed'}] },
-    { label:'Assignments',     icon:'fa-solid fa-briefcase',             iconBg:'bg-purple-50', iconColor:'text-purple-600',
-      items:[{key:'assignmentNew',label:'New case assigned'},{key:'assignmentChanged',label:'Role or team changed'}] },
-    { label:'Payments',        icon:'fa-solid fa-circle-dollar-to-slot', iconBg:'bg-amber-50',  iconColor:'text-amber-600',
-      items:[{key:'paymentOverdue',label:'Invoice overdue'},{key:'paymentDueSoon',label:'Due soon (3 days)'},{key:'paymentReceived',label:'Payment received'}] },
-    { label:'System',          icon:'fa-solid fa-gear',                  iconBg:'bg-slate-50',  iconColor:'text-slate-500',
-      items:[{key:'systemUpdates',label:'Updates & maintenance'},{key:'systemSecurity',label:'Security alerts'},{key:'systemStorage',label:'Storage warnings'}] },
+  async loadSettings(): Promise<void> {
+    this.settingsLoading.set(true);
+    try {
+      const prefs = await this.authService.getNotificationPreferences();
+      const merged = { ...this.defaultSettings };
+      for (const k of Object.keys(merged)) {
+        if (prefs[k] !== undefined) merged[k] = Boolean(prefs[k]);
+      }
+      this.settingValues.set(merged);
+      if (prefs['hearing_reminder_offset']) {
+        this.hearingReminderOffset.set(String(prefs['hearing_reminder_offset']));
+      }
+    } catch { /* silent — defaults apply */ }
+    finally { this.settingsLoading.set(false); }
+  }
+
+  async saveSettings(): Promise<void> {
+    this.settingsSaving.set(true);
+    this.settingsSaveError.set('');
+    try {
+      await this.authService.updateNotificationPreferences({
+        ...this.settingValues(),
+        hearing_reminder_offset: this.hearingReminderOffset(),
+      });
+      this.showSettings.set(false);
+    } catch (err: unknown) {
+      this.settingsSaveError.set(err instanceof Error ? err.message : 'Failed to save settings.');
+    } finally {
+      this.settingsSaving.set(false);
+    }
+  }
+
+  settingGroups: {
+    label: string; icon: string; iconBg: string; iconColor: string;
+    items: { key: string; label: string }[];
+  }[] = [
+    {
+      label:'Deadline & Hearings', icon:'fa-solid fa-hourglass-half', iconBg:'bg-red-50', iconColor:'text-red-600',
+      items:[
+        { key:'deadline_urgent',   label:'Urgent (within 24h)' },
+        { key:'deadline_high',     label:'High (3 days before)' },
+        { key:'deadline_normal',   label:'Normal (7 days before)' },
+        { key:'hearing_reminders', label:'Hearing reminders' },
+      ],
+    },
+    {
+      label:'Documents', icon:'fa-solid fa-file-lines', iconBg:'bg-blue-50', iconColor:'text-blue-600',
+      items:[
+        { key:'document_uploaded', label:'Document uploaded' },
+        { key:'document_signed',   label:'Document signed' },
+      ],
+    },
+    {
+      label:'Assignments & Tasks', icon:'fa-solid fa-briefcase', iconBg:'bg-purple-50', iconColor:'text-purple-600',
+      items:[
+        { key:'assignment_new',     label:'New case assigned' },
+        { key:'assignment_changed', label:'Role or team changed' },
+        { key:'task_reminders',     label:'Task deadline reminders' },
+        { key:'client_messages',    label:'Client messages' },
+      ],
+    },
+    {
+      label:'Payments', icon:'fa-solid fa-circle-dollar-to-slot', iconBg:'bg-amber-50', iconColor:'text-amber-600',
+      items:[
+        { key:'payment_overdue',   label:'Invoice overdue' },
+        { key:'payment_due_soon',  label:'Due soon (3 days)' },
+        { key:'payment_received',  label:'Payment received' },
+      ],
+    },
+    {
+      label:'System', icon:'fa-solid fa-gear', iconBg:'bg-slate-50', iconColor:'text-slate-500',
+      items:[
+        { key:'system_updates',  label:'Updates & maintenance' },
+        { key:'system_security', label:'Security alerts' },
+        { key:'system_storage',  label:'Storage warnings' },
+      ],
+    },
   ];
 
   timeAgo(date: Date): string {
@@ -222,5 +321,6 @@ export class Notifications implements OnInit {
 
   ngOnInit() {
     this.notifService.loadNotifications();
+    this.loadSettings();
   }
 }

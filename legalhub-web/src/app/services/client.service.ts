@@ -12,6 +12,10 @@ export class ClientService {
   private clientsSignal = signal<Client[]>([]);
   clients = this.clientsSignal.asReadonly();
 
+  private deletedIds = new Set<string>(
+    JSON.parse(localStorage.getItem('_deletedClientIds') ?? '[]')
+  );
+
   private statusMap: Record<string, { bg: string; color: string; label: string }> = {
     ACTIVE:   { bg: 'bg-green-100', color: 'text-green-700', label: 'Active' },
     INACTIVE: { bg: 'bg-red-100',   color: 'text-red-700',   label: 'Inactive' },
@@ -36,6 +40,13 @@ export class ClientService {
     const joinDate = raw['created_at'] ? new Date(String(raw['created_at'])) : new Date();
     const since    = joinDate.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 
+    const totalBilledAmount = Number(raw['total_billed'] ?? 0);
+    const totalBilled = totalBilledAmount >= 1000
+      ? '$' + (totalBilledAmount / 1000).toFixed(1) + 'K'
+      : '$' + totalBilledAmount.toFixed(0);
+
+    const activeCases = Number(raw['active_cases_count'] ?? 0);
+
     return {
       id:          String(raw['id']),
       name,
@@ -54,10 +65,13 @@ export class ClientService {
       tag,
       since,
       lastContact: since,
-      totalBilled: '$0',
-      activeCases: Number(raw['open_cases']  ?? 0),
-      totalCases:  Number(raw['total_cases'] ?? 0),
-      openCases:   Number(raw['open_cases']  ?? 0),
+      totalBilledAmount,
+      totalBilled,
+      hasUnpaidInvoices: Boolean(raw['has_unpaid_invoices']),
+      practiceArea: raw['practice_area'] ? String(raw['practice_area']) : undefined,
+      activeCases,
+      totalCases:  activeCases,
+      openCases:   activeCases,
       tags:        [],
       attorney:    '—',
       avatar:      raw['avatar_url']
@@ -66,6 +80,14 @@ export class ClientService {
       address:     raw['address'] ? String(raw['address']) : undefined,
       notes:       raw['notes']   ? String(raw['notes'])   : undefined,
       joinDate,
+      whatsappNumber: raw['whatsapp_number'] ? String(raw['whatsapp_number']) : undefined,
+      dateOfBirth:    raw['date_of_birth']   ? String(raw['date_of_birth'])   : undefined,
+      gender:         raw['gender']          ? String(raw['gender'])           : undefined,
+      nationalId:     raw['national_id']     ? String(raw['national_id'])      : undefined,
+      nationality:    raw['nationality']     ? String(raw['nationality'])      : undefined,
+      occupation:     raw['occupation']      ? String(raw['occupation'])       : undefined,
+      inviteStatus:   raw['invite_status']   ? String(raw['invite_status'])    : undefined,
+      userId:         raw['user_id']         ? String(raw['user_id'])          : undefined,
     };
   }
 
@@ -77,7 +99,7 @@ export class ClientService {
     const raw = await firstValueFrom(
       this.http.get<Record<string, unknown>[]>(`${this.api}/api/clients`, { params })
     );
-    this.clientsSignal.set(raw.map(r => this._map(r)));
+    this.clientsSignal.set(raw.map(r => this._map(r)).filter(c => !this.deletedIds.has(c.id)));
   }
 
   getClientById(id: string): Client | undefined {
@@ -117,18 +139,9 @@ export class ClientService {
     await firstValueFrom(
       this.http.delete(`${this.api}/api/clients/${id}`)
     );
+    this.deletedIds.add(id);
+    localStorage.setItem('_deletedClientIds', JSON.stringify([...this.deletedIds]));
     this.clientsSignal.update(list => list.filter(c => c.id !== id));
-  }
-
-  async uploadAvatar(id: string, file: File): Promise<Client> {
-    const form = new FormData();
-    form.append('file', file);
-    const raw = await firstValueFrom(
-      this.http.post<Record<string, unknown>>(`${this.api}/api/clients/${id}/avatar`, form)
-    );
-    const updated = this._map(raw);
-    this.clientsSignal.update(list => list.map(c => c.id === id ? updated : c));
-    return updated;
   }
 
   async fetchClientCases(clientId: string): Promise<any[]> {
@@ -142,16 +155,87 @@ export class ClientService {
   async fetchClientInvoices(clientId: string): Promise<any[]> {
     try {
       return await firstValueFrom(
-        this.http.get<any[]>(`${this.api}/api/clients/${clientId}/invoices`)
+        this.http.get<any[]>(`${this.api}/api/invoices`, { params: { client_id: clientId } })
       );
     } catch { return []; }
   }
 
   async fetchClientDocuments(clientId: string): Promise<any[]> {
     try {
-      return await firstValueFrom(
-        this.http.get<any[]>(`${this.api}/api/clients/${clientId}/documents`)
+      const cases = await firstValueFrom(
+        this.http.get<any[]>(`${this.api}/api/clients/${clientId}/cases`)
       );
+      if (!cases?.length) return [];
+      const docResults = await Promise.all(
+        cases.map((c: any) =>
+          firstValueFrom(
+            this.http.get<any[]>(`${this.api}/api/documents`, { params: { case_id: c.id } })
+          ).then((docs: any[]) =>
+            docs.map((d: any) => ({
+              ...d,
+              case_file: d.case_file ?? { id: c.id, title: c.title, case_number: c.case_number },
+            }))
+          ).catch(() => [] as any[])
+        )
+      );
+      return docResults.flat();
     } catch { return []; }
+  }
+
+  async fetchNotesByCaseIds(caseIds: string[]): Promise<any[]> {
+    if (!caseIds.length) return [];
+    const results = await Promise.all(
+      caseIds.map(id =>
+        firstValueFrom(
+          this.http.get<any[]>(`${this.api}/api/notes`, { params: { case_id: id } })
+        ).catch(() => [] as any[])
+      )
+    );
+    return results.flat();
+  }
+
+  async fetchEventsByCaseIds(caseIds: string[]): Promise<any[]> {
+    if (!caseIds.length) return [];
+    const results = await Promise.all(
+      caseIds.map(id =>
+        firstValueFrom(
+          this.http.get<any[]>(`${this.api}/api/calendar/events`, { params: { case_id: id } })
+        ).catch(() => [] as any[])
+      )
+    );
+    return results.flat();
+  }
+
+  async fetchTasksByCaseIds(caseIds: string[]): Promise<any[]> {
+    if (!caseIds.length) return [];
+    const results = await Promise.all(
+      caseIds.map(id =>
+        firstValueFrom(
+          this.http.get<any[]>(`${this.api}/api/tasks`, { params: { case_id: id } })
+        ).catch(() => [] as any[])
+      )
+    );
+    return results.flat();
+  }
+
+  async createNote(caseId: string, content: string): Promise<any> {
+    return firstValueFrom(
+      this.http.post(`${this.api}/api/notes`, { case_id: caseId, content })
+    );
+  }
+
+  async sendWhatsapp(toPhone: string, message: string): Promise<any> {
+    return firstValueFrom(
+      this.http.post(`${this.api}/api/whatsapp/send`, { to_phone: toPhone, message })
+    );
+  }
+
+  async inviteClient(clientId: string): Promise<{ message: string; invite_token: string }> {
+    return firstValueFrom(
+      this.http.post<{ message: string; invite_token: string }>(
+        `${this.api}/api/clients/${clientId}/invite`,
+        {}
+      )
+    );
   }
 }

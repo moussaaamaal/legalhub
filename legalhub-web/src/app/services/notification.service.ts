@@ -43,13 +43,55 @@ export class NotificationService {
 
   // ── Notification list ──────────────────────────────────────
 
+  private _typeToCategory(type: string): NotifCategory {
+    switch (type?.toUpperCase()) {
+      case 'CASE_UPDATE':
+      case 'TASK_ASSIGNED':
+      case 'MEETING_REQUEST':   return 'assignment';
+      case 'HEARING_REMINDER':  return 'deadline';
+      case 'DOCUMENT_SHARED':   return 'document';
+      case 'INVOICE_DUE':       return 'payment';
+      default:                  return 'system';
+    }
+  }
+
+  private _typeToPriority(type: string): NotifPriority {
+    switch (type?.toUpperCase()) {
+      case 'HEARING_REMINDER':  return 'urgent';
+      case 'INVOICE_DUE':       return 'urgent';
+      case 'TASK_ASSIGNED':     return 'high';
+      case 'MEETING_REQUEST':   return 'high';
+      default:                  return 'normal';
+    }
+  }
+
+  private _parseBody(body: string): string {
+    try {
+      const data = JSON.parse(body);
+      if (data && typeof data === 'object') {
+        const parts: string[] = [];
+        if (data['event_type'])    parts.push(String(data['event_type']));
+        if (data['date_display'])  parts.push(String(data['date_display']));
+        if (data['amount'])        parts.push(String(data['amount']));
+        if (data['document_name']) parts.push(String(data['document_name']));
+        if (data['case_title'])    parts.push(String(data['case_title']));
+        if (parts.length) return parts.join(' · ');
+        const first = Object.values(data).find(v => typeof v === 'string' && v.length > 3);
+        if (first) return String(first);
+      }
+    } catch { /* not JSON — return as-is */ }
+    return body;
+  }
+
   private _map(raw: Record<string, unknown>): Notif {
+    const type    = String(raw['type'] ?? '');
+    const rawBody = String(raw['body'] ?? raw['message'] ?? '');
     return {
       id:          String(raw['id']),
-      category:    (raw['category']    as NotifCategory) ?? 'system',
-      priority:    (raw['priority']    as NotifPriority) ?? 'normal',
+      category:    (raw['category'] as NotifCategory) ?? this._typeToCategory(type),
+      priority:    (raw['priority'] as NotifPriority) ?? this._typeToPriority(type),
       title:       String(raw['title'] ?? ''),
-      body:        String(raw['body']  ?? raw['message'] ?? ''),
+      body:        this._parseBody(rawBody),
       meta:        String(raw['meta']  ?? ''),
       time:        raw['created_at'] ? new Date(String(raw['created_at'])) : new Date(),
       read:        Boolean(raw['is_read'] ?? false),
@@ -88,10 +130,12 @@ export class NotificationService {
   async dismiss(id: string): Promise<void> {
     const notif = this._notifications().find(n => n.id === id);
     if (!notif) return;
-    const wasUnread = !notif.read;
+    // Mark as read locally and on server (no DELETE endpoint exists)
     this._notifications.update(list => list.filter(n => n.id !== id));
-    if (wasUnread) this._unreadCount.update(v => Math.max(0, v - 1));
-    await firstValueFrom(this.http.delete(`${this.api}/api/notifications/${id}`));
+    if (!notif.read) {
+      this._unreadCount.update(v => Math.max(0, v - 1));
+      await firstValueFrom(this.http.patch(`${this.api}/api/notifications/${id}/read`, {})).catch(() => {});
+    }
   }
 
   // ── Sidebar badge counts ───────────────────────────────────
@@ -100,7 +144,17 @@ export class NotificationService {
     await Promise.all([
       this._loadActiveCases(),
       this._loadWeeklyEvents(),
+      this._loadUnreadCount(),
     ]);
+  }
+
+  private async _loadUnreadCount(): Promise<void> {
+    try {
+      const raw = await firstValueFrom(
+        this.http.get<Record<string, unknown>[]>(`${this.api}/api/notifications`)
+      );
+      this._unreadCount.set(raw.filter(n => !n['is_read']).length);
+    } catch { /* silently ignore */ }
   }
 
   private async _loadActiveCases(): Promise<void> {
@@ -115,26 +169,20 @@ export class NotificationService {
 
   private async _loadWeeklyEvents(): Promise<void> {
     try {
-      const { monday, sunday } = this._currentWeekRange();
-      const params = new HttpParams().set('from_date', monday);
+      const today = new Date().toISOString().slice(0, 10);
+      const in7   = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+      const params = new HttpParams().set('from_date', today);
       const events = await firstValueFrom(
         this.http.get<{ start_datetime: string }[]>(
           `${this.api}/api/calendar/events`, { params }
         )
       );
-      const count = events.filter(e => e.start_datetime?.slice(0, 10) <= sunday).length;
+      const count = events.filter(e => {
+        const d = e.start_datetime?.slice(0, 10);
+        return d >= today && d <= in7;
+      }).length;
       this._calendarCount.set(count);
     } catch { /* silently ignore */ }
-  }
-
-  private _currentWeekRange(): { monday: string; sunday: string } {
-    const today = new Date();
-    const day   = today.getDay();
-    const diff  = day === 0 ? -6 : 1 - day;
-    const mon   = new Date(today); mon.setDate(today.getDate() + diff);
-    const sun   = new Date(mon);   sun.setDate(mon.getDate() + 6);
-    const fmt   = (d: Date) => d.toISOString().slice(0, 10);
-    return { monday: fmt(mon), sunday: fmt(sun) };
   }
 
   setUnreadCount(n: number)   { this._unreadCount.set(Math.max(0, n)); }

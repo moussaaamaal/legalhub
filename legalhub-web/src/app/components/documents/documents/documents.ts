@@ -1,11 +1,15 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
-import { NgClass } from '@angular/common';
+import { Component, computed, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { NgClass, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { UploadModalService } from '../../../shared/upload-modal/upload-modal.sevice';
-import { UploadModal } from '../../../shared/upload-modal/upload-modal';
-import { DocumentService, RawDoc } from '../../../services/document.service';
+import { UploadModalService } from '../../../shared/modals/upload-modal/upload-modal.sevice';
+import { UploadModal } from '../../../shared/modals/upload-modal/upload-modal';
+import { RequestDocModal } from '../../../shared/modals/request-doc-modal/request-doc-modal';
+import { DocumentService, DocumentRequest, RawDoc } from '../../../services/document.service';
 import { CaseService } from '../../../services/case.service';
 import { AuthService } from '../../../services/auth.service';
+import { HighlightPipe } from '../../../shared/pipes/highlight.pipe';
+import { SearchNavigatorService } from '../../../shared/services/search-navigator.service';
+import { AiSummaryModal } from '../../../shared/modals/ai-summary-modal/ai-summary-modal';
 
 type DocStatus = 'Pending Review' | 'Approved' | 'Rejected';
 
@@ -27,10 +31,11 @@ interface DocFile {
   uploader:    string;
   modified:    string;
   status:      DocStatus;
-  isVoiceNote: boolean;
-  transcribed: boolean;
-  storageUrl:  string;
-  rawCategory: string;
+  storageUrl:         string;
+  rawCategory:        string;
+  isClientDoc:        boolean;
+  isSharedWithClient: boolean;
+  uploaderId:         string;
 }
 
 interface Folder {
@@ -46,50 +51,56 @@ interface Folder {
 @Component({
   selector: 'app-documents',
   standalone: true,
-  imports: [NgClass, FormsModule, UploadModal],
+  imports: [NgClass, DatePipe, FormsModule, UploadModal, RequestDocModal, HighlightPipe, AiSummaryModal],
   templateUrl: './documents.html',
 })
 export class Documents implements OnInit {
+  @ViewChild(RequestDocModal) requestDocModal!: RequestDocModal;
+  @ViewChild(AiSummaryModal) aiSummaryModal!: AiSummaryModal;
+
   upload      = inject(UploadModalService);
   private docService  = inject(DocumentService);
   private caseService = inject(CaseService);
   private auth        = inject(AuthService);
+  searchNav           = inject(SearchNavigatorService);
 
-  searchQuery  = signal('');
-  activeFilter = signal<'all' | 'by-case' | 'pending' | 'approved' | 'voice-notes'>('all');
+  searchQuery        = signal('');
+  _searchDebounced = signal('');
+  private _debounceTimer: any;
+  activeFilter = signal<'all' | 'by-case' | 'pending' | 'approved' | 'shared'>('all');
   viewMode     = signal<'grid' | 'list'>('list');
   loading      = signal(false);
   error        = signal<string | null>(null);
 
-  selectedDocs = signal<Set<string>>(new Set());
-  showBulkBar  = computed(() => this.selectedDocs().size > 0);
+  selectedDocs   = signal<Set<string>>(new Set());
+  showBulkBar    = computed(() => this.selectedDocs().size > 0);
+  selectedCaseId = signal<string | null>(null);
 
-  isRecording   = signal(false);
-  recordSeconds = signal(0);
-  private _recInterval: any;
+  private _docs     = signal<DocFile[]>([]);
+  private _requests = signal<DocumentRequest[]>([]);
+  loadingRequests   = signal(false);
 
-  private _docs = signal<DocFile[]>([]);
+  docRequests = computed(() => this._requests());
+  get pendingRequestsCount(): number { return this._requests().filter(r => r.status === 'PENDING').length; }
 
-  filters: { key: 'all'|'by-case'|'pending'|'approved'|'voice-notes'; label: string; icon: string }[] = [
-    { key: 'all',         label: 'All Files',      icon: 'fa-solid fa-layer-group' },
-    { key: 'by-case',     label: 'By Case',        icon: 'fa-solid fa-briefcase' },
-    { key: 'pending',     label: 'Pending Review', icon: 'fa-solid fa-clock' },
-    { key: 'approved',    label: 'Approved',       icon: 'fa-solid fa-circle-check' },
-    { key: 'voice-notes', label: 'Voice Notes',    icon: 'fa-solid fa-microphone' },
+  filters: { key: 'all'|'by-case'|'pending'|'approved'|'shared'; label: string; icon: string }[] = [
+    { key: 'all',      label: 'All',               icon: 'fa-solid fa-layer-group' },
+    { key: 'by-case',  label: 'By Case',           icon: 'fa-solid fa-briefcase' },
+    { key: 'pending',  label: 'Pending Review',    icon: 'fa-solid fa-clock' },
+    { key: 'approved', label: 'Approved',          icon: 'fa-solid fa-circle-check' },
+    { key: 'shared',   label: 'Shared with Client',  icon: 'fa-solid fa-share-nodes' },
   ];
 
   // ── Computed stats from real data ─────────────────────────
   stats = computed(() => {
-    const docs       = this._docs();
+    const docs        = this._docs();
     const uniqueCases = new Set(docs.map(d => d.caseId)).size;
-    const pending    = docs.filter(d => d.status === 'Pending Review').length;
-    const voiceNotes = docs.filter(d => d.isVoiceNote).length;
+    const pending     = docs.filter(d => d.status === 'Pending Review').length;
     return [
       { icon: 'fa-solid fa-folder',         iconBg: 'bg-blue-100',   iconColor: 'text-blue-600',   value: String(uniqueCases), label: 'Total Folders',   badge: '',       badgeColor: 'text-green-600 bg-green-100',   note: `${uniqueCases} case${uniqueCases !== 1 ? 's' : ''} organized` },
       { icon: 'fa-solid fa-file',           iconBg: 'bg-purple-100', iconColor: 'text-purple-600', value: String(docs.length), label: 'Total Documents', badge: '',       badgeColor: 'text-green-600 bg-green-100',   note: 'All uploaded files' },
       { icon: 'fa-solid fa-robot',          iconBg: 'bg-amber-100',  iconColor: 'text-amber-600',  value: '—',                 label: 'AI Summaries',    badge: 'AI',     badgeColor: 'text-purple-600 bg-purple-100', note: 'Auto-generated' },
       { icon: 'fa-solid fa-hourglass-half', iconBg: 'bg-orange-100', iconColor: 'text-orange-600', value: String(pending),     label: 'Pending Review',  badge: 'Review', badgeColor: 'text-orange-600 bg-orange-100', note: 'Awaiting approval' },
-      { icon: 'fa-solid fa-microphone',     iconBg: 'bg-pink-100',   iconColor: 'text-pink-600',   value: String(voiceNotes),  label: 'Voice Notes',     badge: 'New',    badgeColor: 'text-pink-600 bg-pink-100',     note: 'AI transcribed' },
     ];
   });
 
@@ -147,13 +158,48 @@ export class Documents implements OnInit {
   });
 
   // ── Storage computed from real doc sizes ──────────────────
-  storageTotal  = 350; // GB plan limit
-  storageUsedGB = computed(() => {
-    const mb = this._docs().reduce((s, d) => s + d.fileSizeMb, 0);
-    return parseFloat((mb / 1024).toFixed(2));
+  readonly storageTotal   = 350;             // GB plan limit
+  readonly storageTotalMb = 350 * 1024;      // MB equivalent
+
+  storageUsedMb = computed(() =>
+    this._docs().reduce((s, d) => s + d.fileSizeMb, 0)
+  );
+
+  storageUsedLabel = computed(() => {
+    const mb = this.storageUsedMb();
+    return mb < 1024 ? `${mb.toFixed(1)} MB` : `${(mb / 1024).toFixed(2)} GB`;
   });
+
+  storageRemainingLabel = computed(() => {
+    const mb = this.storageTotalMb - this.storageUsedMb();
+    return mb < 1024 ? `${mb.toFixed(0)} MB` : `${(mb / 1024).toFixed(0)} GB`;
+  });
+
+  storageBreakdown = computed(() => {
+    const docs    = this._docs();
+    const totalMb = this.storageUsedMb();
+    return [
+      { type: 'PDF',   label: 'PDF',    barColor: 'bg-red-500',    textColor: 'text-red-600'    },
+      { type: 'WORD',  label: 'Word',   barColor: 'bg-blue-500',   textColor: 'text-blue-600'   },
+      { type: 'IMAGE', label: 'Images', barColor: 'bg-purple-500', textColor: 'text-purple-600' },
+      { type: 'OTHER', label: 'Other',  barColor: 'bg-gray-400',   textColor: 'text-gray-500'   },
+    ].map(t => {
+      const items = docs.filter(d =>
+        t.type === 'OTHER'
+          ? !['PDF', 'WORD', 'IMAGE'].includes((d.type || '').toUpperCase())
+          : (d.type || '').toUpperCase() === t.type
+      );
+      const mb        = items.reduce((s, d) => s + d.fileSizeMb, 0);
+      const pct       = totalMb > 0 ? Math.round((mb / totalMb) * 100) : 0;
+      const sizeLabel = mb < 1024 ? `${mb.toFixed(1)} MB` : `${(mb / 1024).toFixed(2)} GB`;
+      return { ...t, count: items.length, pct, sizeLabel };
+    });
+  });
+
   get storagePercent(): number {
-    return Math.round((this.storageUsedGB() / this.storageTotal) * 100);
+    const pct = (this.storageUsedMb() / this.storageTotalMb) * 100;
+    if (pct === 0) return 0;
+    return Math.max(1, Math.round(pct));
   }
   get storageColor(): { bar: string; text: string; badge: string } {
     const p = this.storagePercent;
@@ -164,18 +210,52 @@ export class Documents implements OnInit {
 
   // ── Filtered documents ────────────────────────────────────
   filteredDocuments = computed(() => {
-    const f = this.activeFilter();
-    const q = this.searchQuery().toLowerCase();
+    const f      = this.activeFilter();
+    const q      = this._searchDebounced().toLowerCase().trim();
+    const caseId = this.selectedCaseId();
     let docs = this._docs();
-    if (f === 'pending')     docs = docs.filter(d => d.status === 'Pending Review');
-    if (f === 'approved')    docs = docs.filter(d => d.status === 'Approved');
-    if (f === 'voice-notes') docs = docs.filter(d => d.isVoiceNote);
-    if (q) docs = docs.filter(d => d.name.toLowerCase().includes(q) || d.case.toLowerCase().includes(q));
+    if (f === 'pending')           docs = docs.filter(d => d.isClientDoc && d.status === 'Pending Review');
+    if (f === 'approved')          docs = docs.filter(d => d.isClientDoc && d.status === 'Approved');
+    if (f === 'shared')            docs = docs.filter(d => !d.isClientDoc && d.isSharedWithClient);
+    if (f === 'by-case' && caseId) docs = docs.filter(d => d.caseId === caseId);
+    if (q) docs = docs.filter(d =>
+      d.name.toLowerCase().includes(q)     ||
+      d.case.toLowerCase().includes(q)     ||
+      d.type.toLowerCase().includes(q)     ||
+      d.desc.toLowerCase().includes(q)     ||
+      d.uploader.toLowerCase().includes(q) ||
+      d.status.toLowerCase().includes(q)
+    );
     return docs;
   });
 
-  get pendingCount():  number { return this._docs().filter(d => d.status === 'Pending Review').length; }
-  get voiceCount():    number { return this._docs().filter(d => d.isVoiceNote).length; }
+  get isSearching(): boolean { return this._searchDebounced().trim().length > 0; }
+
+  setSearch(value: string): void {
+    this.searchQuery.set(value);
+    clearTimeout(this._debounceTimer);
+    if (!value) { this.searchNav.reset(); this._searchDebounced.set(''); return; }
+    this._debounceTimer = setTimeout(() => {
+      this._searchDebounced.set(value);
+      setTimeout(() => this.searchNav.scan(), 50);
+    }, 300);
+  }
+
+  clearSearch(): void {
+    this.searchQuery.set('');
+    this._searchDebounced.set('');
+    clearTimeout(this._debounceTimer);
+    this.searchNav.reset();
+  }
+
+  selectFolder(caseId: string): void { this.selectedCaseId.set(caseId || null); }
+
+  get selectedFolderName(): string {
+    const id = this.selectedCaseId();
+    return this.folders().find(f => f.caseId === id)?.name ?? '';
+  }
+
+  get pendingCount(): number { return this._docs().filter(d => d.isClientDoc && d.status === 'Pending Review').length; }
   get allSelected():   boolean {
     const docs = this.filteredDocuments();
     return docs.length > 0 && docs.every(d => this.selectedDocs().has(d.id));
@@ -186,18 +266,19 @@ export class Documents implements OnInit {
     await Promise.all([
       this.caseService.loadCases(),
       this._loadDocuments(),
+      this._loadRequests(),
     ]);
     this._wireUpload();
   }
 
-  private async _loadDocuments(): Promise<void> {
+  async _loadDocuments(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
     try {
       const raw   = await this.docService.listDocuments();
       const cases = this.caseService.cases();
       const user  = this.auth.currentUser();
-      this._docs.set(raw.map(r => this._mapDoc(r, cases, user)));
+      this._docs.set(raw.filter(r => r.category !== 'VOICE_TRANSCRIPT').map(r => this._mapDoc(r, cases, user)));
     } catch (e: any) {
       this.error.set(e?.error?.detail ?? e?.message ?? 'Failed to load documents');
     } finally {
@@ -205,11 +286,35 @@ export class Documents implements OnInit {
     }
   }
 
+  async _loadRequests(): Promise<void> {
+    this.loadingRequests.set(true);
+    try {
+      const reqs = await this.docService.listDocumentRequests();
+      this._requests.set(reqs);
+    } catch { /* ignore */ } finally {
+      this.loadingRequests.set(false);
+    }
+  }
+
+  async onRequestSent(): Promise<void> {
+    await Promise.all([this._loadDocuments(), this._loadRequests()]);
+  }
+
+  async cancelRequest(id: string): Promise<void> {
+    if (!confirm('Cancel this document request?')) return;
+    try {
+      await this.docService.cancelDocumentRequest(id);
+      this._requests.update(r => r.filter(req => req.id !== id));
+    } catch { /* ignore */ }
+  }
+
   private _wireUpload(): void {
     this.upload.setCases(this.caseService.cases().map(c => ({ id: c.id, name: c.title })));
   }
 
   // Upload wrappers that set the real upload function each time
+  openRequestDoc(): void { this.requestDocModal.openModal(); }
+
   openUpload(accept = '*'): void {
     this.upload.openWithUpload(accept, async (file: File) => {
       const caseId = this.upload.getSelectedCaseId();
@@ -223,10 +328,10 @@ export class Documents implements OnInit {
 
   // ── Document mapper ───────────────────────────────────────
   private _mapDoc(raw: RawDoc, cases: any[], user: any): DocFile {
-    const isVoice   = raw.category === 'VOICE_TRANSCRIPT';
-    const style     = this.docService.getTypeStyle(isVoice ? 'OTHER' : raw.file_type);
-    const caseTitle = cases.find(c => c.id === raw.case_id)?.title ?? `Case ${raw.case_id?.slice(0, 8) ?? ''}`;
-    const isMine    = !!user && user.id === raw.uploaded_by;
+    const style       = this.docService.getTypeStyle(raw.file_type);
+    const caseTitle   = cases.find(c => c.id === raw.case_id)?.title ?? `Case ${raw.case_id?.slice(0, 8) ?? ''}`;
+    const uploaderName   = raw.uploader_name ?? (!!user && user.id === raw.uploaded_by ? (user.name ?? 'Me') : 'Staff Member');
+    const uploaderAvatar = raw.uploader_avatar_url ?? (!!user && user.id === raw.uploaded_by ? (user.avatar ?? '') : '');
 
     return {
       id:          raw.id,
@@ -234,23 +339,28 @@ export class Documents implements OnInit {
       desc:        this._catDesc(raw.category),
       case:        caseTitle,
       caseId:      raw.case_id,
-      type:        isVoice ? 'AUDIO' : raw.file_type,
-      typeBg:      isVoice ? 'bg-pink-100'           : style.typeBg,
-      typeColor:   isVoice ? 'text-pink-700'         : style.typeColor,
-      iconBg:      isVoice ? 'bg-pink-100'           : style.iconBg,
-      icon:        isVoice ? 'fa-solid fa-microphone': style.icon,
-      iconColor:   isVoice ? 'text-pink-600'         : style.iconColor,
+      type:        raw.file_type,
+      typeBg:      style.typeBg,
+      typeColor:   style.typeColor,
+      iconBg:      style.iconBg,
+      icon:        style.icon,
+      iconColor:   style.iconColor,
       size:        `${(raw.file_size_mb ?? 0).toFixed(1)} MB`,
       fileSizeMb:  raw.file_size_mb ?? 0,
-      avatar:      isMine ? (user.avatar ?? '') : '',
-      uploader:    isMine ? (user.name ?? 'Me') : 'Staff Member',
+      avatar:      uploaderAvatar,
+      uploader:    uploaderName,
       modified:    this.docService.timeAgo(raw.created_at),
-      status:      this._mapStatus(raw.status),
-      isVoiceNote: isVoice,
-      transcribed: isVoice && raw.status === 'APPROVED',
-      storageUrl:  raw.storage_url,
-      rawCategory: raw.category,
+      status:             this._mapStatus(raw.status),
+      storageUrl:         raw.storage_url,
+      rawCategory:        raw.category,
+      isClientDoc:        raw.category === 'CLIENT_DOC',
+      isSharedWithClient: raw.is_shared_with_client ?? false,
+      uploaderId:         raw.uploaded_by ?? '',
     };
+  }
+
+  isCurrentUserUploader(doc: DocFile): boolean {
+    return doc.uploaderId === (this.auth.currentUser()?.id ?? '');
   }
 
   private _mapStatus(s: string): DocStatus {
@@ -264,13 +374,12 @@ export class Documents implements OnInit {
 
   private _catDesc(cat: string): string {
     const map: Record<string, string> = {
-      CONTRACT:         'Contract document',
-      COURT_DOC:        'Court document',
-      EVIDENCE:         'Evidence file',
-      FINANCIAL:        'Financial document',
-      CLIENT_DOC:       'Client document',
-      VOICE_TRANSCRIPT: 'Voice note — transcription',
-      OTHER:            'Document',
+      CONTRACT:   'Contract document',
+      COURT_DOC:  'Court document',
+      EVIDENCE:   'Evidence file',
+      FINANCIAL:  'Financial document',
+      CLIENT_DOC: 'Client document',
+      OTHER:      'Document',
     };
     return map[cat] ?? 'Document';
   }
@@ -311,58 +420,65 @@ export class Documents implements OnInit {
     } catch { /* ignore */ }
   }
 
-  async deleteDoc(id: string): Promise<void> {
-    if (!confirm('Delete this document? This action cannot be undone.')) return;
+  downloadingDoc       = signal<string | null>(null);
+  confirmDownloadDoc   = signal<DocFile | null>(null);
+
+  confirmDownload(doc: DocFile): void  { this.confirmDownloadDoc.set(doc); }
+  cancelDownload():             void   { this.confirmDownloadDoc.set(null); }
+
+  docToDelete = signal<DocFile | null>(null);
+  isDeleting  = signal(false);
+
+  confirmDelete(doc: DocFile): void { this.docToDelete.set(doc); }
+  cancelDelete():               void { this.docToDelete.set(null); }
+
+  async confirmDeleteDoc(): Promise<void> {
+    const doc = this.docToDelete();
+    if (!doc) return;
+    this.isDeleting.set(true);
     try {
-      await this.docService.deleteDocument(id);
-      this._docs.update(docs => docs.filter(d => d.id !== id));
-      this.selectedDocs.update(s => { const n = new Set(s); n.delete(id); return n; });
-    } catch { /* ignore */ }
+      await this.docService.deleteDocument(doc.id);
+      this._docs.update(docs => docs.filter(d => d.id !== doc.id));
+      this.selectedDocs.update(s => { const n = new Set(s); n.delete(doc.id); return n; });
+      this.docToDelete.set(null);
+    } catch { /* ignore */ } finally {
+      this.isDeleting.set(false);
+    }
   }
 
   async shareDoc(id: string): Promise<void> {
     try {
       await this.docService.shareDocument(id);
+      this._docs.update(docs => docs.map(d => d.id === id ? { ...d, isSharedWithClient: true } : d));
     } catch { /* ignore */ }
   }
 
-  async aiSummarizeDoc(id: string): Promise<void> {
-    try {
-      const res = await this.docService.aiSummarize(id);
-      alert(`AI Summary:\n\n${res.summary}`);
-    } catch (e: any) {
-      alert(e?.error?.detail ?? 'AI summarize failed. Check OpenAI configuration.');
-    }
+  aiSummarizeDoc(id: string): void {
+    const doc = this._docs().find(d => d.id === id);
+    this.aiSummaryModal.open(id, doc?.name ?? 'Document');
   }
 
   async bulkSummarize(): Promise<void> {
     const ids = [...this.selectedDocs()];
     for (const id of ids) {
-      await this.aiSummarizeDoc(id);
+      this.aiSummarizeDoc(id);
     }
   }
 
   viewDoc(doc: DocFile): void {
-    if (doc.storageUrl) window.open(doc.storageUrl, '_blank');
+    if (!doc.storageUrl) return;
+    if (doc.type === 'WORD') {
+      window.open(`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(doc.storageUrl)}`, '_blank');
+    } else {
+      window.open(doc.storageUrl, '_blank');
+    }
   }
 
-  downloadDoc(doc: DocFile): void {
-    this.docService.downloadFile({ name: doc.name, url: doc.storageUrl });
-  }
-
-  // ── Voice recording ───────────────────────────────────────
-  startRecording(): void {
-    this.isRecording.set(true);
-    this.recordSeconds.set(0);
-    this._recInterval = setInterval(() => this.recordSeconds.update(s => s + 1), 1000);
-  }
-  stopRecording(): void {
-    this.isRecording.set(false);
-    clearInterval(this._recInterval);
-  }
-  get recordTime(): string {
-    const s = this.recordSeconds();
-    return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+  async downloadDoc(doc: DocFile): Promise<void> {
+    this.confirmDownloadDoc.set(null);
+    this.downloadingDoc.set(doc.id);
+    try { await this.docService.downloadFile({ name: doc.name, url: doc.storageUrl }); } catch {}
+    setTimeout(() => this.downloadingDoc.set(null), 1800);
   }
 
   // ── Status helpers ────────────────────────────────────────
@@ -383,8 +499,9 @@ export class Documents implements OnInit {
     return map[status];
   }
 
-  setFilter(key: 'all'|'by-case'|'pending'|'approved'|'voice-notes'): void {
+  setFilter(key: 'all'|'by-case'|'pending'|'approved'|'shared'): void {
     this.activeFilter.set(key);
+    this.selectedCaseId.set(null);
     this.clearSelection();
   }
   setView(mode: 'grid'|'list'): void { this.viewMode.set(mode); }

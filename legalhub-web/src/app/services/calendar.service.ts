@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpContext } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { SKIP_AUTH_REDIRECT } from './auth.interceptor';
 import { environment } from '../environments/environment';
 import { CalEvent, EventType } from '../components/calendar/calendar/calendar';
 
@@ -13,13 +14,17 @@ export interface BackendEvent {
   start_datetime: string;
   end_datetime?: string | null;
   case_id?: string | null;
+  case_title?: string | null;
   location?: string | null;
   is_video_call: boolean;
   video_call_url?: string | null;
   reminder_minutes?: number[] | null;
   firm_id: string;
   created_by: string;
+  is_participant?: boolean;
+  participants?: { user_id: string; full_name: string; participant_type: string }[];
 }
+
 
 export interface CreateEventPayload {
   title: string;
@@ -34,6 +39,15 @@ export interface CreateEventPayload {
   recurrence: 'none' | 'weekly' | 'biweekly' | 'monthly';
   recurrence_count?: number;                            // required when recurrence != none
   recurrence_until?: string;                            // ISO date, alternative to count
+  participant_ids?: string[];                           // user IDs to invite
+}
+
+export interface AvailableParticipant {
+  user_id:          string;
+  full_name:        string;
+  email:            string;
+  role:             string;
+  participant_type: 'TEAM_MEMBER' | 'CLIENT';
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -67,8 +81,9 @@ export class CalendarService {
   }
 
   async updateEvent(id: string, payload: CreateEventPayload): Promise<CalEvent> {
+    const { recurrence, recurrence_count, recurrence_until, ...updateBody } = payload as any;
     const result = await firstValueFrom(
-      this.http.put<BackendEvent>(`${this.api}/api/calendar/events/${id}`, payload)
+      this.http.put<BackendEvent>(`${this.api}/api/calendar/events/${id}`, updateBody)
     );
     return this._mapToCalEvent(result);
   }
@@ -77,6 +92,86 @@ export class CalendarService {
     await firstValueFrom(
       this.http.delete(`${this.api}/api/calendar/events/${id}`)
     );
+  }
+
+  // ── Google Calendar Sync ──────────────────────────────────────────────────
+
+  async getGoogleAuthUrl(mobileCallback?: string): Promise<{ auth_url: string }> {
+    const params: Record<string, string> = {};
+    if (mobileCallback) params['mobile_callback'] = mobileCallback;
+    return firstValueFrom(
+      this.http.get<{ auth_url: string }>(`${this.api}/api/calendar/sync/google/auth-url`, { params })
+    );
+  }
+
+  async syncToGoogle(): Promise<{ synced: number; failed: number; total: number }> {
+    return firstValueFrom(
+      this.http.post<{ synced: number; failed: number; total: number }>(
+        `${this.api}/api/calendar/sync/google`, {},
+        { context: new HttpContext().set(SKIP_AUTH_REDIRECT, true) }
+      )
+    );
+  }
+
+  async exchangeGoogleCode(code: string, redirectUri: string): Promise<{ message: string }> {
+    return firstValueFrom(
+      this.http.post<{ message: string }>(`${this.api}/api/calendar/sync/google/exchange-code`, {
+        code,
+        redirect_uri: redirectUri,
+      })
+    );
+  }
+
+  async getAvailableParticipants(caseId?: string): Promise<AvailableParticipant[]> {
+    let params = new HttpParams();
+    if (caseId) params = params.set('case_id', caseId);
+    return firstValueFrom(
+      this.http.get<AvailableParticipant[]>(`${this.api}/api/calendar/available-participants`, { params })
+    );
+  }
+
+  // ── Meeting Requests ──────────────────────────────────────────────────────
+
+  async listMeetingRequests(): Promise<Record<string, unknown>[]> {
+    return firstValueFrom(
+      this.http.get<Record<string, unknown>[]>(`${this.api}/api/calendar/meeting-requests`)
+    );
+  }
+
+  async acceptMeetingRequest(
+    requestId: string,
+    body: {
+      title?:          string;
+      start_datetime?: string;
+      end_datetime?:   string;
+      location?:       string;
+      video_call_url?: string;
+    }
+  ): Promise<Record<string, unknown>> {
+    return firstValueFrom(
+      this.http.post<Record<string, unknown>>(
+        `${this.api}/api/calendar/meeting-requests/${requestId}/accept`,
+        body
+      )
+    );
+  }
+
+  async rejectMeetingRequest(requestId: string, reason?: string): Promise<{ status: string }> {
+    return firstValueFrom(
+      this.http.post<{ status: string }>(
+        `${this.api}/api/calendar/meeting-requests/${requestId}/reject`,
+        { reason: reason ?? '' }
+      )
+    );
+  }
+
+  getStoredGoogleStatus(): boolean {
+    return localStorage.getItem('legalhub_google_calendar_connected') === 'true';
+  }
+
+  setStoredGoogleStatus(connected: boolean): void {
+    if (connected) localStorage.setItem('legalhub_google_calendar_connected', 'true');
+    else localStorage.removeItem('legalhub_google_calendar_connected');
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -121,9 +216,12 @@ export class CalendarService {
       endTime,
       allDay:       false,
       locationType,
-      location:     e.location ?? '',
-      caseRef:      '',
-      participants: [],
+      location:     (e.is_video_call ? (e.video_call_url ?? e.location) : e.location) ?? '',
+      caseRef:      e.case_id ?? '',
+      caseTitle:    e.case_title ?? '',
+      createdBy:    e.created_by,
+      participants: (e.participants ?? []).map(p => ({ id: p.user_id, name: p.full_name, type: p.participant_type })),
+      isParticipant: e.is_participant ?? false,
       notes:        '',
       reminder:     e.reminder_minutes?.[0]?.toString() ?? '0',
       day,

@@ -17,6 +17,8 @@ export interface RawDoc {
   category:              DocCategory;
   status:                DocStatus;
   uploaded_by:           string;
+  uploader_name?:        string | null;
+  uploader_avatar_url?:  string | null;
   created_at:            string;
   reviewed_by?:          string | null;
   reviewed_at?:          string | null;
@@ -35,6 +37,48 @@ export interface DocEntry {
   icon:      string;
   url:       string;
 }
+
+export interface DocumentRequest {
+  id:          string;
+  firm_id:     string;
+  case_id:     string;
+  client_id?:  string | null;
+  requested_by: string;
+  description: string;
+  category?:   string | null;
+  deadline?:   string | null;
+  status:      'PENDING' | 'FULFILLED' | 'CANCELLED';
+  created_at:  string;
+  case_file?:  { id: string; title: string; case_number: string } | null;
+}
+
+// ── Voice-note AI response types ──────────────────────────────────────────────
+
+export interface VoiceNoteNeedsInfo {
+  status:          'needs_info';
+  transcription:   string;
+  question:        string;
+  missing_fields:  string[];
+  partial_data:    Record<string, string>;
+}
+
+export interface VoiceNoteConfirm {
+  status:        'confirm';
+  transcription: string;
+  note_data: {
+    title:      string;
+    content:    string;
+    case_title: string;
+  };
+}
+
+export interface VoiceNoteSaved {
+  status:  'saved';
+  message: string;
+  note:    Record<string, unknown>;
+}
+
+export type VoiceNoteAIResponse = VoiceNoteNeedsInfo | VoiceNoteConfirm | VoiceNoteSaved;
 
 @Injectable({ providedIn: 'root' })
 export class DocumentService {
@@ -57,27 +101,24 @@ export class DocumentService {
     return raw.map(r => this._mapToEntry(r));
   }
 
-  async uploadFile(file: File, caseId: string): Promise<RawDoc> {
+  async uploadFile(file: File, caseId: string, originalName?: string): Promise<RawDoc> {
     const form = new FormData();
     form.append('file', file);
     form.append('case_id', caseId);
+    if (originalName) form.append('original_name', originalName);
     return firstValueFrom(
       this.http.post<RawDoc>(`${this.api}/api/documents/upload`, form)
     );
   }
 
-  async uploadVoiceNote(file: File, caseId: string): Promise<{ document: RawDoc; transcript: string | null }> {
-    const form = new FormData();
-    form.append('file', file);
-    form.append('case_id', caseId);
-    return firstValueFrom(
-      this.http.post<{ document: RawDoc; transcript: string | null }>(`${this.api}/api/documents/voice-note`, form)
-    );
-  }
-
+  // ── status is a query param on the backend, NOT a body field ──────────────
   async updateStatus(id: string, status: DocStatus): Promise<RawDoc> {
     return firstValueFrom(
-      this.http.patch<RawDoc>(`${this.api}/api/documents/${id}/status`, { status })
+      this.http.patch<RawDoc>(
+        `${this.api}/api/documents/${id}/status`,
+        null,
+        { params: { status } }
+      )
     );
   }
 
@@ -89,9 +130,14 @@ export class DocumentService {
     await firstValueFrom(this.http.post(`${this.api}/api/documents/${id}/share`, {}));
   }
 
-  async aiSummarize(id: string): Promise<{ summary: string; ai_summary_id: string }> {
+  async aiSummarize(id: string, force = false): Promise<{ summary: string; ai_summary_id: string; cached: boolean }> {
+    const params: Record<string, string> | undefined = force ? { force: 'true' } : undefined;
     return firstValueFrom(
-      this.http.post<{ summary: string; ai_summary_id: string }>(`${this.api}/api/documents/${id}/ai-summarize`, {})
+      this.http.post<{ summary: string; ai_summary_id: string; cached: boolean }>(
+        `${this.api}/api/documents/${id}/ai-summarize`,
+        {},
+        { params }
+      )
     );
   }
 
@@ -109,6 +155,63 @@ export class DocumentService {
       window.open(doc.url, '_blank');
     }
   }
+
+  // ── Voice Note AI (multi-step STT + LLM pipeline) ────────────────────────
+
+  async voiceNoteAI(
+    file: File,
+    partialData?: Record<string, string>,
+    priorTranscriptions?: string[],
+  ): Promise<VoiceNoteAIResponse> {
+    const form = new FormData();
+    form.append('file', file);
+    if (partialData && Object.keys(partialData).length > 0) {
+      form.append('partial_data', JSON.stringify(partialData));
+    }
+    if (priorTranscriptions && priorTranscriptions.length > 0) {
+      form.append('prior_transcriptions', JSON.stringify(priorTranscriptions));
+    }
+    return firstValueFrom(
+      this.http.post<VoiceNoteAIResponse>(`${this.api}/api/documents/voice-note-ai`, form)
+    );
+  }
+
+  async voiceNoteAIConfirm(noteData: { title: string; content: string; case_title: string }): Promise<VoiceNoteSaved> {
+    const form = new FormData();
+    form.append('note_data', JSON.stringify(noteData));
+    return firstValueFrom(
+      this.http.post<VoiceNoteSaved>(`${this.api}/api/documents/voice-note-ai/confirm`, form)
+    );
+  }
+
+  // ── Document Requests ─────────────────────────────────────────────────────
+
+  async createDocumentRequest(data: {
+    case_id:     string;
+    description: string;
+    category?:   string;
+    deadline?:   string;
+  }): Promise<DocumentRequest> {
+    return firstValueFrom(
+      this.http.post<DocumentRequest>(`${this.api}/api/documents/request`, data)
+    );
+  }
+
+  async listDocumentRequests(caseId?: string): Promise<DocumentRequest[]> {
+    const params: Record<string, string> = {};
+    if (caseId) params['case_id'] = caseId;
+    return firstValueFrom(
+      this.http.get<DocumentRequest[]>(`${this.api}/api/documents/requests`, { params })
+    );
+  }
+
+  async cancelDocumentRequest(requestId: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete(`${this.api}/api/documents/requests/${requestId}`)
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   getTypeStyle(fileType: string): { iconBg: string; iconColor: string; icon: string; typeBg: string; typeColor: string } {
     const map: Record<string, { iconBg: string; iconColor: string; icon: string; typeBg: string; typeColor: string }> = {

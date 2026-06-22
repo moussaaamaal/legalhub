@@ -1,3 +1,43 @@
 /* You can add global styles to this file, and also import other style files */
 
 @import "tailwindcss";
+
+/* ── Tax rate range slider ── */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  cursor: pointer;
+  transition: transform .15s;
+}
+input[type='range']::-webkit-slider-thumb:hover { transform: scale(1.15); }
+input[type='range']::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  cursor: pointer;
+}
+
+/* ── Search navigator — active highlight ── */
+mark.search-active {
+  background-color: #f97316;
+  color: #ffffff;
+  outline: 2px solid #ea580c;
+  outline-offset: 1px;
+  border-radius: 2px;
+}

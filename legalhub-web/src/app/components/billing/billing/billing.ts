@@ -1,28 +1,36 @@
-import { Component, signal, computed, AfterViewInit, OnInit, inject } from '@angular/core';
+import { Component, signal, computed, AfterViewInit, OnInit, inject, ViewChild } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { BillingService, InvoiceRaw } from '../../../services/billing.service';
+import { ConfirmDialog } from '../../../shared/modals/confirm-dialog/confirm-dialog';
 import { ClientService } from '../../../services/client.service';
 import { CaseService } from '../../../services/case.service';
+import { AuthService } from '../../../services/auth.service';
+import { HighlightPipe } from '../../../shared/pipes/highlight.pipe';
+import { SearchNavigatorService } from '../../../shared/services/search-navigator.service';
+import { NewInvoiceModal } from '../../../shared/modals/new-invoice-modal/new-invoice-modal';
+import { InvoiceViewModal } from '../../../shared/modals/invoice-view-modal/invoice-view-modal';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 declare var Plotly: any;
 
 interface InvoiceUI {
-  id: string;
+  id: string; clientId: string;
   number: string; client: string; email: string;
-  case: string; caseType: string; billingType: string;
+  case: string; caseType: string;
   amount: string; issueDate: string; dueDate: string;
   rawIssueDate: string;
   dueNote: string; dueNoteColor: string;
   status: string; statusBg: string; statusColor: string;
-  showRemind: boolean; canSend: boolean;
+  showRemind: boolean; canSend: boolean; canDelete: boolean; canCancel: boolean; canWhatsapp: boolean;
 }
-interface FormItem { description: string; qty: number | null; rate: number | null; }
 
 @Component({
   selector: 'app-billing',
   standalone: true,
-  imports: [NgClass, FormsModule],
+  imports: [NgClass, FormsModule, HighlightPipe, NewInvoiceModal, InvoiceViewModal, ConfirmDialog],
   templateUrl: './billing.html',
 })
 export class Billing implements OnInit, AfterViewInit {
@@ -30,13 +38,14 @@ export class Billing implements OnInit, AfterViewInit {
   private billingService = inject(BillingService);
   private clientService  = inject(ClientService);
   private caseService    = inject(CaseService);
+  private authService    = inject(AuthService);
+  searchNav              = inject(SearchNavigatorService);
 
   // ── Init ──────────────────────────────────────────────────
   async ngOnInit(): Promise<void> {
     await Promise.all([
-      this.billingService.loadInvoices(),
+      this.billingService.loadInvoices().then(() => this.billingService.loadMonthlyRevenue()),
       this.billingService.loadAnalytics(),
-      this.billingService.loadMonthlyRevenue(),
       this.clientService.loadClients(),
       this.caseService.loadCases(),
     ]);
@@ -49,144 +58,19 @@ export class Billing implements OnInit, AfterViewInit {
   get cases()    { return this.caseService.cases; }
 
   // ══════════════════════════════════════════════════════════
-  // MODAL — CREATE INVOICE
+  // MODAL — CREATE INVOICE (composant partagé)
   // ══════════════════════════════════════════════════════════
-  showModal       = signal(false);
-  modalStep       = signal<1|2>(1);
-  isSubmitting    = signal(false);
-  savingDraft     = signal(false);
-  formError       = signal<string | null>(null);
-  lastCreated     = signal<InvoiceRaw | null>(null);
+  @ViewChild(NewInvoiceModal) invoiceModal!: NewInvoiceModal;
 
-  openModal()  { this.resetForm(); this.modalStep.set(1); this.showModal.set(true); }
-  closeModal() { this.showModal.set(false); }
+  openModal() { this.invoiceModal.openModal(); }
 
-  resetForm() {
-    const today = new Date();
-    const due   = new Date(today); due.setDate(due.getDate() + 30);
-    this.selectedClientId.set('');
-    this.selectedClientName.set('');
-    this.selectedCaseId.set('');
-    this.selectedBillingType.set('Hourly Rate');
-    this.invoiceDate.set(today.toISOString().substring(0, 10));
-    this.dueDate.set(due.toISOString().substring(0, 10));
-    this.notes.set('');
-    this.sendEmail.set(false);
-    this.markSent.set(false);
-    this.formError.set(null);
-    this.lastCreated.set(null);
-    this.invoiceItems.set([
-      { description: '', qty: null, rate: null },
-      { description: '', qty: null, rate: null },
+  async onInvoiceCreated() {
+    await Promise.all([
+      this.billingService.loadInvoices().then(() => this.billingService.loadMonthlyRevenue()),
+      this.billingService.loadAnalytics(),
     ]);
+    this.showToast('Invoice created successfully.');
   }
-
-  private _buildPayload() {
-    return {
-      client_id:    this.selectedClientId(),
-      case_id:      this.selectedCaseId() || undefined,
-      billing_type: this.billingTypeToEnum[this.selectedBillingType()] ?? 'HOURLY',
-      items: this.invoiceItems()
-        .filter(i => i.description.trim() && i.qty && i.rate)
-        .map(i => ({ description: i.description, quantity: i.qty!, unit_price: i.rate! })),
-      tax_rate:  8,
-      due_date:  this.dueDate(),
-      currency:  'USD',
-      notes:     this.notes() || undefined,
-    };
-  }
-
-  async saveAsDraft() {
-    this.formError.set(null);
-    const payload = this._buildPayload();
-    if (!payload.items.length) { this.formError.set('Add at least one item.'); return; }
-    this.savingDraft.set(true);
-    try {
-      const inv = await this.billingService.createInvoice(payload);
-      this.lastCreated.set(inv);
-      this.modalStep.set(2);
-      await Promise.all([this.billingService.loadAnalytics(), this.billingService.loadMonthlyRevenue()]);
-    } catch (e: any) {
-      this.formError.set(e?.error?.detail ?? 'Failed to save draft.');
-    } finally {
-      this.savingDraft.set(false);
-    }
-  }
-
-  async submitInvoice() {
-    this.formError.set(null);
-    const payload = this._buildPayload();
-    if (!payload.items.length) { this.formError.set('Add at least one item.'); return; }
-    this.isSubmitting.set(true);
-    try {
-      const inv = await this.billingService.createInvoice(payload);
-      this.lastCreated.set(inv);
-      await this.billingService.sendInvoice(inv.id).catch(() => {});
-      this.modalStep.set(2);
-      await Promise.all([this.billingService.loadAnalytics(), this.billingService.loadMonthlyRevenue()]);
-    } catch (e: any) {
-      this.formError.set(e?.error?.detail ?? 'Failed to create invoice.');
-    } finally {
-      this.isSubmitting.set(false);
-    }
-  }
-
-  // ── Form signals ──────────────────────────────────────────
-  selectedClientId    = signal('');
-  selectedClientName  = signal('');
-  selectedCaseId      = signal('');
-  selectedBillingType = signal('Hourly Rate');
-  invoiceDate         = signal('');
-  dueDate             = signal('');
-  notes               = signal('');
-  sendEmail           = signal(false);
-  markSent            = signal(false);
-  invoiceItems        = signal<FormItem[]>([
-    { description: '', qty: null, rate: null },
-    { description: '', qty: null, rate: null },
-  ]);
-
-  billingTypes = ['Hourly Rate', 'Flat Fee', 'Contingency', 'Retainer'];
-
-  private readonly billingTypeToEnum: Record<string, string> = {
-    'Hourly Rate': 'HOURLY',
-    'Flat Fee':    'FLAT_FEE',
-    'Contingency': 'CONTINGENCY',
-    'Retainer':    'RETAINER',
-  };
-
-  private readonly billingTypeDisplay: Record<string, string> = {
-    'HOURLY':      'Hourly Rate',
-    'FLAT_FEE':    'Flat Fee',
-    'CONTINGENCY': 'Contingency',
-    'RETAINER':    'Retainer',
-  };
-
-  onClientChange(id: string) {
-    this.selectedClientId.set(id);
-    const c = this.clientService.clients().find(cl => cl.id === id);
-    this.selectedClientName.set(c?.name ?? '');
-  }
-
-  getBillingTypeCls(type: string): string {
-    const map: Record<string, string> = {
-      'Hourly Rate': 'bg-blue-100 text-blue-700',
-      'Flat Fee':    'bg-purple-100 text-purple-700',
-      'Contingency': 'bg-amber-100 text-amber-700',
-      'Retainer':    'bg-green-100 text-green-700',
-    };
-    return map[type] ?? 'bg-gray-100 text-gray-600';
-  }
-
-  getItemAmount(item: FormItem): string {
-    return item.qty && item.rate ? '$' + (item.qty * item.rate).toFixed(2) : '$0.00';
-  }
-  getSubtotal(): number { return this.invoiceItems().reduce((s,i) => s + (i.qty && i.rate ? i.qty * i.rate : 0), 0); }
-  getTax(): number      { return this.getSubtotal() * 0.08; }
-  getTotal(): string    { return '$' + (this.getSubtotal() + this.getTax()).toFixed(2); }
-  addItem(): void       { this.invoiceItems.update(items => [...items, {description:'',qty:null,rate:null}]); }
-  removeItem(i: number): void { this.invoiceItems.update(items => items.filter((_,idx) => idx !== i)); }
-  get isFormValid() { return this.selectedClientId().trim().length > 0; }
 
   // ══════════════════════════════════════════════════════════
   // INVOICE DETAIL MODAL
@@ -212,33 +96,77 @@ export class Billing implements OnInit, AfterViewInit {
       inv.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2 });
   }
 
-  printInvoice(inv: InvoiceRaw) {
-    const client = inv.client;
-    const name   = client ? `${client.first_name} ${client.last_name}`.trim() : '—';
-    const rows   = (inv.invoice_item ?? []).map(it =>
-      `<tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">${it.description}</td>
-       <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:center">${it.quantity}</td>
-       <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right">$${it.unit_price.toFixed(2)}</td>
-       <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right">$${it.total.toFixed(2)}</td></tr>`
-    ).join('');
-    const html = `<!DOCTYPE html><html><head><title>${inv.invoice_number}</title>
-      <style>body{font-family:sans-serif;padding:40px;color:#111}table{width:100%;border-collapse:collapse}</style>
-      </head><body>
-      <h2 style="color:#d97706">${inv.invoice_number}</h2>
-      <p><strong>Client:</strong> ${name} &nbsp;|&nbsp; <strong>Email:</strong> ${client?.email ?? '—'}</p>
-      <p><strong>Issue Date:</strong> ${inv.issue_date} &nbsp;|&nbsp; <strong>Due Date:</strong> ${inv.due_date}</p>
-      <table><thead style="background:#f9fafb"><tr>
-        <th style="padding:8px;text-align:left">Description</th>
-        <th style="padding:8px;text-align:center">Qty</th>
-        <th style="padding:8px;text-align:right">Unit Price</th>
-        <th style="padding:8px;text-align:right">Total</th></tr></thead>
-      <tbody>${rows}</tbody></table>
-      <hr style="margin:16px 0">
-      <p style="text-align:right"><strong>Subtotal:</strong> $${inv.subtotal.toFixed(2)}</p>
-      <p style="text-align:right"><strong>Tax (${inv.tax_rate}%):</strong> $${inv.tax_amount.toFixed(2)}</p>
-      <p style="text-align:right;font-size:1.2em"><strong>Total: ${this.getDetailTotal(inv)}</strong></p>
-      ${inv.notes ? `<p><strong>Notes:</strong> ${inv.notes}</p>` : ''}
-      </body></html>`;
+  printInvoice(inv: InvoiceRaw | any) {
+    const client     = inv.client;
+    const clientName = client ? `${client.first_name} ${client.last_name}`.trim() : '—';
+    const caseTitle  = inv.case_file?.title ?? '—';
+    const caseNum    = inv.case_file?.case_number ?? '';
+    const sym        = inv.currency === 'USD' ? '$' : (inv.currency ?? '') + ' ';
+    const fmt        = (n: number) => sym + n.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    const fmtDate    = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const statusLabels: Record<string, string> = { DRAFT: 'Draft', PENDING: 'Pending', PAID: 'Paid', OVERDUE: 'Overdue', CANCELLED: 'Cancelled' };
+
+    const itemRows = (inv.invoice_item ?? []).map((it: any) =>
+      `<tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827">${it.description}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:#374151">${it.quantity}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#374151">${fmt(it.unit_price)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:#111827">${fmt(it.total)}</td>
+      </tr>`
+    ).join('') || '<tr><td colspan="4" style="padding:16px;text-align:center;color:#9ca3af">No items</td></tr>';
+
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Invoice ${inv.invoice_number}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;background:#f3f4f6;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{max-width:780px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+.hdr{background:linear-gradient(135deg,#d97706,#f59e0b);padding:28px 36px;display:flex;justify-content:space-between;align-items:flex-start}
+.hdr-brand{color:#fff;font-size:22px;font-weight:800}.hdr-brand span{opacity:.8;font-weight:400}
+.hdr-right{text-align:right}.hdr-num{color:#fff;font-size:20px;font-weight:700}
+.hdr-badge{display:inline-block;margin-top:5px;padding:3px 12px;border-radius:999px;font-size:11px;font-weight:600;background:rgba(255,255,255,.25);color:#fff}
+.body{padding:28px 36px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:24px}
+.box{background:#f9fafb;border-radius:8px;padding:14px;border:1px solid #e5e7eb}
+.box h3{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6b7280;margin-bottom:7px}
+.box .val{font-size:13px;font-weight:600;color:#111827}.box .sub{font-size:12px;color:#6b7280;margin-top:2px}
+.sec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#374151;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;margin-bottom:20px}
+thead tr{background:#fef3c7}
+thead th{padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#92400e}
+thead th:nth-child(2){text-align:center}thead th:nth-child(3),thead th:nth-child(4){text-align:right}
+.totals{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;max-width:260px;margin-left:auto}
+.tr{display:flex;justify-content:space-between;font-size:13px;color:#374151;padding:3px 0}
+.ttotal{font-size:15px;font-weight:700;color:#d97706;border-top:1px solid #e5e7eb;padding-top:9px;margin-top:5px;display:flex;justify-content:space-between}
+.notes{margin-top:20px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px}
+.notes h3{font-size:10px;font-weight:700;text-transform:uppercase;color:#92400e;margin-bottom:5px}
+.notes p{font-size:13px;color:#374151}
+@media print{body{background:#fff}.page{box-shadow:none;margin:0;border-radius:0}}
+</style></head><body>
+<div class="page">
+  <div class="hdr">
+    <div><div class="hdr-brand">Legal<span>Hub</span></div><div style="color:rgba(255,255,255,.7);font-size:11px;margin-top:3px">Professional Legal Services</div></div>
+    <div class="hdr-right"><div class="hdr-num">${inv.invoice_number}</div><div class="hdr-badge">${statusLabels[inv.status] ?? inv.status}</div></div>
+  </div>
+  <div class="body">
+    <div class="grid3">
+      <div class="box"><h3>Client</h3><div class="val">${clientName}</div><div class="sub">${client?.email ?? '—'}</div>${client?.phone ? `<div class="sub">${client.phone}</div>` : ''}</div>
+      <div class="box"><h3>Case</h3><div class="val">${caseTitle}</div>${caseNum ? `<div class="sub"># ${caseNum}</div>` : ''}</div>
+      <div class="box"><h3>Dates</h3><div class="val">Issued: ${fmtDate(inv.issue_date)}</div><div class="sub">Due: ${fmtDate(inv.due_date)}</div></div>
+    </div>
+    <div class="sec">Invoice Items</div>
+    <table><thead><tr>
+      <th style="width:50%">Description</th><th style="width:12%;text-align:center">Qty</th>
+      <th style="width:19%;text-align:right">Unit Price</th><th style="width:19%;text-align:right">Total</th>
+    </tr></thead><tbody>${itemRows}</tbody></table>
+    <div class="totals">
+      <div class="tr"><span>Subtotal</span><span>${fmt(inv.subtotal)}</span></div>
+      <div class="tr"><span>Tax (${inv.tax_rate}%)</span><span>${fmt(inv.tax_amount)}</span></div>
+      <div class="ttotal"><span>Total</span><span>${fmt(inv.total_amount)}</span></div>
+    </div>
+    ${inv.notes ? `<div class="notes"><h3>Notes</h3><p>${inv.notes}</p></div>` : ''}
+  </div>
+</div>
+</body></html>`;
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); w.print(); }
   }
@@ -253,41 +181,23 @@ export class Billing implements OnInit, AfterViewInit {
   }
 
   // ══════════════════════════════════════════════════════════
-  // REMINDERS CONFIG MODAL
-  // ══════════════════════════════════════════════════════════
-  showRemindersModal = signal(false);
-
-  reminderSettings = signal([
-    { label:'First Reminder',   desc:'3 days before due date', days: -3,  enabled: true  },
-    { label:'Second Reminder',  desc:'On due date',             days:  0,  enabled: true  },
-    { label:'Overdue Reminder', desc:'3 days after due date',  days:  3,  enabled: true  },
-    { label:'Final Notice',     desc:'7 days after due date',  days:  7,  enabled: true  },
-  ]);
-
-  channels = signal([
-    { icon:'fa-solid fa-envelope',    iconBg:'bg-blue-100',   iconColor:'text-blue-600',   label:'Email Reminders', desc:'Send via email',     checked:true  },
-    { icon:'fa-brands fa-whatsapp',   iconBg:'bg-green-100',  iconColor:'text-green-600',  label:'WhatsApp',        desc:'Send via WhatsApp',  checked:false },
-    { icon:'fa-solid fa-comment-sms', iconBg:'bg-purple-100', iconColor:'text-purple-600', label:'SMS Alerts',      desc:'Send text messages', checked:false },
-    { icon:'fa-solid fa-bell',        iconBg:'bg-amber-100',  iconColor:'text-amber-600',  label:'In-App Alerts',   desc:'Dashboard alerts',   checked:true  },
-  ]);
-
-  toggleChannel(idx: number) {
-    this.channels.update(list => list.map((c, i) => i === idx ? {...c, checked: !c.checked} : c));
-  }
-
-  toggleReminder(idx: number) {
-    this.reminderSettings.update(list => list.map((r, i) => i === idx ? {...r, enabled: !r.enabled} : r));
-  }
-
-  // ══════════════════════════════════════════════════════════
   // SEARCH, FILTER, SORT
   // ══════════════════════════════════════════════════════════
-  searchQuery     = signal('');
-  showFilterPanel = signal(false);
-  filterDateFrom  = signal('');
-  filterDateTo    = signal('');
-  sortField       = signal<string>('');
-  sortDir         = signal<'asc'|'desc'>('asc');
+  searchQuery       = signal('');
+  showFilterPanel   = signal(false);
+
+  onSearch(q: string): void {
+    this.searchQuery.set(q);
+    if (!q) { this.searchNav.reset(); return; }
+    setTimeout(() => this.searchNav.scan(), 50);
+  }
+  filterDateFrom    = signal('');
+  filterDateTo      = signal('');
+  sortField         = signal<string>('');
+  sortDir           = signal<'asc'|'desc'>('asc');
+  filterClientId    = signal('');
+  filterAmountMin   = signal('');
+  filterAmountMax   = signal('');
 
   setSort(field: string) {
     if (this.sortField() === field) {
@@ -302,15 +212,20 @@ export class Billing implements OnInit, AfterViewInit {
     this.searchQuery.set('');
     this.filterDateFrom.set('');
     this.filterDateTo.set('');
+    this.filterClientId.set('');
+    this.filterAmountMin.set('');
+    this.filterAmountMax.set('');
     this.activeTab.set('All');
     this.sortField.set('');
-    this.showFilterPanel.set(false);
   }
 
   hasActiveFilters = computed(() =>
     this.searchQuery().trim() !== '' ||
     this.filterDateFrom() !== '' ||
     this.filterDateTo() !== '' ||
+    this.filterClientId() !== '' ||
+    this.filterAmountMin() !== '' ||
+    this.filterAmountMax() !== '' ||
     this.activeTab() !== 'All'
   );
 
@@ -318,6 +233,16 @@ export class Billing implements OnInit, AfterViewInit {
   // EXPORT
   // ══════════════════════════════════════════════════════════
   showExportMenu = signal(false);
+
+  // ── Toast notifications ───────────────────────────────
+  toast = signal<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  private _toastTimer: any;
+
+  showToast(message: string, type: 'success' | 'error' | 'info' = 'success') {
+    clearTimeout(this._toastTimer);
+    this.toast.set({ message, type });
+    this._toastTimer = setTimeout(() => this.toast.set(null), 4000);
+  }
 
   exportCsv() {
     const rows = this.filteredInvoices();
@@ -332,9 +257,152 @@ export class Billing implements OnInit, AfterViewInit {
     this.showExportMenu.set(false);
   }
 
-  exportPdf() {
+  // ── Helpers : filtrage par période sélectionnée ──────────
+  private _periodDateRange(): { from: string; to: string } {
+    const now = new Date();
+    const to  = now.toISOString().substring(0, 10);
+    let from: Date;
+    switch (this._selectedPeriod()) {
+      case 'This Week':
+        from = new Date(now);
+        from.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+        break;
+      case 'This Quarter':
+        from = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        break;
+      case 'This Year':
+        from = new Date(now.getFullYear(), 0, 1);
+        break;
+      default: // This Month
+        from = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    return { from: from.toISOString().substring(0, 10), to };
+  }
+
+  private _invoicesForPeriod() {
+    const { from, to } = this._periodDateRange();
+    return this.billingService.invoices()
+      .filter(inv => inv.issue_date >= from && inv.issue_date <= to);
+  }
+
+  private _analyticsForPeriod() {
+    const raw  = this._invoicesForPeriod();
+    const paid = raw.filter(i => i.status === 'PAID');
+    return {
+      total_revenue:   paid.reduce((s, i) => s + i.total_amount, 0),
+      outstanding:     raw.filter(i => i.status === 'PENDING').reduce((s, i) => s + i.total_amount, 0),
+      overdue:         raw.filter(i => i.status === 'OVERDUE').reduce((s, i) => s + i.total_amount, 0),
+      total_invoices:  raw.length,
+      collection_rate: raw.length ? Math.round((paid.length / raw.length) * 100) : 0,
+    };
+  }
+
+  private _fmt(n: number) {
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // ── Export Excel ─────────────────────────────────────────
+  exportExcel() {
+    const period   = this.selectedPeriod();
+    const kpi      = this._analyticsForPeriod();
+    const invoices = this._invoicesForPeriod().map(inv => this._mapInvoice(inv));
+    const total    = this._fmt(invoices.reduce((s, i) => {
+      const raw = this.billingService.invoices().find(r => r.id === i.id);
+      return s + (raw?.total_amount ?? 0);
+    }, 0));
+    const today = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    const wb    = XLSX.utils.book_new();
+
+    // Feuille 1 — Résumé
+    const ws1 = XLSX.utils.aoa_to_sheet([
+      ['BILLING REPORT', '', period],
+      ['Generated', today],
+      [],
+      ['SUMMARY'],
+      ['Total Revenue',   kpi.total_revenue],
+      ['Outstanding',     kpi.outstanding],
+      ['Overdue',         kpi.overdue],
+      ['Total Invoices',  kpi.total_invoices],
+      ['Collection Rate', kpi.collection_rate + '%'],
+    ]);
+    ws1['!cols'] = [{ wch: 22 }, { wch: 22 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+    // Feuille 2 — Factures
+    const headers = ['Invoice #', 'Client', 'Email', 'Case', 'Case Type', 'Amount', 'Issue Date', 'Due Date', 'Status'];
+    const rows    = invoices.map(inv => [
+      inv.number, inv.client, inv.email, inv.case, inv.caseType,
+      inv.amount, inv.issueDate, inv.dueDate, inv.status,
+    ]);
+    const ws2 = XLSX.utils.aoa_to_sheet([headers, ...rows, [], ['', '', '', '', '', `${invoices.length} invoices`, total]]);
+    ws2['!cols'] = [{ wch:14 },{ wch:24 },{ wch:28 },{ wch:22 },{ wch:18 },{ wch:14 },{ wch:14 },{ wch:14 },{ wch:14 },{ wch:12 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Invoices');
+
+    XLSX.writeFile(wb, `billing-report-${period.toLowerCase().replace(/ /g, '-')}.xlsx`);
     this.showExportMenu.set(false);
-    setTimeout(() => window.print(), 100);
+  }
+
+  // ── Export PDF ───────────────────────────────────────────
+  exportPdf() {
+    const period   = this.selectedPeriod();
+    const kpi      = this._analyticsForPeriod();
+    const invoices = this._invoicesForPeriod().map(inv => this._mapInvoice(inv));
+    const total    = this._fmt(invoices.reduce((s, i) => {
+      const raw = this.billingService.invoices().find(r => r.id === i.id);
+      return s + (raw?.total_amount ?? 0);
+    }, 0));
+    const today = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    const doc   = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    // Bandeau header
+    doc.setFillColor(217, 119, 6);
+    doc.rect(0, 0, 297, 22, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');   doc.setFontSize(15);
+    doc.text('Billing Report', 14, 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text(`Period: ${period}   |   Generated: ${today}`, 120, 14);
+
+    // Cartes KPI
+    const kpis = [
+      { label: 'Total Revenue',   value: this._fmt(kpi.total_revenue)  },
+      { label: 'Outstanding',     value: this._fmt(kpi.outstanding)    },
+      { label: 'Overdue',         value: this._fmt(kpi.overdue)        },
+      { label: 'Total Invoices',  value: String(kpi.total_invoices)    },
+      { label: 'Collection Rate', value: kpi.collection_rate + '%'     },
+    ];
+    kpis.forEach((k, i) => {
+      const x = 14 + i * 54;
+      doc.setFillColor(249, 250, 251);
+      doc.roundedRect(x, 27, 52, 18, 2, 2, 'F');
+      doc.setTextColor(17, 24, 39);
+      doc.setFont('helvetica', 'bold');   doc.setFontSize(12);
+      doc.text(k.value, x + 4, 36);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.setTextColor(107, 114, 128);
+      doc.text(k.label, x + 4, 42);
+    });
+
+    // Tableau des factures
+    autoTable(doc, {
+      startY: 51,
+      head: [['Invoice #', 'Client', 'Case', 'Amount', 'Issue Date', 'Due Date', 'Status']],
+      body: invoices.map(inv => [
+        inv.number, inv.client, inv.case,
+        inv.amount, inv.issueDate, inv.dueDate, inv.status,
+      ]),
+      foot: [['', '', `${invoices.length} invoices`, total, '', '', '']],
+      theme: 'grid',
+      headStyles:         { fillColor: [217, 119, 6], fontStyle: 'bold', fontSize: 9, textColor: 255 },
+      footStyles:         { fillColor: [254, 243, 199], textColor: [146, 64, 14], fontStyle: 'bold', fontSize: 9 },
+      bodyStyles:         { fontSize: 8.5, textColor: [17, 24, 39] },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      columnStyles:       { 4: { halign: 'right', fontStyle: 'bold' }, 7: { halign: 'center' } },
+      margin: { left: 14, right: 14 },
+    });
+
+    doc.save(`billing-report-${period.toLowerCase().replace(/ /g, '-')}.pdf`);
+    this.showExportMenu.set(false);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -342,14 +410,26 @@ export class Billing implements OnInit, AfterViewInit {
   // ══════════════════════════════════════════════════════════
   sendingInvoiceId  = signal<string | null>(null);
   sendingReminderId = signal<string | null>(null);
+  markingPaidId     = signal<string | null>(null);
+  deletingId        = signal<string | null>(null);
+  cancellingId      = signal<string | null>(null);
+
+  pendingConfirm = signal<{
+    title: string; message: string; confirmLabel: string;
+    type: 'danger' | 'warning'; onConfirm: () => void;
+  } | null>(null);
+
+  confirmPending() { this.pendingConfirm()?.onConfirm(); this.pendingConfirm.set(null); }
+  dismissConfirm() { this.pendingConfirm.set(null); }
 
   async onSendInvoice(invoiceId: string) {
     this.sendingInvoiceId.set(invoiceId);
     try {
       await this.billingService.sendInvoice(invoiceId);
       await this.billingService.loadAnalytics();
+      this.showToast('Invoice sent successfully.');
     } catch (e: any) {
-      alert(e?.error?.detail ?? 'Failed to send invoice.');
+      this.showToast(e?.error?.detail ?? 'Failed to send invoice.', 'error');
     } finally {
       this.sendingInvoiceId.set(null);
     }
@@ -359,11 +439,89 @@ export class Billing implements OnInit, AfterViewInit {
     this.sendingReminderId.set(invoiceId);
     try {
       await this.billingService.sendReminder(invoiceId);
-      alert('Payment reminder sent successfully.');
+      this.showToast('Payment reminder sent successfully.');
     } catch (e: any) {
-      alert(e?.error?.detail ?? 'Failed to send reminder.');
+      this.showToast(e?.error?.detail ?? 'Failed to send reminder.', 'error');
     } finally {
       this.sendingReminderId.set(null);
+    }
+  }
+
+  sendingWhatsappId = signal<string | null>(null);
+
+  async onSendWhatsapp(invoiceId: string) {
+    this.sendingWhatsappId.set(invoiceId);
+    try {
+      await this.billingService.sendInvoiceWhatsapp(invoiceId);
+      this.showToast('WhatsApp notification sent successfully.');
+    } catch (e: any) {
+      this.showToast(e?.error?.detail ?? 'Failed to send WhatsApp notification.', 'error');
+    } finally {
+      this.sendingWhatsappId.set(null);
+    }
+  }
+
+  async markInvoicePaid(invoiceId: string) {
+    this.markingPaidId.set(invoiceId);
+    try {
+      const result = await this.billingService.markAsPaidViaSadad(invoiceId);
+      await Promise.all([this.billingService.loadInvoices(), this.billingService.loadAnalytics(), this.billingService.loadMonthlyRevenue()]);
+      this.showToast(result.instructions || 'Payment reference generated. Invoice pending confirmation.');
+      if (this.selectedInvoiceId() === invoiceId) this.closeDetailModal();
+    } catch (e: any) {
+      this.showToast(e?.error?.detail ?? 'Failed to initiate payment.', 'error');
+    } finally {
+      this.markingPaidId.set(null);
+    }
+  }
+
+  onDeleteInvoice(invoiceId: string) {
+    const num = this.billingService.invoices().find(i => i.id === invoiceId)?.invoice_number ?? '';
+    this.pendingConfirm.set({
+      title: 'Delete Invoice?',
+      message: `Invoice ${num} will be permanently deleted. This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      type: 'danger',
+      onConfirm: () => this._doDeleteInvoice(invoiceId),
+    });
+  }
+
+  private async _doDeleteInvoice(invoiceId: string) {
+    this.deletingId.set(invoiceId);
+    try {
+      await this.billingService.deleteInvoice(invoiceId);
+      await Promise.all([this.billingService.loadAnalytics(), this.billingService.loadMonthlyRevenue()]);
+      this.showToast('Invoice deleted.');
+      if (this.selectedInvoiceId() === invoiceId) this.closeDetailModal();
+    } catch (e: any) {
+      this.showToast(e?.error?.detail ?? 'Failed to delete invoice.', 'error');
+    } finally {
+      this.deletingId.set(null);
+    }
+  }
+
+  onCancelInvoice(invoiceId: string) {
+    const num = this.billingService.invoices().find(i => i.id === invoiceId)?.invoice_number ?? '';
+    this.pendingConfirm.set({
+      title: 'Cancel Invoice?',
+      message: `Invoice ${num} will be marked as Cancelled.`,
+      confirmLabel: 'Cancel Invoice',
+      type: 'warning',
+      onConfirm: () => this._doCancelInvoice(invoiceId),
+    });
+  }
+
+  private async _doCancelInvoice(invoiceId: string) {
+    this.cancellingId.set(invoiceId);
+    try {
+      await this.billingService.cancelInvoice(invoiceId);
+      await Promise.all([this.billingService.loadAnalytics(), this.billingService.loadMonthlyRevenue()]);
+      this.showToast('Invoice cancelled.');
+      if (this.selectedInvoiceId() === invoiceId) this.closeDetailModal();
+    } catch (e: any) {
+      this.showToast(e?.error?.detail ?? 'Failed to cancel invoice.', 'error');
+    } finally {
+      this.cancellingId.set(null);
     }
   }
 
@@ -372,11 +530,17 @@ export class Billing implements OnInit, AfterViewInit {
   // ══════════════════════════════════════════════════════════
   statusMap: Record<string, { display: string; bg: string; color: string }> = {
     DRAFT:     { display: 'Draft',     bg: 'bg-slate-100', color: 'text-slate-600' },
-    PENDING:   { display: 'Pending',   bg: 'bg-blue-100',  color: 'text-blue-700'  },
+    PENDING:   { display: 'Pending',   bg: 'bg-amber-100',  color: 'text-amber-700'  },
     PAID:      { display: 'Paid',      bg: 'bg-green-100', color: 'text-green-700' },
     OVERDUE:   { display: 'Overdue',   bg: 'bg-red-100',   color: 'text-red-700'   },
     CANCELLED: { display: 'Cancelled', bg: 'bg-gray-100',  color: 'text-gray-600'  },
   };
+
+  private _isInvoiceOwner(inv: InvoiceRaw): boolean {
+    const user = this.authService.currentUser();
+    if (!user) return false;
+    return user.role === 'admin' || inv.lawyer_id === user.id;
+  }
 
   private _mapInvoice(inv: InvoiceRaw): InvoiceUI {
     const client     = inv.client;
@@ -396,28 +560,35 @@ export class Billing implements OnInit, AfterViewInit {
     const sym  = inv.currency === 'USD' ? '$' : inv.currency + ' ';
     const amount = sym + inv.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
-    const linkedCase   = inv.case_id ? this.caseService.getCaseById(inv.case_id) : undefined;
-    const rawBilling   = inv.billing_type || '';
-    const billingType  = this.billingTypeDisplay[rawBilling] ?? (rawBilling ? rawBilling : 'Hourly Rate');
-    const caseTitle    = linkedCase?.title ?? '—';
-    const caseTypeFmt  = (linkedCase?.type ?? '').replace(/_/g, ' ');
+    const linkedCaseFile = inv.case_file ?? (inv.case_id ? this.caseService.getCaseById(inv.case_id) : undefined);
+    const caseTitle    = (linkedCaseFile as any)?.title ?? '—';
+    const caseTypeFmt  = (this.caseService.getCaseById(inv.case_id ?? '')?.type ?? '').replace(/_/g, ' ');
 
     return {
-      id: inv.id, number: inv.invoice_number,
+      id: inv.id, clientId: inv.client_id,
+      number: inv.invoice_number,
       client: clientName, email: client?.email ?? '—',
-      case: caseTitle, caseType: caseTypeFmt, billingType,
+      case: caseTitle, caseType: caseTypeFmt,
       amount, issueDate: fmt(inv.issue_date), dueDate: fmt(inv.due_date),
       rawIssueDate: inv.issue_date,
       dueNote, dueNoteColor,
       status: statusInfo.display, statusBg: statusInfo.bg, statusColor: statusInfo.color,
-      showRemind: inv.status === 'PENDING' || inv.status === 'OVERDUE',
-      canSend:    inv.status === 'DRAFT',
+      showRemind:   (inv.status === 'PENDING' || inv.status === 'OVERDUE') && this._isInvoiceOwner(inv),
+      canSend:      inv.status === 'DRAFT' && this._isInvoiceOwner(inv),
+      canCancel:    inv.status === 'DRAFT' && this._isInvoiceOwner(inv),
+      canDelete:    !['DRAFT', 'PAID'].includes(inv.status) && this._isInvoiceOwner(inv),
+      canWhatsapp:  ['PENDING', 'OVERDUE'].includes(inv.status) && !!inv.client && this._isInvoiceOwner(inv),
     };
   }
 
-  private _mappedInvoices = computed(() =>
-    this.billingService.invoices().map(inv => this._mapInvoice(inv))
-  );
+  private _mappedInvoices = computed(() => {
+    const user = this.authService.currentUser();
+    const uid = user?.id ?? '';
+    const isAdmin = user?.role === 'admin';
+    return this.billingService.invoices()
+      .filter(inv => isAdmin || !['DRAFT', 'CANCELLED'].includes(inv.status) || inv.lawyer_id === uid)
+      .map(inv => this._mapInvoice(inv));
+  });
 
   get allInvoices(): InvoiceUI[] { return this._mappedInvoices(); }
 
@@ -443,6 +614,20 @@ export class Billing implements OnInit, AfterViewInit {
     if (from) list = list.filter(inv => inv.rawIssueDate >= from);
     if (to)   list = list.filter(inv => inv.rawIssueDate <= to);
 
+    const clientId = this.filterClientId();
+    if (clientId) list = list.filter(inv => String(inv.clientId) === String(clientId));
+
+    const minAmt = parseFloat(this.filterAmountMin());
+    const maxAmt = parseFloat(this.filterAmountMax());
+    if (!isNaN(minAmt)) list = list.filter(inv => {
+      const raw = this.billingService.invoices().find(i => i.id === inv.id);
+      return raw ? raw.total_amount >= minAmt : true;
+    });
+    if (!isNaN(maxAmt)) list = list.filter(inv => {
+      const raw = this.billingService.invoices().find(i => i.id === inv.id);
+      return raw ? raw.total_amount <= maxAmt : true;
+    });
+
     if (sf) {
       list = [...list].sort((a, b) => {
         const va = (a as any)[sf] ?? '';
@@ -459,18 +644,22 @@ export class Billing implements OnInit, AfterViewInit {
   activeTab = signal<string>('All');
 
   private _selectedPeriod = signal('This Month');
+  private _chartPeriod    = signal('This Month');
   private _chartView      = signal('Monthly');
   get selectedPeriod() { return this._selectedPeriod; }
+  get chartPeriod()    { return this._chartPeriod; }
   get chartView()      { return this._chartView; }
 
-  setPeriod(p: string) {
-    this._selectedPeriod.set(p);
+  setPeriod(p: string) { this._selectedPeriod.set(p); }
+
+  setChartPeriod(p: string) {
+    this._chartPeriod.set(p);
     const d = this.chartData[p];
     this._chartView.set(d?.barLabel ?? 'Monthly');
     this.renderTrendChart();
-    this.renderMonthlyChart();
+    this.renderMainRevenueChart();
   }
-  setChartView(v: string) { this._chartView.set(v); this.renderMonthlyChart(); }
+  setChartView(v: string) { this._chartView.set(v); this.renderMainRevenueChart(); }
 
   periods = ['This Week', 'This Month', 'This Quarter', 'This Year'];
 
@@ -494,46 +683,63 @@ export class Billing implements OnInit, AfterViewInit {
 
   // ── Invoice tabs ──────────────────────────────────────────
   get invoiceTabs() {
-    const list = this._mappedInvoices();
+    const all = this._mappedInvoices();
     return [
-      { key:'All',     label:'All',     count: list.length,
+      { key:'All',       label:'All',       count: all.length,
         activeCls:'border-gray-900 text-gray-900',         badgeActiveCls:'bg-gray-900 text-white' },
-      { key:'Paid',    label:'Paid',    count: list.filter(i => i.status==='Paid').length,
+      { key:'Paid',      label:'Paid',      count: all.filter(i => i.status==='Paid').length,
         activeCls:'border-green-500 text-green-600',       badgeActiveCls:'bg-green-100 text-green-700' },
-      { key:'Pending', label:'Pending', count: list.filter(i => i.status==='Pending').length,
-        activeCls:'border-blue-500 text-blue-600',         badgeActiveCls:'bg-blue-100 text-blue-700' },
-      { key:'Overdue', label:'Overdue', count: list.filter(i => i.status==='Overdue').length,
+      { key:'Pending',   label:'Pending',   count: all.filter(i => i.status==='Pending').length,
+        activeCls:'border-amber-500 text-amber-600',       badgeActiveCls:'bg-amber-100 text-amber-700' },
+      { key:'Overdue',   label:'Overdue',   count: all.filter(i => i.status==='Overdue').length,
         activeCls:'border-red-500 text-red-600',           badgeActiveCls:'bg-red-100 text-red-700' },
-      { key:'Draft',   label:'Draft',   count: list.filter(i => i.status==='Draft').length,
-        activeCls:'border-slate-400 text-slate-500',       badgeActiveCls:'bg-slate-100 text-slate-600' },
+      { key:'Draft',     label:'Draft',     count: all.filter(i => i.status==='Draft').length,
+        activeCls:'border-slate-500 text-slate-600',       badgeActiveCls:'bg-slate-100 text-slate-700' },
+      { key:'Cancelled', label:'Cancelled', count: all.filter(i => i.status==='Cancelled').length,
+        activeCls:'border-gray-400 text-gray-500',         badgeActiveCls:'bg-gray-100 text-gray-600' },
     ];
   }
 
-  get overdueCount() { return this._mappedInvoices().filter(i => i.status === 'Overdue').length; }
+  get overdueCount()   { return this._mappedInvoices().filter(i => i.status === 'Overdue').length; }
+  get draftInvoices(): InvoiceUI[] { return this._mappedInvoices().filter(i => i.status === 'Draft'); }
 
-  // ── Reminders list ────────────────────────────────────────
-  get reminders() {
-    return this._mappedInvoices()
-      .filter(inv => inv.status === 'Overdue' || inv.showRemind)
-      .slice(0, 5)
-      .map(inv => ({
-        iconBg:    inv.status === 'Overdue' ? 'bg-amber-100' : 'bg-blue-100',
-        iconColor: inv.status === 'Overdue' ? 'text-amber-600' : 'text-blue-600',
-        title:     (inv.status === 'Overdue' ? 'Overdue Notice' : 'Payment Due Reminder') + ' - ' + inv.number,
-        client:    inv.client,
-        channels:  [{ l:'Email', c:'bg-blue-100 text-blue-700' }],
-        time:      inv.dueDate,
-        badge:     inv.status,
-        badgeCls:  inv.status === 'Overdue' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700',
-        id:        inv.id,
-      }));
+  get revenueBreakdown() {
+    const all = this.billingService.invoices();
+    const fmt = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const sum = (status: string) => all.filter(i => i.status === status).reduce((s, i) => s + i.total_amount, 0);
+    const cnt = (status: string) => all.filter(i => i.status === status).length;
+    return [
+      { label: 'Collected',  amount: fmt(sum('PAID')),    count: cnt('PAID'),    icon: 'fa-solid fa-circle-check',         iconBg: 'bg-green-100',  iconColor: 'text-green-600',  labelColor: 'text-green-700',  bg: 'bg-green-50 border-green-200'  },
+      { label: 'Pending',    amount: fmt(sum('PENDING')), count: cnt('PENDING'), icon: 'fa-solid fa-clock',                iconBg: 'bg-amber-100',  iconColor: 'text-amber-600',  labelColor: 'text-amber-700',  bg: 'bg-amber-50 border-amber-200'  },
+      { label: 'Overdue',    amount: fmt(sum('OVERDUE')), count: cnt('OVERDUE'), icon: 'fa-solid fa-triangle-exclamation', iconBg: 'bg-red-100',    iconColor: 'text-red-600',    labelColor: 'text-red-700',    bg: 'bg-red-50 border-red-200'      },
+    ];
   }
 
-  paymentMethods = [
-    { icon:'fa-solid fa-building-columns', iconBg:'bg-blue-100',   iconColor:'text-blue-600',   label:'Bank Transfer', pct:'45% of payments', amount:'—' },
-    { icon:'fa-solid fa-credit-card',      iconBg:'bg-purple-100', iconColor:'text-purple-600', label:'Credit Card',   pct:'35% of payments', amount:'—' },
-    { icon:'fa-solid fa-money-check',      iconBg:'bg-green-100',  iconColor:'text-green-600',  label:'Check',         pct:'20% of payments', amount:'—' },
-  ];
+  get totalBilledFormatted(): string {
+    const total = this.billingService.invoices()
+      .filter(i => i.status !== 'DRAFT' && i.status !== 'CANCELLED')
+      .reduce((s, i) => s + i.total_amount, 0);
+    return '$' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  get filteredTotalFormatted(): string {
+    const ids = new Set(this.filteredInvoices().map(i => i.id));
+    const total = this.billingService.invoices()
+      .filter(i => ids.has(i.id))
+      .reduce((s, i) => s + i.total_amount, 0);
+    return '$' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  getStatusBorderCls(status: string): string {
+    const map: Record<string, string> = {
+      'Paid':      'border-l-green-400',
+      'Pending':   'border-l-amber-400',
+      'Overdue':   'border-l-red-500',
+      'Draft':     'border-l-slate-300',
+      'Cancelled': 'border-l-gray-300',
+    };
+    return map[status] ?? 'border-l-transparent';
+  }
 
   // ── Sort icon helper ──────────────────────────────────────
   sortIcon(field: string): string {
@@ -554,9 +760,9 @@ export class Billing implements OnInit, AfterViewInit {
     'This Year':    { barX:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], barY:[85000,92000,88000,105000,98000,112000,108000,125000,118000,132000,124500,130000], qtrX:['Q1','Q2','Q3','Q4'], qtrY:[265000,315000,351000,386500], trendX:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], trendY:[85000,92000,88000,105000,98000,112000,108000,125000,118000,132000,124500,130000], showToggle:true, barLabel:'Monthly' },
   };
 
-  get showChartToggle() { return this.chartData[this._selectedPeriod()]?.showToggle ?? true; }
+  get showChartToggle() { return this.chartData[this._chartPeriod()]?.showToggle ?? true; }
   get chartViewLabels() {
-    const d = this.chartData[this._selectedPeriod()];
+    const d = this.chartData[this._chartPeriod()];
     return d?.showToggle ? [d.barLabel, 'Quarterly'] : [];
   }
 
@@ -575,33 +781,46 @@ export class Billing implements OnInit, AfterViewInit {
   }
   private readonly gridColor = '#f3f4f6';
 
-  private renderCharts() { setTimeout(() => { this.renderTrendChart(); this.renderBreakdownChart(); this.renderMonthlyChart(); }, 50); }
-
-  private renderBreakdownChart() {
-    try {
-      if (!document.getElementById('revenue-breakdown-chart')) return;
-      Plotly.newPlot('revenue-breakdown-chart',
-        [{ type:'pie', labels:['Civil Litigation','Real Estate','Corporate Law','Estate Planning','Employment Law','Healthcare Law'], values:[28,22,18,15,10,7],
-           marker:{colors:['#3b82f6','#10b981','#8b5cf6','#f59e0b','#ef4444','#06b6d4']}, textinfo:'percent', textfont:{size:11}, hole:0.35, hovertemplate:'<b>%{label}</b><br>%{percent}<extra></extra>' }],
-        { plot_bgcolor:'#fff', paper_bgcolor:'#fff', font:{color:'#374151'}, showlegend:true, legend:{orientation:'v',x:1.02,y:0.5,font:{size:11},bgcolor:'transparent'}, margin:{t:20,r:160,b:20,l:20} },
-        { responsive:true, displayModeBar:false });
-    } catch(e) { console.error(e); }
-  }
+  private renderCharts() { setTimeout(() => { this.renderTrendChart(); this.renderMainRevenueChart(); }, 50); }
 
   private _buildRealChartData(): { x: string[]; yRevenue: number[]; yInvoiced: number[] } | null {
     const raw = this.billingService.monthlyRevenue();
     if (!raw.length) return null;
+
+    const now      = new Date();
+    const thisYear = now.getFullYear();
+    const thisMon  = now.getMonth() + 1;
+
+    const filtered = raw.filter(r => {
+      const [y, m] = r.month.split('-').map(Number);
+      switch (this._chartPeriod()) {
+        case 'This Week':
+        case 'This Month':
+          return y === thisYear && m === thisMon;
+        case 'This Quarter': {
+          const qStart = thisMon - ((thisMon - 1) % 3);
+          return y === thisYear && m >= qStart && m < qStart + 3;
+        }
+        case 'This Year':
+          return y === thisYear;
+        default:
+          return true;
+      }
+    });
+
+    const data = filtered.length ? filtered : raw;
     return {
-      x:         raw.map(r => { const [y, m] = r.month.split('-'); return new Date(+y, +m - 1, 1).toLocaleString('en-US', { month: 'short', year: '2-digit' }); }),
-      yRevenue:  raw.map(r => r.revenue),
-      yInvoiced: raw.map(r => r.invoiced),
+      x:         data.map(r => { const [y, m] = r.month.split('-'); return new Date(+y, +m - 1, 1).toLocaleString('en-US', { month: 'short', year: '2-digit' }); }),
+      yRevenue:  data.map(r => r.revenue),
+      yInvoiced: data.map(r => r.invoiced),
     };
   }
 
   private renderTrendChart() {
-    const real = this._buildRealChartData();
-    const trendX = real?.x ?? (this.chartData[this._selectedPeriod()] ?? this.chartData['This Month']).trendX;
-    const trendY = real?.yRevenue ?? (this.chartData[this._selectedPeriod()] ?? this.chartData['This Month']).trendY;
+    const real   = this._buildRealChartData();
+    const static_ = this.chartData[this._chartPeriod()] ?? this.chartData['This Month'];
+    const trendX = (real && real.x.length >= 2) ? real.x : static_.trendX;
+    const trendY = (real && real.x.length >= 2) ? real.yRevenue : static_.trendY;
     try {
       Plotly.react('revenue-trend-chart',
         [{ type:'scatter', mode:'lines+markers', x:trendX, y:trendY, line:{color:'#f59e0b',width:3}, fill:'tozeroy', fillcolor:'rgba(245,158,11,0.08)', marker:{color:'#f59e0b',size:5} }],
@@ -610,22 +829,49 @@ export class Billing implements OnInit, AfterViewInit {
     } catch(e) { console.error(e); }
   }
 
-  private renderMonthlyChart() {
+  private renderMainRevenueChart() {
     const real = this._buildRealChartData();
-    let x: string[], y: number[];
-    if (real) {
-      x = real.x; y = real.yRevenue;
+    let x: string[], yRevenue: number[], yInvoiced: number[];
+
+    const d    = this.chartData[this._chartPeriod()] ?? this.chartData['This Month'];
+    const useQ = this._chartView() === 'Quarterly' && d.showToggle;
+
+    if (real && real.x.length >= 2) {
+      x = real.x; yRevenue = real.yRevenue; yInvoiced = real.yInvoiced;
     } else {
-      const d    = this.chartData[this._selectedPeriod()] ?? this.chartData['This Month'];
-      const useQ = this._chartView() === 'Quarterly' && d.showToggle;
-      x = useQ ? d.qtrX : d.barX; y = useQ ? d.qtrY : d.barY;
+      x         = useQ ? d.qtrX : d.barX;
+      yRevenue  = useQ ? d.qtrY : d.barY;
+      yInvoiced = yRevenue.map(v => Math.round(v * 1.18));
     }
-    const colors = y.map((_,i) => i === y.length-1 ? '#f59e0b' : '#fbbf24');
+
     try {
-      Plotly.react('monthly-revenue-chart',
-        [{ type:'bar', x, y, marker:{color:colors,opacity:0.9}, hovertemplate:'<b>%{x}</b><br>$%{y:,.0f}<extra></extra>' }],
-        { ...this.lightLayout, margin:{t:20,r:20,b:35,l:65}, xaxis:{showgrid:false,color:'#9ca3af',tickfont:{size:11}}, yaxis:{showgrid:true,gridcolor:this.gridColor,color:'#9ca3af',tickfont:{size:11},tickformat:'$,.0f'} },
-        {responsive:true,displayModeBar:false});
+      if (!document.getElementById('main-revenue-chart')) return;
+      Plotly.react('main-revenue-chart',
+        [
+          {
+            type: 'bar', name: 'Invoiced', x, y: yInvoiced,
+            marker: { color: 'rgba(251,191,36,0.5)', line: { color: '#f59e0b', width: 1.5 } },
+            hovertemplate: '<b>%{x}</b><br>Invoiced: $%{y:,.0f}<extra></extra>',
+          },
+          {
+            type: 'scatter', mode: 'lines+markers', name: 'Collected', x, y: yRevenue,
+            line: { color: '#10b981', width: 3, shape: 'spline' },
+            fill: 'tonexty', fillcolor: 'rgba(16,185,129,0.06)',
+            marker: { color: '#10b981', size: 7, line: { color: '#fff', width: 2 } },
+            hovertemplate: '<b>%{x}</b><br>Collected: $%{y:,.0f}<extra></extra>',
+          },
+        ],
+        {
+          ...this.lightLayout,
+          showlegend: false,
+          margin: { t: 20, r: 20, b: 40, l: 70 },
+          bargap: 0.5,
+          bargroupgap: 0.15,
+          xaxis: { showgrid: false, color: '#9ca3af', tickfont: { size: 11 } },
+          yaxis: { showgrid: true, gridcolor: this.gridColor, color: '#9ca3af', tickfont: { size: 11 }, tickformat: '$,.0f' },
+        },
+        { responsive: true, displayModeBar: false }
+      );
     } catch(e) { console.error(e); }
   }
 }

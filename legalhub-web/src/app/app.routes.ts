@@ -1,6 +1,7 @@
 // src/app/app.routes.ts
 import { Routes } from '@angular/router';
 import { Layout } from './shared/layout/layout';
+import { authGuard } from './auth-guard';
 
 export const routes: Routes = [
   // ────────────────────────────────────────────────
@@ -18,6 +19,7 @@ export const routes: Routes = [
   {
     path: '',
     component: Layout,                     // ← contient <app-sidebar> + <router-outlet>
+    canActivate: [authGuard],
     children: [
       {
         path: '',
@@ -84,15 +86,9 @@ export const routes: Routes = [
       },
             
       {
-        path: 'help',
-        loadComponent: () => import('./components/help/help/help')
-          .then(m => m.Help)
-      },
-
-      {
         path: 'profile',
-        loadComponent: () => import('./components/profile/profile')
-          .then(m => m.Profile)
+        redirectTo: 'settings',
+        pathMatch: 'full'
       },
     ]
       

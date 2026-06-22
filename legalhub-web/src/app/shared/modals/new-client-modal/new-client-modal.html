@@ -1,0 +1,435 @@
+@if (showModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.5)"
+     (click)="closeModal()">
+
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
+       style="max-height:92vh"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid fa-user-plus text-amber-600"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">
+              @if (modalStep() === 4) { Client Invitation }
+              @else { Add New Client }
+            </h2>
+            <p class="text-xs text-gray-500">Fill in client details to create a new profile</p>
+          </div>
+        </div>
+        <button (click)="closeModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+      @if (modalStep() < 4) {
+        <div class="flex items-center justify-between mb-2 text-xs font-semibold">
+          <span class="text-gray-500">Progress</span>
+          <span class="text-gray-700">Step {{ modalStep() }} of 3</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+          <div class="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300"
+               [style.width]="progressPct + '%'"></div>
+        </div>
+        <div class="flex items-center justify-between mt-1">
+          @for (sl of stepLabels; track sl.label) {
+            <span class="text-xs font-medium transition-colors"
+                  [ngClass]="sl.active ? 'text-amber-600 font-bold' : sl.done ? 'text-green-500' : 'text-gray-400'">
+              @if (sl.done) { <i class="fa-solid fa-check mr-1"></i> }
+              {{ sl.label }}
+            </span>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Scrollable body -->
+    <div class="overflow-y-auto flex-1">
+
+      <!-- ════ STEP 1 — Personal Info ════ -->
+      @if (modalStep() === 1) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Personal Information</h3>
+            <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
+          </div>
+
+          <!-- First Name + Last Name -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">First Name <span class="text-red-500">*</span></label>
+              <div class="relative">
+                <input type="text" placeholder="First name"
+                       [ngModel]="f1().firstName" (ngModelChange)="f1.update(v=>({...v,firstName:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Last Name</label>
+              <div class="relative">
+                <input type="text" placeholder="Last name"
+                       [ngModel]="f1().lastName" (ngModelChange)="f1.update(v=>({...v,lastName:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Occupation -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Occupation</label>
+            <div class="relative">
+              <input type="text" placeholder="e.g. Engineer, CEO"
+                     [ngModel]="f1().occupation" (ngModelChange)="f1.update(v=>({...v,occupation:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-briefcase absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Date of Birth -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Date of Birth</label>
+            <div class="relative">
+              <input type="date"
+                     [ngModel]="f1().dob" (ngModelChange)="f1.update(v=>({...v,dob:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Gender -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Gender</label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (g of [['Male','fa-mars'],['Female','fa-venus'],['Other','fa-genderless']]; track g[0]) {
+                <button (click)="setGender(g[0])"
+                        class="border-2 rounded-xl py-3 text-sm font-medium transition-all"
+                        [ngClass]="f1().gender === g[0]
+                          ? 'border-amber-500 bg-amber-50 text-amber-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-600'">
+                  <i [ngClass]="'fa-solid ' + g[1]" class="mr-1.5"></i>{{ g[0] }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Nationality -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Nationality</label>
+            <div class="relative">
+              <input type="text" placeholder="e.g. Tunisian, French"
+                     [ngModel]="f1().nationality" (ngModelChange)="f1.update(v=>({...v,nationality:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-globe absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- National ID -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">National ID / Passport</label>
+            <div class="relative">
+              <input type="text" placeholder="ID number"
+                     [ngModel]="f1().idNumber" (ngModelChange)="f1.update(v=>({...v,idNumber:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Client Type chips -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Type</label>
+            <div class="flex flex-wrap gap-2">
+              @for (t of clientTypes; track t) {
+                <button (click)="setClientType(t)"
+                        class="px-4 py-2 rounded-full border-2 text-sm font-semibold transition-all"
+                        [ngClass]="f1().clientType === t
+                          ? 'border-amber-500 bg-amber-50 text-amber-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300 hover:text-amber-600'">
+                  {{ t }}
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 2 — Contact Info ════ -->
+      @if (modalStep() === 2) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Contact Information</h3>
+            <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
+          </div>
+
+          <!-- Email -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Email Address <span class="text-red-500">*</span></label>
+            <div class="relative">
+              <input type="email" placeholder="client@example.com"
+                     [ngModel]="f2().email" (ngModelChange)="f2.update(v=>({...v,email:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Primary Phone -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Phone Number <span class="text-red-500">*</span></label>
+            <div class="flex space-x-2">
+              <div class="relative w-32 flex-shrink-0">
+                <select [ngModel]="f2().phoneCode" (ngModelChange)="f2.update(v=>({...v,phoneCode:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
+                  @for (c of countryCodes; track c.code) {
+                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                  }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+              </div>
+              <div class="relative flex-1">
+                <input type="tel" placeholder="(555) 123-4567"
+                       [ngModel]="f2().phone" (ngModelChange)="f2.update(v=>({...v,phone:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- WhatsApp -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">WhatsApp Number</label>
+            <div class="flex space-x-2">
+              <div class="relative w-32 flex-shrink-0">
+                <select [ngModel]="f2().waCode" (ngModelChange)="f2.update(v=>({...v,waCode:$event}))"
+                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
+                  @for (c of countryCodes; track c.code) {
+                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                  }
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+              </div>
+              <div class="relative flex-1">
+                <input type="tel" placeholder="(555) 123-4567"
+                       [ngModel]="f2().whatsapp" (ngModelChange)="f2.update(v=>({...v,whatsapp:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-brands fa-whatsapp absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Preferred Contact Method -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Preferred Contact Method</label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (p of [['Phone','fa-phone'],['Email','fa-envelope'],['WhatsApp','fa-brands fa-whatsapp']]; track p[0]) {
+                <button (click)="setContactPref(p[0])"
+                        class="border-2 rounded-xl py-3 text-sm font-medium transition-all flex flex-col items-center"
+                        [ngClass]="f2().contactPref === p[0]
+                          ? 'border-amber-500 bg-amber-50 text-amber-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-amber-300 hover:text-amber-600'">
+                  <i [ngClass]="p[1]" class="text-xl mb-1"></i>
+                  <span class="text-xs">{{ p[0] }}</span>
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 3 — Additional ════ -->
+      @if (modalStep() === 3) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Additional Information</h3>
+            <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+          </div>
+
+          <!-- Address -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Address</label>
+            <div class="relative">
+              <input type="text" placeholder="Street address"
+                     [ngModel]="f3().address" (ngModelChange)="f3.update(v=>({...v,address:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <input type="text" placeholder="City"
+                   [ngModel]="f3().city" (ngModelChange)="f3.update(v=>({...v,city:$event}))"
+                   class="bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            <input type="text" placeholder="State / Province"
+                   [ngModel]="f3().state" (ngModelChange)="f3.update(v=>({...v,state:$event}))"
+                   class="bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+          </div>
+
+          <!-- Referred By -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Referred By</label>
+            <div class="relative">
+              <input type="text" placeholder="Name of referral"
+                     [ngModel]="f3().referral" (ngModelChange)="f3.update(v=>({...v,referral:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-user-friends absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Internal Notes -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Internal Notes</label>
+            <textarea placeholder="Private notes about client..." rows="4"
+                      [ngModel]="f3().notes" (ngModelChange)="f3.update(v=>({...v,notes:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
+          </div>
+
+          <!-- Summary card -->
+          <div class="bg-blue-50 rounded-2xl p-4 border border-blue-100">
+            <p class="text-sm font-bold text-blue-700 mb-3">Summary</p>
+            <div class="space-y-2 text-sm">
+              <div class="flex justify-between">
+                <span class="text-gray-500">Name</span>
+                <span class="font-semibold text-gray-800">{{ f1().firstName }} {{ f1().lastName }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500">Type</span>
+                <span class="font-semibold text-gray-800">{{ f1().clientType }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500">Email</span>
+                <span class="font-semibold text-gray-800 truncate max-w-48">{{ f2().email }}</span>
+              </div>
+              @if (f2().phone) {
+                <div class="flex justify-between">
+                  <span class="text-gray-500">Phone</span>
+                  <span class="font-semibold text-gray-800">{{ f2().phoneCode }} {{ f2().phone }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 4 — Invite (mirrors mobile MOB-CLT-05) ════ -->
+      @if (modalStep() === 4) {
+        <div class="flex flex-col items-center px-8 py-10">
+
+          <div class="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-4">
+            <i class="fa-solid fa-circle-check text-green-500 text-4xl"></i>
+          </div>
+          <h3 class="text-xl font-extrabold text-gray-900 mb-1">Client Added!</h3>
+          <p class="text-sm text-gray-500 text-center mb-6 leading-relaxed">
+            Choose how to send the invitation to<br>
+            <span class="font-bold text-gray-800">{{ f2().email }}</span>
+          </p>
+
+          <!-- 3 share options -->
+          <div class="flex items-start justify-center gap-3 w-full mb-6">
+
+            <button (click)="handleShareLink()"
+                    class="flex-1 flex flex-col items-center gap-2 py-4 px-2 rounded-2xl border border-gray-100 bg-gray-50 hover:bg-blue-50 hover:border-blue-200 transition-all">
+              <div class="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center">
+                <i class="fa-solid fa-share-nodes text-blue-600 text-xl"></i>
+              </div>
+              <span class="text-sm font-bold text-gray-800">Share Link</span>
+              <span class="text-xs text-gray-400">In-app / any</span>
+            </button>
+
+            <button (click)="handleShareEmail()"
+                    class="flex-1 flex flex-col items-center gap-2 py-4 px-2 rounded-2xl border transition-all"
+                    [ngClass]="emailSent() ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100 hover:bg-orange-50 hover:border-orange-200'">
+              <div class="w-14 h-14 rounded-2xl flex items-center justify-center"
+                   [ngClass]="emailSent() ? 'bg-green-100' : 'bg-orange-50'">
+                <i class="fa-solid text-xl"
+                   [ngClass]="emailSent() ? 'fa-check text-green-600' : 'fa-envelope text-orange-500'"></i>
+              </div>
+              <span class="text-sm font-bold text-gray-800">Email</span>
+              <span class="text-xs" [ngClass]="emailSent() ? 'text-green-500 font-semibold' : 'text-gray-400'">
+                {{ emailSent() ? 'Sent!' : 'Auto-sent' }}
+              </span>
+            </button>
+
+            <button (click)="handleCopyToken()"
+                    class="flex-1 flex flex-col items-center gap-2 py-4 px-2 rounded-2xl border transition-all"
+                    [ngClass]="copied() ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100 hover:bg-green-50 hover:border-green-200'">
+              <div class="w-14 h-14 rounded-2xl flex items-center justify-center"
+                   [ngClass]="copied() ? 'bg-green-100' : 'bg-green-50'">
+                <i class="fa-solid text-xl"
+                   [ngClass]="copied() ? 'fa-check text-green-600' : 'fa-copy text-green-600'"></i>
+              </div>
+              <span class="text-sm font-bold text-gray-800">Copy</span>
+              <span class="text-xs" [ngClass]="copied() ? 'text-green-500 font-semibold' : 'text-gray-400'">
+                {{ copied() ? 'Copied!' : 'Token' }}
+              </span>
+            </button>
+          </div>
+
+          <!-- Token display -->
+          @if (_inviteToken()) {
+            <p class="text-xs font-semibold text-gray-500 mb-2 self-start w-full">Invite Token</p>
+            <div class="w-full bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-6 flex items-center gap-3">
+              <span class="text-sm font-bold text-blue-700 break-all flex-1 select-all">{{ _inviteToken() }}</span>
+              <button (click)="handleCopyToken()" class="flex-shrink-0 p-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                <i class="fa-solid text-blue-500 text-sm" [ngClass]="copied() ? 'fa-check' : 'fa-copy'"></i>
+              </button>
+            </div>
+          }
+
+          <!-- Actions -->
+          <div class="flex gap-3 w-full">
+            <button (click)="openModal()"
+                    class="flex-1 py-3.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">
+              <i class="fa-solid fa-plus mr-2"></i>Add Another
+            </button>
+            <button (click)="goToNewClient()"
+                    class="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl text-sm font-bold hover:shadow-md transition-all">
+              View Profile
+            </button>
+          </div>
+
+        </div>
+      }
+
+    </div><!-- /scrollable body -->
+
+    <!-- Sticky Footer -->
+    @if (modalStep() < 4) {
+      <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+        @if (modalStep() > 1) {
+          <button (click)="prevStep()"
+                  class="px-4 py-3.5 border border-gray-300 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-100 transition-colors">
+            <i class="fa-solid fa-arrow-left mr-2"></i>Back
+          </button>
+        }
+        <button (click)="closeModal()"
+                class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+          Cancel
+        </button>
+        <button (click)="nextStep()"
+                [disabled]="(modalStep()===1 && !step1Valid) || (modalStep()===2 && !step2Valid) || isSubmitting()"
+                class="flex-1 py-3.5 rounded-xl font-bold text-sm transition-all"
+                [ngClass]="((modalStep()===1 && !step1Valid) || (modalStep()===2 && !step2Valid))
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'">
+          @if (isSubmitting()) {
+            <i class="fa-solid fa-spinner fa-spin mr-2"></i>Creating...
+          } @else if (modalStep() === 3) {
+            <i class="fa-solid fa-user-check mr-2"></i>Save & Invite
+          } @else {
+            Continue <i class="fa-solid fa-arrow-right ml-2"></i>
+          }
+        </button>
+      </div>
+      @if (submitError()) {
+        <p class="text-xs text-red-600 text-center pb-3 px-4">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ submitError() }}
+        </p>
+      }
+    }
+
+  </div><!-- /panel -->
+</div><!-- /backdrop -->
+}

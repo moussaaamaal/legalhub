@@ -1,0 +1,327 @@
+@if (show()) {
+<div class="fixed inset-0 z-[200] flex items-stretch justify-end">
+  <!-- Backdrop -->
+  <div class="absolute inset-0 bg-black/45" (click)="close()"></div>
+
+  <!-- Side Panel -->
+  <div class="relative flex flex-col w-full max-w-md h-full bg-[#F9FAFB] shadow-2xl"
+       style="animation: slideIn .25s ease-out">
+
+    <!-- ── Header ────────────────────────────────────────────────────────── -->
+    <div class="flex items-center gap-3 px-4 py-3 bg-white border-b border-[#E5E7EB] flex-shrink-0">
+      <div class="w-9 h-9 rounded-xl bg-[#EDE9FE] flex items-center justify-center flex-shrink-0">
+        <i class="fa-solid fa-robot text-[#7C3AED] text-sm"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-[11px] font-bold text-[#7C3AED] uppercase tracking-wide">AI Assistant</p>
+        <p class="text-sm font-semibold text-[#1E293B] truncate">{{ caseTitle() }}</p>
+      </div>
+      <button (click)="close()"
+              class="w-8 h-8 flex items-center justify-center rounded-lg text-[#9CA3AF] hover:text-[#4B5563] hover:bg-[#F3F4F6] transition-colors">
+        <i class="fa-solid fa-xmark text-sm"></i>
+      </button>
+    </div>
+
+    <!-- ── Case badge ─────────────────────────────────────────────────────── -->
+    @if (caseNumber() || caseTitle()) {
+      <div class="flex items-center gap-1.5 px-4 py-1.5 bg-[#F5F3FF] border-b border-[#DDD6FE] flex-shrink-0">
+        <i class="fa-solid fa-folder-open text-[#7C3AED] text-[11px]"></i>
+        <span class="flex-1 text-xs font-semibold text-[#7C3AED] truncate">
+          @if (caseNumber()) { #{{ caseNumber() }} · }{{ caseTitle() }}
+        </span>
+      </div>
+    }
+
+    <!-- ── Tab bar ────────────────────────────────────────────────────────── -->
+    <div class="flex items-center bg-white border-b border-[#E5E7EB] px-2 pt-1 flex-shrink-0">
+      <button (click)="activeTab.set('chat')"
+              [class]="'flex items-center gap-1.5 py-2.5 px-3 text-xs font-semibold border-b-2 -mb-px transition-colors ' +
+                       (activeTab() === 'chat' ? 'border-[#7C3AED] text-[#7C3AED]' : 'border-transparent text-[#9CA3AF] hover:text-[#4B5563]')">
+        <i class="fa-solid fa-comment-alt text-[11px]"></i>
+        Chat
+      </button>
+      <button (click)="activeTab.set('history')"
+              [class]="'flex items-center gap-1.5 py-2.5 px-3 text-xs font-semibold border-b-2 -mb-px transition-colors ' +
+                       (activeTab() === 'history' ? 'border-[#7C3AED] text-[#7C3AED]' : 'border-transparent text-[#9CA3AF] hover:text-[#4B5563]')">
+        <i class="fa-solid fa-history text-[11px]"></i>
+        Sessions
+      </button>
+      <div class="flex-1"></div>
+      <button (click)="newSession()"
+              class="flex items-center gap-1 bg-[#F5F3FF] border border-[#DDD6FE] rounded-full px-3 py-1.5 mb-1 text-[11px] font-bold text-[#7C3AED] hover:bg-[#EDE9FE] transition-colors">
+        <i class="fa-solid fa-plus text-[10px]"></i>
+        New
+      </button>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAT TAB                                                            -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    @if (activeTab() === 'chat') {
+      <div class="flex flex-col flex-1 min-h-0">
+
+        <!-- Session name bar -->
+        @if (activeSession()) {
+          <div class="flex items-center gap-2 px-4 py-1.5 bg-white border-b border-[#F3F4F6] flex-shrink-0">
+            <i class="fa-solid fa-comment-dots text-[#6B7280] text-[11px]"></i>
+            <span class="flex-1 text-xs text-[#6B7280] italic truncate">{{ activeSession()!.name }}</span>
+          </div>
+        }
+
+        <!-- Index badge -->
+        @if (indexing()) {
+          <div class="flex items-center gap-1.5 px-4 py-2 bg-[#F9FAFB] border-b border-[#E5E7EB] flex-shrink-0">
+            <i class="fa-solid fa-spinner fa-spin text-[#D97706] text-xs"></i>
+            <span class="text-xs font-semibold text-[#D97706]">Updating knowledge base…</span>
+          </div>
+        } @else if (indexStatus()) {
+          <div class="flex items-center gap-1.5 px-4 py-2 bg-[#F9FAFB] border-b border-[#E5E7EB] flex-shrink-0">
+            @if (indexStatus()!.is_indexed) {
+              <span class="w-1.5 h-1.5 rounded-full bg-[#16A34A] flex-shrink-0"></span>
+              <span class="text-xs font-semibold text-[#16A34A]">Up to date · {{ indexStatus()!.total_chunks }} chunks</span>
+            } @else {
+              <span class="w-1.5 h-1.5 rounded-full bg-[#D97706] flex-shrink-0"></span>
+              <span class="text-xs font-semibold text-[#D97706]">Preparing knowledge base…</span>
+            }
+          </div>
+        }
+
+        <!-- Messages list -->
+        <div #msgList class="flex-1 overflow-y-auto py-4 flex flex-col gap-0">
+
+          <!-- Empty state -->
+          @if (messages().length === 0 && !loading()) {
+            <div class="flex flex-col items-center justify-center h-full px-6 py-8 gap-0">
+              <div class="w-[72px] h-[72px] rounded-full bg-[#EDE9FE] flex items-center justify-center mb-4">
+                <i class="fa-solid fa-robot text-[#7C3AED] text-3xl"></i>
+              </div>
+              <p class="text-[17px] font-extrabold text-[#1E293B] mb-1.5 text-center">Ask a question</p>
+              <p class="text-[13px] text-[#6B7280] text-center leading-[19px] mb-6">All questions in this session are grouped together.</p>
+              <div class="flex flex-col gap-2 w-full">
+                @for (s of suggestions; track s) {
+                  <button (click)="send(s)"
+                          class="flex items-center gap-2 bg-white border border-[#E5E7EB] rounded-xl px-3.5 py-2.5 text-left hover:border-[#BFDBFE] hover:bg-[#F5F3FF] transition-colors shadow-sm">
+                    <i class="fa-solid fa-lightbulb text-[#7C3AED] text-[11px] flex-shrink-0"></i>
+                    <span class="text-[13px] text-[#1E293B]">{{ s }}</span>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- Messages -->
+          @for (msg of messages(); track msg.id) {
+            @if (msg.role === 'user') {
+              <!-- User bubble (right, dark blue) -->
+              <div class="flex justify-end px-4 mb-3">
+                <div class="max-w-[78%] bg-[#7C3AED] rounded-[18px] rounded-br-[4px] px-3.5 py-2.5">
+                  <p class="text-sm text-white leading-5">{{ msg.content }}</p>
+                </div>
+              </div>
+            } @else {
+              <!-- AI bubble (left, white with shadow) -->
+              <div class="flex items-start gap-2 px-4 mb-3">
+                <div class="w-[30px] h-[30px] rounded-full bg-[#EDE9FE] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i class="fa-solid fa-robot text-[#7C3AED] text-xs"></i>
+                </div>
+                <div class="max-w-[78%] bg-white rounded-[18px] rounded-bl-[4px] px-3.5 py-2.5"
+                     style="box-shadow:0 1px 6px rgba(0,0,0,0.06)">
+                  <div class="text-sm text-[#1E293B] leading-[21px]"
+                       [innerHTML]="renderMarkdown(msg.content)"></div>
+
+                  <!-- Sources toggle -->
+                  @if (msg.sources && msg.sources.length > 0) {
+                    <button (click)="toggleSources(msg)"
+                            class="flex items-center gap-1 mt-2 pt-1.5 border-t border-[#F3F4F6] text-[11px] font-semibold text-[#6B7280] hover:text-[#7C3AED] transition-colors">
+                      <i [class]="'fa-solid fa-chevron-' + (msg.showSrc ? 'up' : 'down') + ' text-[10px]'"></i>
+                      {{ msg.showSrc ? 'Hide' : msg.sources.length + ' source' + (msg.sources.length > 1 ? 's' : '') }}
+                    </button>
+                    @if (msg.showSrc) {
+                      <div class="flex flex-col gap-1.5 mt-1.5">
+                        @for (src of msg.sources; track $index) {
+                          <div class="flex flex-col gap-0.5">
+                            <div class="flex items-center gap-1.5">
+                              <span class="w-[7px] h-[7px] rounded-full flex-shrink-0"
+                                    [style.background-color]="sourceColor(src.source_type)"></span>
+                              <span class="flex-1 text-[11px] text-[#4B5563]">{{ src.source_label || sourceLabel(src.source_type) }}</span>
+                              @if (relevancePct(src)) {
+                                <span class="text-[10px] font-bold text-[#9CA3AF]">{{ relevancePct(src) }}</span>
+                              }
+                            </div>
+                            @if (src.excerpt) {
+                              <p class="text-[10px] text-[#9CA3AF] leading-[14px] pl-3.5 line-clamp-2 italic">{{ src.excerpt }}</p>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                  }
+                </div>
+              </div>
+            }
+          }
+
+          <!-- Typing indicator -->
+          @if (loading()) {
+            <div class="flex items-start gap-2 px-4 mb-3">
+              <div class="w-[30px] h-[30px] rounded-full bg-[#EDE9FE] flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid fa-robot text-[#7C3AED] text-xs"></i>
+              </div>
+              <div class="bg-white rounded-[18px] rounded-bl-[4px] px-3.5 py-3"
+                   style="box-shadow:0 1px 6px rgba(0,0,0,0.06)">
+                <div class="flex items-center gap-1 py-1">
+                  <span class="w-2 h-2 rounded-full bg-[#9CA3AF] typing-dot" style="animation-delay:0s"></span>
+                  <span class="w-2 h-2 rounded-full bg-[#9CA3AF] typing-dot" style="animation-delay:.2s"></span>
+                  <span class="w-2 h-2 rounded-full bg-[#9CA3AF] typing-dot" style="animation-delay:.4s"></span>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Input bar -->
+        <div class="flex items-end gap-2 px-3 py-2.5 bg-white border-t border-[#E5E7EB] flex-shrink-0">
+          <textarea
+            [ngModel]="question()"
+            (ngModelChange)="question.set($event)"
+            (keydown)="onKeydown($event)"
+            [disabled]="loading()"
+            rows="1"
+            placeholder="Ask a question about this case…"
+            class="flex-1 bg-[#F3F4F6] rounded-[20px] px-4 py-2.5 text-sm text-[#1E293B] placeholder-[#9CA3AF] border-none outline-none resize-none disabled:cursor-not-allowed leading-5"
+            style="max-height:100px; field-sizing:content">
+          </textarea>
+          <button (click)="send()"
+                  [disabled]="!question().trim() || loading()"
+                  [class]="'w-[42px] h-[42px] rounded-full flex items-center justify-center flex-shrink-0 transition-colors ' +
+                           (!question().trim() || loading() ? 'bg-[#D1D5DB] cursor-not-allowed' : 'bg-[#7C3AED] hover:bg-[#6D28D9]')">
+            @if (loading()) {
+              <i class="fa-solid fa-spinner fa-spin text-white text-sm"></i>
+            } @else {
+              <i class="fa-solid fa-paper-plane text-white text-sm"></i>
+            }
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- HISTORY TAB                                                         -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    @if (activeTab() === 'history') {
+      <div class="flex-1 overflow-y-auto py-4">
+
+        @if (sessions().length === 0) {
+          <div class="flex flex-col items-center justify-center h-full gap-3 px-8">
+            <i class="fa-solid fa-history text-[#D1D5DB] text-4xl"></i>
+            <p class="text-[15px] font-bold text-[#4B5563]">No sessions yet</p>
+            <p class="text-[13px] text-[#9CA3AF] text-center">Start a conversation — it will appear here.</p>
+          </div>
+        }
+
+        @for (session of sessions(); track session.id) {
+          <div [class]="'flex items-center gap-3 bg-white rounded-[14px] mx-4 mb-2.5 p-3.5 cursor-pointer transition-all ' +
+                        (session.id === activeSessionId() ? 'border border-[#7C3AED] bg-[#F5F3FF]' : 'border border-transparent hover:border-[#DDD6FE]')"
+               style="box-shadow:0 1px 6px rgba(0,0,0,0.05)"
+               (click)="openSession(session.id)">
+            <!-- Icon -->
+            <div [class]="'w-[38px] h-[38px] rounded-[11px] flex items-center justify-center flex-shrink-0 ' +
+                          (session.id === activeSessionId() ? 'bg-[#7C3AED]' : 'bg-[#EDE9FE]')">
+              <i [class]="'fa-solid fa-comment-dots text-[15px] ' + (session.id === activeSessionId() ? 'text-white' : 'text-[#7C3AED]')"></i>
+            </div>
+            <!-- Info -->
+            <div class="flex-1 min-w-0 flex flex-col gap-1">
+              <p class="text-sm font-bold text-[#1E293B] leading-[19px] line-clamp-2">{{ session.name }}</p>
+              <div class="flex items-center gap-1.5">
+                <i class="fa-regular fa-clock text-[#9CA3AF] text-[10px]"></i>
+                <span class="text-[11px] text-[#9CA3AF]">{{ sessionDate(session) }}</span>
+                @if (questionCount(session) > 0) {
+                  <span class="text-[11px] text-[#6B7280] bg-[#F3F4F6] px-1.5 py-0.5 rounded-full">
+                    {{ questionCount(session) }} question{{ questionCount(session) > 1 ? 's' : '' }}
+                  </span>
+                }
+              </div>
+            </div>
+            <!-- Actions -->
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button (click)="openRename(session); $event.stopPropagation()"
+                      class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#F3F4F6] transition-colors">
+                <i class="fa-solid fa-pencil text-[#9CA3AF] text-[11px]"></i>
+              </button>
+              <button (click)="deleteSession(session.id); $event.stopPropagation()"
+                      class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#FEF2F2] transition-colors">
+                <i class="fa-solid fa-trash-alt text-[#D1D5DB] hover:text-[#DC2626] text-xs transition-colors"></i>
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+  </div>
+</div>
+
+<!-- ── Rename modal ─────────────────────────────────────────────────────────── -->
+@if (renameTarget()) {
+  <div class="fixed inset-0 z-[300] flex items-center justify-center bg-black/45"
+       (click)="cancelRename()">
+    <div class="bg-white rounded-2xl p-6 w-[85%] max-w-sm flex flex-col gap-4"
+         (click)="$event.stopPropagation()">
+      <p class="text-base font-bold text-[#1E293B]">Rename session</p>
+      <input type="text"
+             [ngModel]="draftName()"
+             (ngModelChange)="draftName.set($event)"
+             (keydown.enter)="confirmRename()"
+             maxlength="80"
+             autofocus
+             class="border border-[#E5E7EB] rounded-[10px] px-3.5 py-2.5 text-sm text-[#1E293B] outline-none focus:border-[#7C3AED] focus:ring-2 focus:ring-[#EDE9FE]" />
+      <div class="flex gap-2.5">
+        <button (click)="cancelRename()"
+                class="flex-1 py-2.5 rounded-[10px] border border-[#E5E7EB] text-sm text-[#4B5563] hover:bg-[#F9FAFB] transition-colors">
+          Cancel
+        </button>
+        <button (click)="confirmRename()"
+                class="flex-1 py-2.5 rounded-[10px] bg-[#7C3AED] text-sm font-bold text-white hover:bg-[#6D28D9] transition-colors">
+          Rename
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ── Delete confirm modal ─────────────────────────────────────────────────── -->
+@if (deleteTarget()) {
+  <div class="fixed inset-0 z-[300] flex items-center justify-center bg-black/45"
+       (click)="cancelDelete()">
+    <div class="bg-white rounded-2xl p-6 w-[85%] max-w-sm flex flex-col gap-4"
+         (click)="$event.stopPropagation()">
+      <p class="text-base font-bold text-[#1E293B]">Delete session</p>
+      <p class="text-sm text-[#6B7280]">This conversation will be permanently deleted.</p>
+      <div class="flex gap-2.5">
+        <button (click)="cancelDelete()"
+                class="flex-1 py-2.5 rounded-[10px] border border-[#E5E7EB] text-sm text-[#4B5563] hover:bg-[#F9FAFB] transition-colors">
+          Cancel
+        </button>
+        <button (click)="confirmDelete()"
+                class="flex-1 py-2.5 rounded-[10px] bg-[#DC2626] text-sm font-bold text-white hover:bg-[#B91C1C] transition-colors">
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+}
+}
+
+<style>
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes typingBounce {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+.typing-dot {
+  animation: typingBounce 0.6s ease-in-out infinite;
+}
+</style>

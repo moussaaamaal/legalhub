@@ -1,0 +1,102 @@
+@if (show()) {
+  <!-- Backdrop -->
+  <div class="fixed inset-0 z-[200] flex items-end sm:items-center justify-center">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="close()"></div>
+
+    <!-- Sheet / Card -->
+    <div class="relative bg-white w-full sm:max-w-lg sm:mx-4 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh]"
+         style="animation: slideUp .2s ease-out">
+
+      <!-- Header -->
+      <div class="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
+        <div class="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-robot text-purple-600 text-base"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-medium text-purple-600 uppercase tracking-wide">AI Summary</p>
+          <p class="text-sm font-semibold text-gray-800 truncate">{{ docName() }}</p>
+        </div>
+        <button (click)="close()"
+                class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="overflow-y-auto flex-1 px-5 py-4">
+
+        @if (loading()) {
+          <!-- Loading state -->
+          <div class="flex flex-col items-center justify-center py-12 gap-4">
+            <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+              <i class="fa-solid fa-robot text-purple-500 text-xl animate-pulse"></i>
+            </div>
+            <div class="text-center">
+              <p class="text-sm font-medium text-gray-700">Generating summary…</p>
+              <p class="text-xs text-gray-400 mt-1">Reading and analyzing document content</p>
+            </div>
+            <div class="flex gap-1.5">
+              <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay:0s"></span>
+              <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay:.15s"></span>
+              <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay:.3s"></span>
+            </div>
+          </div>
+
+        } @else if (error()) {
+          <!-- Error state -->
+          <div class="flex flex-col items-center justify-center py-12 gap-3">
+            <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+              <i class="fa-solid fa-circle-exclamation text-red-500 text-xl"></i>
+            </div>
+            <p class="text-sm font-medium text-gray-700 text-center">{{ error() }}</p>
+            <p class="text-xs text-gray-400 text-center">The document may be empty, in an unsupported format, or the AI service may be busy.</p>
+            <button (click)="regenerate()"
+                    class="mt-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-xl transition-colors">
+              Try again
+            </button>
+          </div>
+
+        } @else {
+          <!-- Summary content -->
+          <div class="flex items-center justify-between mb-3">
+            @if (cached()) {
+              <div class="flex items-center gap-1.5">
+                <i class="fa-solid fa-bolt text-amber-500 text-xs"></i>
+                <span class="text-xs text-amber-600 font-medium">Cached summary</span>
+              </div>
+            } @else {
+              <div></div>
+            }
+            <button (click)="regenerate()"
+                    class="flex items-center gap-1 text-[11px] font-semibold text-gray-400 hover:text-purple-600 transition-colors">
+              <i class="fa-solid fa-rotate-right text-[10px]"></i>
+              Regenerate
+            </button>
+          </div>
+          <div class="prose prose-sm max-w-none text-gray-700 leading-relaxed text-sm"
+               [innerHTML]="summaryHtml">
+          </div>
+        }
+
+      </div>
+
+      <!-- Footer -->
+      @if (!loading()) {
+        <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex-shrink-0">
+          <button (click)="close()"
+                  class="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold transition-colors">
+            Done
+          </button>
+        </div>
+      }
+
+    </div>
+  </div>
+}
+
+<style>
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+</style>
