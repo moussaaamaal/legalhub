@@ -68,10 +68,10 @@ def _mistral_headers() -> dict:
         raise HTTPException(status_code=503, detail="Mistral AI service not configured")
     return {"Authorization": f"Bearer {settings.MISTRAL_API_KEY}"}
 
-async def _mistral_post(url: str, max_retries: int = 3, **kwargs) -> httpx.Response:
+async def _mistral_post(url: str, max_retries: int = 3, timeout: float = 60.0, **kwargs) -> httpx.Response:
     """POST to Mistral with exponential-backoff retry on 429."""
     delay = 5
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         for attempt in range(max_retries + 1):
             resp = await client.post(url, **kwargs)
             if resp.status_code == 429 and attempt < max_retries:
@@ -400,8 +400,20 @@ async def voice_note_ai(
     else:
         user_content = transcription
 
+    # Tell the LLM which fields are already confirmed so it does not ask for them
+    pre_filled_lines = [
+        f"  • {k}: {v}"
+        for k, v in existing.items()
+        if v and str(v).strip()
+    ]
+    pre_filled_section = (
+        "\nAlready confirmed by the user (treat as final, do NOT ask for these):\n"
+        + "\n".join(pre_filled_lines)
+        + "\n"
+    ) if pre_filled_lines else ""
+
     llm_payload = {
-        "model": "mistral-large-latest",
+        "model": "mistral-small-latest",
         "messages": [
             {
                 "role": "system",
@@ -411,7 +423,8 @@ async def voice_note_ai(
                     "  • title           — short, descriptive note title\n"
                     "  • content         — full note body\n"
                     "  • case_identifier — case number or title from the list below\n\n"
-                    f"Available cases:\n{cases_list}\n\n"
+                    f"Available cases:\n{cases_list}\n"
+                    f"{pre_filled_section}\n"
                     "Rules:\n"
                     "1. If all three fields are identifiable and the case matches, call save_note.\n"
                     "2. Otherwise call request_clarification with one short question for the missing pieces.\n"
@@ -427,6 +440,7 @@ async def voice_note_ai(
     try:
         llm_resp = await _mistral_post(
             f"{MISTRAL_BASE}/chat/completions",
+            timeout=45.0,
             headers={**headers, "Content-Type": "application/json"},
             json=llm_payload,
         )
