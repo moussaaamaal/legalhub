@@ -3,6 +3,7 @@ from app.core.dependencies import get_lawyer
 from app.core.database import supabase
 from app.core.cache import cache_get, cache_set, cache_delete_pattern
 from app.services.case_ingestion import ingest_tasks, ingest_notes
+from app.core.notif_utils import insert_notification
 from pydantic import BaseModel
 from typing import Optional
 from app.models.enums import CasePriority
@@ -123,12 +124,11 @@ async def create_task(body: CreateTaskRequest, background_tasks: BackgroundTasks
 
     assigned_to = data.get("assigned_to", current_user["id"])
     due_suffix  = f" — Due: {body.due_date}" if body.due_date else ""
-    supabase.table("notification").insert({
-        "user_id": assigned_to,
-        "type":    "TASK_ASSIGNED",
-        "title":   "New Task Assigned" if assigned_to != current_user["id"] else "Task Created",
-        "message": f"{body.title}{due_suffix}",
-    }).execute()
+    insert_notification(
+        supabase, assigned_to, "TASK_ASSIGNED",
+        "New Task Assigned" if assigned_to != current_user["id"] else "Task Created",
+        f"{body.title}{due_suffix}",
+    )
 
     return result.data[0]
 

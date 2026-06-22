@@ -131,8 +131,9 @@ const EventCard = ({ ev, onDelete, onEdit, currentUserId, showDate = false }) =>
   const meta    = getMeta(ev.event_type);
   const tf      = formatTime(ev.start_datetime);
   const d       = localD(parseDate(ev.start_datetime));
-  const hasVideo = ev.is_video_call && ev.video_call_url;
-  const isPast   = parseDate(ev.start_datetime) < new Date();
+  const hasVideo      = ev.is_video_call && ev.video_call_url;
+  const isPast        = parseDate(ev.start_datetime) < new Date();
+  const canJoinVideo  = ev.is_participant || ev.created_by === currentUserId;
 
   const handleJoin = () => {
     Linking.openURL(ev.video_call_url).catch(() =>
@@ -214,7 +215,7 @@ const EventCard = ({ ev, onDelete, onEdit, currentUserId, showDate = false }) =>
           </View>
         </View>
 
-        {hasVideo && !isPast && (
+        {hasVideo && !isPast && canJoinVideo && (
           <TouchableOpacity style={s.joinBtn} onPress={handleJoin} activeOpacity={0.8}>
             <Icon lib="FA5" name="video" size={13} color={C.white} />
             <Text style={s.joinBtnTxt}>Join Video Call</Text>

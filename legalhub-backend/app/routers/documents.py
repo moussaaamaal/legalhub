@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
 from app.core.cache import cache_get, cache_set, cache_delete_pattern
+from app.core.notif_utils import insert_notification
 from app.core.config import settings
 from app.models.enums import DocumentCategory, DocumentStatus
 from app.services.case_ingestion import ingest_document_item, delete_document_chunks
@@ -210,12 +211,11 @@ async def upload_document(
         "performed_by": current_user["id"],
     }).execute()
 
-    supabase.table("notification").insert({
-        "user_id": current_user["id"],
-        "type":    "DOCUMENT_SHARED",
-        "title":   "Document Uploaded",
-        "message": f"{file_name} has been uploaded successfully.",
-    }).execute()
+    insert_notification(
+        supabase, current_user["id"], "DOCUMENT_SHARED",
+        "Document Uploaded",
+        f"{file_name} has been uploaded successfully.",
+    )
 
     doc = result.data[0]
     await cache_delete_pattern(f"case:{case_id}:documents:*")
@@ -657,13 +657,11 @@ async def create_document_request(body: DocumentRequestCreate, current_user=Depe
         .execute()
     )
     if client_row.data:
-        supabase.table("notification").insert({
-            "user_id":      client_row.data["user_id"],
-            "type":         "DOCUMENT_REQUEST",
-            "title":        f"Document Requested — {case_label}",
-            "message":      f"Your attorney has requested: {body.description}",
-            "reference_id": body.case_id,
-        }).execute()
+        insert_notification(
+            supabase, client_row.data["user_id"], "DOCUMENT_REQUEST",
+            f"Document Requested — {case_label}",
+            f"Your attorney has requested: {body.description}",
+        )
 
     supabase.table("case_timeline").insert({
         "case_id":      body.case_id,
@@ -789,12 +787,11 @@ async def update_document_status(doc_id: str, status: DocumentStatus, current_us
             if case_res.data and case_res.data.get("client_id"):
                 cl_res = supabase.table("client").select("user_id").eq("id", case_res.data["client_id"]).maybe_single().execute()
                 if cl_res.data and cl_res.data.get("user_id"):
-                    supabase_admin.table("notification").insert({
-                        "user_id": cl_res.data["user_id"],
-                        "type":    "DOCUMENT_SHARED",
-                        "title":   "Document Approved" if approved else "Document Rejected",
-                        "message": f"'{file_name}' has been {'approved' if approved else 'rejected'} by your attorney.",
-                    }).execute()
+                    insert_notification(
+                        supabase_admin, cl_res.data["user_id"], "DOCUMENT_SHARED",
+                        "Document Approved" if approved else "Document Rejected",
+                        f"'{file_name}' has been {'approved' if approved else 'rejected'} by your attorney.",
+                    )
         except Exception as e:
             logger.warning(f"[document review] client notification skipped: {e}")
 
@@ -828,12 +825,11 @@ async def share_document(doc_id: str, current_user=Depends(get_lawyer)):
         if case_res.data and case_res.data.get("client_id"):
             cl_res = supabase.table("client").select("user_id").eq("id", case_res.data["client_id"]).maybe_single().execute()
             if cl_res.data and cl_res.data.get("user_id"):
-                supabase_admin.table("notification").insert({
-                    "user_id": cl_res.data["user_id"],
-                    "type":    "DOCUMENT_SHARED",
-                    "title":   "Document Shared with You",
-                    "message": f"'{doc_data.get('file_name', 'A document')}' has been shared by your attorney.",
-                }).execute()
+                insert_notification(
+                    supabase_admin, cl_res.data["user_id"], "DOCUMENT_SHARED",
+                    "Document Shared with You",
+                    f"'{doc_data.get('file_name', 'A document')}' has been shared by your attorney.",
+                )
     except Exception as e:
         logger.warning(f"[share_document] client notification skipped: {e}")
 

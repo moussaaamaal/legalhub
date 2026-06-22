@@ -492,19 +492,96 @@ async def list_drafts(current_user=Depends(get_lawyer)):
 
 # ─── PDF generation ───────────────────────────────────────────────────────────
 
+# Arabic-supporting font paths (tried in order)
+_ARABIC_FONT_PATHS = [
+    "C:/Windows/Fonts/arial.ttf",
+    "C:/Windows/Fonts/tahoma.ttf",
+    "C:/Windows/Fonts/calibri.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+]
+_REGISTERED_FONT = None
+
+
+def _get_arabic_font() -> str:
+    """Register an Arabic-supporting font once, return its name."""
+    global _REGISTERED_FONT
+    if _REGISTERED_FONT:
+        return _REGISTERED_FONT
+
+    import os
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    for path in _ARABIC_FONT_PATHS:
+        if os.path.exists(path):
+            try:
+                pdfmetrics.registerFont(TTFont("LHArabic", path))
+                _REGISTERED_FONT = "LHArabic"
+                logger.info(f"PDF: registered Arabic font from {path}")
+                return _REGISTERED_FONT
+            except Exception as e:
+                logger.warning(f"PDF: font registration failed for {path}: {e}")
+
+    logger.warning("PDF: no Arabic font found, falling back to Helvetica")
+    _REGISTERED_FONT = "Helvetica"
+    return _REGISTERED_FONT
+
+
+def _prepare_text(text: str, lang: str) -> str:
+    """
+    Reshape Arabic text for correct display in PDF, and strip markdown markers.
+    Also escapes XML special chars for ReportLab's Paragraph parser.
+    """
+    import re
+    from xml.sax.saxutils import escape
+
+    # Strip all markdown markers first
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text, flags=re.DOTALL)  # **bold**
+    text = re.sub(r'\*(.+?)\*',     r'\1', text, flags=re.DOTALL)  # *italic*
+    text = re.sub(r'`(.+?)`',       r'\1', text)                   # `code`
+    text = text.strip()
+
+    if not text:
+        return ""
+
+    # Arabic reshaping
+    if lang == "ar":
+        try:
+            import arabic_reshaper
+            from bidi.algorithm import get_display
+            text = get_display(arabic_reshaper.reshape(text))
+        except ImportError:
+            pass  # proceed without reshaping — at least font will show chars
+
+    # Escape XML special characters for ReportLab
+    text = escape(text)
+    return text
+
+
+def _is_table_row(line: str) -> bool:
+    t = line.strip()
+    return t.startswith("|") and t.endswith("|") and len(t) > 2
+
+
 def _build_pdf(title: str, content: str, lang: str, country: str) -> bytes:
-    """Build a properly formatted legal contract PDF using reportlab."""
+    """Build a properly formatted legal contract PDF with Arabic support."""
+    import re
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT, TA_JUSTIFY
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
+    )
     from reportlab.lib import colors
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    import os
 
+    font = _get_arabic_font()
     buf = io.BytesIO()
+    is_rtl = lang == "ar"
+
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
@@ -515,83 +592,108 @@ def _build_pdf(title: str, content: str, lang: str, country: str) -> bytes:
     )
 
     styles = getSampleStyleSheet()
-    is_rtl = lang == "ar"
 
-    title_style = ParagraphStyle(
-        "ContractTitle",
-        parent=styles["Heading1"],
-        fontSize=16,
-        spaceAfter=6,
-        alignment=TA_CENTER,
-        textColor=colors.HexColor("#1a2744"),
-    )
-    subtitle_style = ParagraphStyle(
-        "Subtitle",
-        parent=styles["Normal"],
-        fontSize=10,
-        spaceAfter=12,
-        alignment=TA_CENTER,
-        textColor=colors.grey,
-    )
-    body_style = ParagraphStyle(
-        "ContractBody",
-        parent=styles["Normal"],
-        fontSize=10,
-        leading=16,
-        spaceAfter=8,
-        alignment=TA_RIGHT if is_rtl else TA_JUSTIFY,
-    )
-    heading_style = ParagraphStyle(
-        "SectionHeading",
-        parent=styles["Heading2"],
-        fontSize=11,
-        spaceBefore=12,
-        spaceAfter=4,
-        textColor=colors.HexColor("#1a2744"),
-        alignment=TA_RIGHT if is_rtl else TA_LEFT,
-    )
+    def _style(name, base="Normal", **kw):
+        kw.setdefault("fontName", font)
+        return ParagraphStyle(name, parent=styles[base], **kw)
+
+    title_style = _style("CT", base="Heading1", fontSize=15, spaceAfter=4,
+                         alignment=TA_CENTER, textColor=colors.HexColor("#1a2744"))
+    sub_style   = _style("CS", fontSize=9, spaceAfter=10, alignment=TA_CENTER,
+                         textColor=colors.grey)
+    body_style  = _style("CB", fontSize=10, leading=17, spaceAfter=6,
+                         alignment=TA_RIGHT if is_rtl else TA_JUSTIFY)
+    head_style  = _style("CH", base="Heading2", fontSize=11, spaceBefore=10,
+                         spaceAfter=4, textColor=colors.HexColor("#1a2744"),
+                         alignment=TA_RIGHT if is_rtl else TA_LEFT)
+    foot_style  = _style("CF", fontSize=8, textColor=colors.grey, alignment=TA_CENTER)
 
     story = []
 
-    # Header
-    story.append(Paragraph(title, title_style))
-    story.append(Paragraph(f"{country} | LegalHub", subtitle_style))
+    # ── Header ──────────────────────────────────────────────────────────────
+    story.append(Paragraph(_prepare_text(title, lang), title_style))
+    story.append(Paragraph(f"{country} | LegalHub", sub_style))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#1a2744")))
-    story.append(Spacer(1, 0.5 * cm))
+    story.append(Spacer(1, 0.4 * cm))
 
-    # Content — split by lines and render paragraphs
-    for line in content.split("\n"):
-        line = line.strip()
-        if not line:
+    # ── Content ─────────────────────────────────────────────────────────────
+    lines = content.split("\n")
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+
+        # ── Table block ──────────────────────────────────────────────────
+        if _is_table_row(raw):
+            table_lines = []
+            while i < len(lines) and _is_table_row(lines[i]):
+                table_lines.append(lines[i])
+                i += 1
+
+            # Parse: row[0]=header, row[1]=separator, rest=data
+            def parse_row(r):
+                return [c.strip() for c in r.strip().strip("|").split("|")]
+
+            header_cells = parse_row(table_lines[0])
+            data_rows    = [parse_row(r) for r in table_lines[2:] if table_lines[2:]]
+
+            # Build table data
+            col_count = len(header_cells)
+            tdata = [
+                [Paragraph(_prepare_text(c, lang), _style("TH", fontSize=9,
+                    fontName=font, textColor=colors.white, alignment=TA_RIGHT if is_rtl else TA_LEFT))
+                 for c in header_cells]
+            ]
+            for dr in data_rows:
+                # Pad/trim row to match column count
+                dr = (dr + [""] * col_count)[:col_count]
+                tdata.append([
+                    Paragraph(_prepare_text(c, lang), _style("TD", fontSize=9,
+                        fontName=font, alignment=TA_RIGHT if is_rtl else TA_LEFT))
+                    for c in dr
+                ])
+
+            col_width = (A4[0] - 5 * cm) / max(col_count, 1)
+            tbl = Table(tdata, colWidths=[col_width] * col_count, repeatRows=1)
+            tbl.setStyle(TableStyle([
+                ("BACKGROUND",  (0, 0), (-1, 0),  colors.HexColor("#1a2744")),
+                ("TEXTCOLOR",   (0, 0), (-1, 0),  colors.white),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f4ff")]),
+                ("GRID",        (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+                ("TOPPADDING",  (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN",      (0, 0), (-1, -1), "TOP"),
+            ]))
+            story.append(tbl)
+            story.append(Spacer(1, 0.3 * cm))
+            continue
+
+        # ── Normal lines ─────────────────────────────────────────────────
+        line = raw.strip()
+        i += 1
+
+        if not line or line in ("---", "___", "***"):
             story.append(Spacer(1, 0.2 * cm))
             continue
 
-        # Detect section headings (lines starting with ## or ─)
-        if line.startswith("## ") or line.startswith("### "):
-            heading_text = line.lstrip("#").strip()
-            story.append(Paragraph(heading_text, heading_style))
-        elif line.startswith("**") and line.endswith("**"):
-            bold_text = f"<b>{line.strip('*')}</b>"
-            story.append(Paragraph(bold_text, heading_style))
+        if line.startswith("### ") or line.startswith("## ") or line.startswith("# "):
+            heading_text = re.sub(r'^#+\s+', '', line)
+            story.append(Paragraph(_prepare_text(heading_text, lang), head_style))
+
+        elif re.match(r'^\*\*[^*]+\*\*$', line):
+            # Standalone **bold line** → section heading
+            heading_text = line.strip("*")
+            story.append(Paragraph(_prepare_text(heading_text, lang), head_style))
+
         else:
-            # Replace markdown bold **text** with <b>text</b>
-            import re
-            line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
-            story.append(Paragraph(line, body_style))
+            story.append(Paragraph(_prepare_text(line, lang), body_style))
 
-    story.append(Spacer(1, 1 * cm))
+    # ── Footer ──────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 0.8 * cm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
-    story.append(Spacer(1, 0.3 * cm))
-
-    # Footer
-    footer_style = ParagraphStyle(
-        "Footer",
-        parent=styles["Normal"],
-        fontSize=8,
-        textColor=colors.grey,
-        alignment=TA_CENTER,
-    )
-    story.append(Paragraph("Generated by LegalHub AI — For review purposes only", footer_style))
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph("Generated by LegalHub AI — For review purposes only", foot_style))
 
     doc.build(story)
     return buf.getvalue()

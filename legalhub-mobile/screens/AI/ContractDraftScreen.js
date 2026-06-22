@@ -70,37 +70,138 @@ const parseInline = (text) => {
   return parts;
 };
 
-const MarkdownText = ({ text, style }) => {
-  const lines = (text || '').split('\n');
+// Check if a line is a markdown table row
+const isTableLine = (line) => {
+  const t = line.trim();
+  return t.startsWith('|') && t.endsWith('|') && t.length > 2;
+};
+// Check if a line is a separator row (|---|---|)
+const isSeparator = (line) => /^\|[\s\-|:]+\|$/.test(line.trim());
+
+// Parse a table row into cells
+const parseTableRow = (line) => {
+  return line.trim()
+    .replace(/^\||\|$/g, '')   // remove leading/trailing |
+    .split('|')
+    .map(cell => cell.trim());
+};
+
+// Render a markdown table block
+const MarkdownTable = ({ rows, isRtl }) => {
+  if (!rows || rows.length === 0) return null;
+  const headers = parseTableRow(rows[0]);
+  // rows[1] is usually the separator — skip it
+  const dataRows = rows.slice(2).map(parseTableRow);
+
   return (
-    <Text style={style}>
-      {lines.map((line, i) => {
-        let prefix = '', weight = null, size = null, content = line;
-        if (line.startsWith('### '))     { weight = '700'; size = 14; content = line.slice(4); }
-        else if (line.startsWith('## ')) { weight = '800'; size = 15; content = line.slice(3); }
-        else if (line.startsWith('# '))  { weight = '800'; size = 16; content = line.slice(2); }
-        else if (line.startsWith('- ') || line.startsWith('• ')) { prefix = '• '; content = line.slice(2); }
-        const parts = parseInline(content);
+    <View style={mt.table}>
+      {/* Header row */}
+      <View style={mt.headerRow}>
+        {headers.map((cell, ci) => (
+          <View key={ci} style={[mt.headerCell, ci === 0 && mt.firstCell, ci === headers.length - 1 && mt.lastCell]}>
+            <Text style={[mt.headerTxt, isRtl && mt.rtl]} numberOfLines={3}>{cell}</Text>
+          </View>
+        ))}
+      </View>
+      {/* Data rows */}
+      {dataRows.map((cells, ri) => (
+        <View key={ri} style={[mt.dataRow, ri % 2 === 0 && mt.dataRowEven]}>
+          {cells.map((cell, ci) => (
+            <View key={ci} style={[mt.dataCell, ci === 0 && mt.firstCell, ci === cells.length - 1 && mt.lastCell]}>
+              <Text style={[mt.dataTxt, isRtl && mt.rtl]} numberOfLines={6}>{cell}</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+};
+
+const mt = StyleSheet.create({
+  table:       { borderWidth: 1, borderColor: C.g200, borderRadius: 10, overflow: 'hidden', marginVertical: 8 },
+  headerRow:   { flexDirection: 'row', backgroundColor: C.primary },
+  dataRow:     { flexDirection: 'row', borderTopWidth: 1, borderTopColor: C.g200 },
+  dataRowEven: { backgroundColor: C.g50 },
+  headerCell:  { flex: 1, padding: 8, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.2)' },
+  dataCell:    { flex: 1, padding: 8, borderRightWidth: 1, borderRightColor: C.g200 },
+  firstCell:   {},
+  lastCell:    { borderRightWidth: 0 },
+  headerTxt:   { fontSize: 12, fontWeight: '700', color: C.white, lineHeight: 17 },
+  dataTxt:     { fontSize: 12, color: C.dark, lineHeight: 18 },
+  rtl:         { textAlign: 'right', writingDirection: 'rtl' },
+});
+
+// Group lines into blocks: table blocks and text blocks
+const groupBlocks = (lines) => {
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (isTableLine(lines[i])) {
+      // Collect consecutive table lines
+      const tableLines = [];
+      while (i < lines.length && isTableLine(lines[i])) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      blocks.push({ type: 'table', lines: tableLines });
+    } else {
+      // Collect consecutive non-table lines
+      const textLines = [];
+      while (i < lines.length && !isTableLine(lines[i])) {
+        textLines.push(lines[i]);
+        i++;
+      }
+      blocks.push({ type: 'text', lines: textLines });
+    }
+  }
+  return blocks;
+};
+
+const MarkdownText = ({ text, style }) => {
+  const isRtl = style && (
+    (Array.isArray(style) ? style : [style]).some(s => s && s.textAlign === 'right')
+  );
+  const lines = (text || '').split('\n');
+  const blocks = groupBlocks(lines);
+
+  return (
+    <View>
+      {blocks.map((block, bi) => {
+        if (block.type === 'table') {
+          return <MarkdownTable key={bi} rows={block.lines} isRtl={isRtl} />;
+        }
+        // Text block
         return (
-          <Text key={i}>
-            {i > 0 ? '\n' : ''}
-            {prefix ? <Text>{prefix}</Text> : null}
-            <Text style={(weight || size) ? [weight && { fontWeight: weight }, size && { fontSize: size }] : null}>
-              {parts.map((p, j) => (
-                <Text key={j} style={[p.bold && { fontWeight: '700' }, p.italic && { fontStyle: 'italic' }]}>{p.t}</Text>
-              ))}
-            </Text>
+          <Text key={bi} style={style}>
+            {block.lines.map((line, i) => {
+              let prefix = '', weight = null, size = null, content = line;
+              if (line.startsWith('### '))     { weight = '700'; size = 14; content = line.slice(4); }
+              else if (line.startsWith('## ')) { weight = '800'; size = 15; content = line.slice(3); }
+              else if (line.startsWith('# '))  { weight = '800'; size = 16; content = line.slice(2); }
+              else if (line.startsWith('- ') || line.startsWith('• ')) { prefix = '• '; content = line.slice(2); }
+              const parts = parseInline(content);
+              return (
+                <Text key={i}>
+                  {i > 0 ? '\n' : ''}
+                  {prefix ? <Text>{prefix}</Text> : null}
+                  <Text style={(weight || size) ? [weight && { fontWeight: weight }, size && { fontSize: size }] : null}>
+                    {parts.map((p, j) => (
+                      <Text key={j} style={[p.bold && { fontWeight: '700' }, p.italic && { fontStyle: 'italic' }]}>{p.t}</Text>
+                    ))}
+                  </Text>
+                </Text>
+              );
+            })}
           </Text>
         );
       })}
-    </Text>
+    </View>
   );
 };
 
 // ─── Step 1: Config ───────────────────────────────────────────────────────────
-const ConfigStep = ({ onStart }) => {
+const ConfigStep = ({ onStart, lang, onLangChange }) => {
   const [selectedType, setSelectedType] = useState(null);
-  const [lang, setLang] = useState('ar');
   const [country, setCountry] = useState('TN');
   const [showCountry, setShowCountry] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -135,13 +236,13 @@ const ConfigStep = ({ onStart }) => {
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
 
       {/* Language selector */}
-      <Text style={s.sectionLabel}>Langue du contrat</Text>
+      <Text style={s.sectionLabel}>{lang === 'ar' ? 'لغة العقد' : lang === 'fr' ? 'Langue du contrat' : 'Contract language'}</Text>
       <View style={s.langRow}>
         {LANGUAGES.map(l => (
           <TouchableOpacity
             key={l.key}
             style={[s.langBtn, lang === l.key && s.langBtnActive]}
-            onPress={() => setLang(l.key)}
+            onPress={() => onLangChange(l.key)}
           >
             <Text style={s.langFlag}>{l.flag}</Text>
             <Text style={[s.langTxt, lang === l.key && s.langTxtActive]}>{l.label}</Text>
@@ -150,15 +251,15 @@ const ConfigStep = ({ onStart }) => {
       </View>
 
       {/* Country selector */}
-      <Text style={[s.sectionLabel, { marginTop: 16 }]}>Pays / Juridiction</Text>
+      <Text style={[s.sectionLabel, { marginTop: 16 }]}>{lang === 'ar' ? 'الدولة / الولاية القضائية' : lang === 'fr' ? 'Pays / Juridiction' : 'Country / Jurisdiction'}</Text>
       <TouchableOpacity style={s.countryBtn} onPress={() => setShowCountry(true)}>
         <FontAwesome5 name="globe" size={14} color={C.primary} />
-        <Text style={s.countryTxt}>{selectedCountry?.label || 'Choisir un pays'}</Text>
+        <Text style={s.countryTxt}>{selectedCountry?.label || (lang === 'ar' ? 'اختر دولة' : lang === 'fr' ? 'Choisir un pays' : 'Choose a country')}</Text>
         <FontAwesome5 name="chevron-down" size={12} color={C.g400} />
       </TouchableOpacity>
 
       {/* Contract type grid */}
-      <Text style={[s.sectionLabel, { marginTop: 20 }]}>Type de contrat</Text>
+      <Text style={[s.sectionLabel, { marginTop: 20 }]}>{lang === 'ar' ? 'نوع العقد' : lang === 'fr' ? 'Type de contrat' : 'Contract type'}</Text>
       {rows.map((row, ri) => (
         <View key={ri} style={s.typeRow}>
           {row.map(type => {
@@ -195,14 +296,14 @@ const ConfigStep = ({ onStart }) => {
           ? <ActivityIndicator color={C.white} size="small" />
           : <>
               <FontAwesome5 name="robot" size={16} color={C.white} />
-              <Text style={s.startTxt}>Démarrer avec l'IA</Text>
+              <Text style={s.startTxt}>{lang === 'ar' ? 'ابدأ مع الذكاء الاصطناعي' : lang === 'fr' ? "Démarrer avec l'IA" : 'Start with AI'}</Text>
             </>
         }
       </TouchableOpacity>
 
       <View style={s.infoRow}>
         <FontAwesome5 name="info-circle" size={12} color={C.g400} />
-        <Text style={s.infoTxt}>L'IA vous posera des questions pour collecter les informations nécessaires à la rédaction du contrat.</Text>
+        <Text style={s.infoTxt}>{lang === 'ar' ? 'سيطرح عليك الذكاء الاصطناعي أسئلة لجمع المعلومات اللازمة لصياغة العقد.' : lang === 'fr' ? "L'IA vous posera des questions pour collecter les informations nécessaires à la rédaction du contrat." : 'The AI will ask you questions to collect the information needed to draft the contract.'}</Text>
       </View>
 
       {/* Country modal */}
@@ -210,7 +311,7 @@ const ConfigStep = ({ onStart }) => {
         <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowCountry(false)}>
           <View style={s.countrySheet}>
             <View style={s.sheetHandle} />
-            <Text style={s.sheetTitle}>Choisir un pays</Text>
+            <Text style={s.sheetTitle}>{lang === 'ar' ? 'اختر دولة' : lang === 'fr' ? 'Choisir un pays' : 'Choose a country'}</Text>
             <FlatList
               data={COUNTRIES}
               keyExtractor={item => item.code}
@@ -459,7 +560,7 @@ const PreviewStep = ({ sessionId, contractText, contractType, lang, onExportPdf 
         <TouchableOpacity style={[pv.tab, tab === 'contract' && pv.tabActive]} onPress={() => setTab('contract')}>
           <FontAwesome5 name="file-alt" size={13} color={tab === 'contract' ? C.primary : C.g400} />
           <Text style={[pv.tabTxt, tab === 'contract' && pv.tabTxtActive]}>
-            {lang === 'ar' ? 'العقد' : 'Contrat'}
+            {lang === 'ar' ? 'العقد' : lang === 'fr' ? 'Contrat' : 'Contract'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={[pv.tab, tab === 'risks' && pv.tabActive]} onPress={fetchRisks}>
@@ -480,7 +581,7 @@ const PreviewStep = ({ sessionId, contractText, contractType, lang, onExportPdf 
           <View style={gen.container}>
             <ActivityIndicator color={C.amber600} size="large" />
             <Text style={[gen.sub, { marginTop: 12 }]}>
-              {lang === 'ar' ? 'جاري تحليل المخاطر...' : 'Analyse des risques en cours...'}
+              {lang === 'ar' ? 'جاري تحليل المخاطر...' : lang === 'fr' ? 'Analyse des risques en cours...' : 'Analyzing risks...'}
             </Text>
           </View>
         ) : (
@@ -531,7 +632,7 @@ export default function ContractDraftScreen({ navigation }) {
   const [step, setStep] = useState('config');
   const [session, setSession] = useState(null);
   const [contractType, setContractType] = useState(null);
-  const [lang, setLang] = useState('ar');
+  const [lang, setLang] = useState('en');
   const [contractText, setContractText] = useState('');
 
   const stepLabels = {
@@ -598,7 +699,7 @@ export default function ContractDraftScreen({ navigation }) {
       {/* Body */}
       <View style={{ flex: 1, backgroundColor: C.g50 }}>
         {step === 'config' && (
-          <ConfigStep onStart={handleStart} />
+          <ConfigStep onStart={handleStart} lang={lang} onLangChange={setLang} />
         )}
         {step === 'questions' && session && (
           <QuestionsStep

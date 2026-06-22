@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
 from app.core.email import send_event_reminder_email
+from app.core.notif_utils import insert_notification
 from app.core.config import settings
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Literal
@@ -74,10 +75,7 @@ def _notify_participants(event_id: str, title: str, label: str, start: str,
         if uid == exclude_user_id:
             continue
         try:
-            supabase_admin.table("notification").insert({
-                "user_id": uid, "type": notif_type,
-                "title": notif_title, "message": msg,
-            }).execute()
+            insert_notification(supabase_admin, uid, notif_type, notif_title, msg)
         except Exception as e:
             _log.warning(f"[notify_participants] skipped uid={uid}: {e}")
 
@@ -448,12 +446,11 @@ async def create_event(body: CreateEventRequest, background_tasks: BackgroundTas
             if body.recurrence != "none":
                 msg_data["recurrence"] = body.recurrence
 
-            supabase_admin.table("notification").insert({
-                "user_id": client_user_id,
-                "type":    "GENERAL",
-                "title":   f"New {ev_label}: {body.title}",
-                "message": json.dumps({**msg_data, "date_display": _fmt_event_dt(body.start_datetime), "action": "New"}),
-            }).execute()
+            insert_notification(
+                supabase_admin, client_user_id, "GENERAL",
+                f"New {ev_label}: {body.title}",
+                json.dumps({**msg_data, "date_display": _fmt_event_dt(body.start_datetime), "action": "New"}),
+            )
 
         except Exception as e:
             import logging
@@ -1129,12 +1126,11 @@ async def accept_meeting_request(request_id: str, body: dict, current_user=Depen
                 "status":         "ACCEPTED",
             }, ensure_ascii=False)
 
-            supabase_admin.table("notification").insert({
-                "user_id": client_user_id,
-                "type":    "MEETING_REQUEST",
-                "title":   f"Meeting Confirmed — {lawyer_name}",
-                "message": notif_msg,
-            }).execute()
+            insert_notification(
+                supabase_admin, client_user_id, "MEETING_REQUEST",
+                f"Meeting Confirmed — {lawyer_name}",
+                notif_msg,
+            )
 
     return event or {"status": "accepted"}
 
@@ -1194,17 +1190,16 @@ async def reject_meeting_request(request_id: str, body: dict, current_user=Depen
         )
         lawyer_name = (lawyer_user.data or {}).get("full_name", "Your lawyer") if lawyer_user else "Your lawyer"
 
-        supabase_admin.table("notification").insert({
-            "user_id": client_user_id,
-            "type":    "MEETING_REQUEST",
-            "title":   "Meeting Request Declined",
-            "message": json.dumps({
+        insert_notification(
+            supabase_admin, client_user_id, "MEETING_REQUEST",
+            "Meeting Request Declined",
+            json.dumps({
                 "status":        "REJECTED",
                 "request_title": req_data.get("title"),
                 "lawyer_name":   lawyer_name,
                 "reason":        reason,
             }, ensure_ascii=False),
-        }).execute()
+        )
 
     return {"status": "rejected"}
 

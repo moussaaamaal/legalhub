@@ -13,6 +13,7 @@ from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.core.dependencies import get_current_user
 from app.core.database import supabase, supabase_admin
+from app.core.notif_utils import insert_notification
 from app.models.enums import UserRole
 
 _log = logging.getLogger(__name__)
@@ -592,13 +593,12 @@ async def client_upload_document(
     _log.info(f"[upload_doc] case_id={case_id} lawyer_id={lawyer_id!r} file={file_name}")
     if lawyer_id:
         try:
-            result = supabase_admin.table("notification").insert({
-                "user_id": lawyer_id,
-                "type":    "DOCUMENT_SHARED",
-                "title":   "Document Uploaded by Client",
-                "message": f"The client uploaded: {file_name}",
-            }).execute()
-            _log.info(f"[upload_doc] ✅ Lawyer notification inserted — notif_id={result.data[0].get('id') if result.data else 'unknown'}")
+            inserted = insert_notification(
+                supabase_admin, lawyer_id, "DOCUMENT_SHARED",
+                "Document Uploaded by Client",
+                f"The client uploaded: {file_name}",
+            )
+            _log.info(f"[upload_doc] {'✅ Lawyer notification inserted' if inserted else 'ℹ️  Lawyer notification skipped (preferences)'}")
         except Exception as e:
             _log.error(f"[upload_doc] ❌ Lawyer notification failed: {e}")
     else:
@@ -697,15 +697,13 @@ async def client_request_appointment(body: dict, ctx=Depends(_require_client)):
                 "request_id":     request_id or "",
             }, ensure_ascii=False)
 
-            notif_result = supabase_admin.table("notification").insert({
-                "user_id": target_lawyer_user_id,
-                "type":    "MEETING_REQUEST",
-                "title":   f"New Meeting Request from {client_name}",
-                "message": notif_message,
-            }).execute()
+            inserted = insert_notification(
+                supabase_admin, target_lawyer_user_id, "MEETING_REQUEST",
+                f"New Meeting Request from {client_name}",
+                notif_message,
+            )
             _log.info(
-                f"[request_meeting] ✅ Lawyer notification inserted — "
-                f"notif_id={notif_result.data[0].get('id') if notif_result.data else 'unknown'}"
+                f"[request_meeting] {'✅ Lawyer notification inserted' if inserted else 'ℹ️  Lawyer notification skipped (preferences)'}"
             )
         except Exception as e:
             _log.error(f"[request_meeting] ❌ Lawyer notification failed: {e}")
@@ -1001,12 +999,11 @@ async def fulfill_document_request(
         "fulfilled_at":         "now()",
     }).eq("id", request_id).execute()
 
-    supabase_admin.table("notification").insert({
-        "user_id": req.data["requested_by"],
-        "type":    "DOCUMENT_SHARED",
-        "title":   "Document Uploaded by Client",
-        "message": f"The client uploaded: {file_name}",
-    }).execute()
+    insert_notification(
+        supabase_admin, req.data["requested_by"], "DOCUMENT_SHARED",
+        "Document Uploaded by Client",
+        f"The client uploaded: {file_name}",
+    )
 
     supabase.table("case_timeline").insert({
         "case_id":      req.data["case_id"],

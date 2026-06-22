@@ -57,7 +57,9 @@ const SUPPORT_BTNS = [
 // ─── COMPOSANT PRINCIPAL ──────────────────────────────────────────────────
 export default function AuthScreen() {
   const { signIn } = useAuth();
-  const [activeTab, setActiveTab]             = useState('signin');
+  const [mainTab, setMainTab]                 = useState('signin');
+  const [signupSubTab, setSignupSubTab]       = useState('lawyer');
+  const activeTab = mainTab === 'signin' ? 'signin' : signupSubTab;
   const [showPass, setShowPass]               = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [loading, setLoading]                 = useState(false);
@@ -157,7 +159,8 @@ export default function AuthScreen() {
     const parsed = Linking.parse(url);
     const token = parsed.queryParams?.token;
     if (token) {
-      setActiveTab('invite');
+      setMainTab('signup');
+      setSignupSubTab('invite');
       setInvToken(token);
     }
   };
@@ -265,6 +268,8 @@ export default function AuthScreen() {
   const [lawyerInvEmail, setLawyerInvEmail]             = useState('');
   const [lawyerInvPass, setLawyerInvPass]               = useState('');
   const [lawyerInvConfirm, setLawyerInvConfirm]         = useState('');
+  const [officeConfirmPass, setOfficeConfirmPass]       = useState('');
+  const [showOfficeConfirmPass, setShowOfficeConfirmPass] = useState(false);
   const [showLawyerInvPass, setShowLawyerInvPass]       = useState(false);
   const [showLawyerInvConfirm, setShowLawyerInvConfirm] = useState(false);
 
@@ -274,6 +279,10 @@ export default function AuthScreen() {
   const handleValidateOfficeCode = async () => {
     if (!officeCode.trim() || !email.trim() || !password.trim() || !fullName.trim()) {
       Alert.alert('Missing fields', 'Please fill in the office code, your name, email and password.');
+      return;
+    }
+    if (password !== officeConfirmPass) {
+      Alert.alert('Password mismatch', 'Passwords do not match.');
       return;
     }
     setLoading(true);
@@ -506,37 +515,56 @@ export default function AuthScreen() {
         {/* ── MAIN AUTH CARD ────────────────────────────────────────── */}
         <View style={s.card}>
           <Text style={s.cardTitle}>
-            {activeTab === 'signin'  ? 'Welcome back'
-            : activeTab === 'lawyer' ? 'Join Your Firm'
-            : activeTab === 'signup' ? 'Register a Law Firm'
-            :                          'Client Access'}
+            {mainTab === 'signin'                     ? 'Welcome back'
+            : signupSubTab === 'lawyer'               ? 'Join Your Firm'
+            : signupSubTab === 'signup'               ? 'Register a Law Firm'
+            :                                           'Client Access'}
           </Text>
           <Text style={[s.cardSub, { marginBottom: 16 }]}>
-            {activeTab === 'signin'  ? 'Sign in to your account'
-            : activeTab === 'lawyer' ? 'Enter your office code to join as a lawyer'
-            : activeTab === 'signup' ? 'Create a new firm — you become its administrator'
-            :                          'Activate your account with your invitation token'}
+            {mainTab === 'signin'                     ? 'Sign in to your account'
+            : signupSubTab === 'lawyer'               ? 'Enter your office code to join as a lawyer'
+            : signupSubTab === 'signup'               ? 'Create a new firm, you become its administrator'
+            :                                           'Activate your account with your invitation token'}
           </Text>
 
-          {/* 4 tabs */}
+          {/* 2 main tabs */}
           <View style={s.tabSwitch}>
             {[
-              { key: 'signin',  label: 'Sign In'  },
-              { key: 'lawyer',  label: 'Lawyer'   },
-              { key: 'signup',  label: 'New Firm' },
-              { key: 'invite',  label: 'Client'   },
+              { key: 'signin', label: 'Sign In'  },
+              { key: 'signup', label: 'Sign Up'  },
             ].map((tab) => (
               <TouchableOpacity
                 key={tab.key}
-                style={[s.tabBtn, activeTab === tab.key && s.tabBtnActive]}
-                onPress={() => setActiveTab(tab.key)}
+                style={[s.tabBtn, mainTab === tab.key && s.tabBtnActive]}
+                onPress={() => setMainTab(tab.key)}
               >
-                <Text style={[s.tabBtnTxt, activeTab === tab.key && s.tabBtnTxtActive]}>
+                <Text style={[s.tabBtnTxt, mainTab === tab.key && s.tabBtnTxtActive]}>
                   {tab.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* 3 sub-tabs visible only in Sign Up */}
+          {mainTab === 'signup' && (
+            <View style={[s.tabSwitch, { marginTop: 8, backgroundColor: C.g100, borderRadius: 10 }]}>
+              {[
+                { key: 'lawyer', label: 'Lawyer'   },
+                { key: 'signup', label: 'New Firm' },
+                { key: 'invite', label: 'Client'   },
+              ].map((tab) => (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[s.tabBtn, signupSubTab === tab.key && s.tabBtnActive]}
+                  onPress={() => setSignupSubTab(tab.key)}
+                >
+                  <Text style={[s.tabBtnTxt, signupSubTab === tab.key && s.tabBtnTxtActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* ── SIGN IN ── */}
           {activeTab === 'signin' && (
@@ -600,7 +628,7 @@ export default function AuthScreen() {
             </View>
           )}
 
-          {/* ── LAWYER — Office Code ou Invitation ── */}
+          {/* ── LAWYER — Office Code or Invitation ── */}
           {activeTab === 'lawyer' && (
             <View>
               {/* Toggle Office Code / Invitation */}
@@ -610,105 +638,115 @@ export default function AuthScreen() {
                   onPress={() => setLawyerInviteMode(false)}
                 >
                   <FontAwesome5 name="hashtag" size={12} color={!lawyerInviteMode ? C.white : C.g500} style={{ marginRight: 5 }} />
-                  <Text style={[s.subTabTxt, !lawyerInviteMode && s.subTabTxtActive]}>Code du cabinet</Text>
+                  <Text style={[s.subTabTxt, !lawyerInviteMode && s.subTabTxtActive]}>Office Code</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.subTab, lawyerInviteMode && s.subTabActive]}
                   onPress={() => setLawyerInviteMode(true)}
                 >
                   <FontAwesome5 name="envelope-open-text" size={12} color={lawyerInviteMode ? C.white : C.g500} style={{ marginRight: 5 }} />
-                  <Text style={[s.subTabTxt, lawyerInviteMode && s.subTabTxtActive]}>J'ai une invitation</Text>
+                  <Text style={[s.subTabTxt, lawyerInviteMode && s.subTabTxtActive]}>Invitation</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* ─ Formulaire Office Code ─ */}
+              {/* ─ Office Code Form ─ */}
               {!lawyerInviteMode && (
                 <View>
                   <View style={[s.infoBox, { backgroundColor: C.blue50, borderColor: '#BFDBFE', borderWidth: 1, marginBottom: 16 }]}>
                     <FontAwesome5 name="info-circle" size={13} color={C.primary} style={{ marginTop: 1 }} />
-                    <Text style={s.infoTxt}>Le code est fourni par l'administrateur du cabinet.</Text>
+                    <Text style={s.infoTxt}>The office code is provided by your firm administrator.</Text>
                   </View>
 
-                  <Text style={s.label}>Code du Cabinet</Text>
+                  <Text style={s.label}>Office Code</Text>
                   <View style={s.inputWrap}>
                     <FontAwesome5 name="hashtag" size={14} color={C.g400} style={s.inputIcon} />
-                    <TextInput style={s.input} placeholder="ex: STERLING2024" placeholderTextColor={C.g400}
+                    <TextInput style={s.input} placeholder="e.g. STERLING2024" placeholderTextColor={C.g400}
                       value={officeCode} onChangeText={setOfficeCode} autoCapitalize="characters" />
                   </View>
 
-                  <Text style={s.label}>Nom complet</Text>
+                  <Text style={s.label}>Full Name</Text>
                   <View style={s.inputWrap}>
                     <FontAwesome5 name="user" size={14} color={C.g400} style={s.inputIcon} />
-                    <TextInput style={s.input} placeholder="Prénom Nom" placeholderTextColor={C.g400}
+                    <TextInput style={s.input} placeholder="First Last" placeholderTextColor={C.g400}
                       value={fullName} onChangeText={setFullName} />
                   </View>
 
-                  <Text style={s.label}>Email</Text>
+                  <Text style={s.label}>Email Address</Text>
                   <View style={s.inputWrap}>
                     <FontAwesome5 name="envelope" size={14} color={C.g400} style={s.inputIcon} />
-                    <TextInput style={s.input} placeholder="vous@email.com" placeholderTextColor={C.g400}
+                    <TextInput style={s.input} placeholder="you@email.com" placeholderTextColor={C.g400}
                       value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
                   </View>
 
-                  <Text style={s.label}>Mot de passe</Text>
+                  <Text style={s.label}>Password</Text>
                   <View style={s.inputWrap}>
                     <FontAwesome5 name="lock" size={14} color={C.g400} style={s.inputIcon} />
-                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Créer un mot de passe" placeholderTextColor={C.g400}
+                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Create a password" placeholderTextColor={C.g400}
                       value={password} onChangeText={setPassword} secureTextEntry={!showPass} />
                     <TouchableOpacity onPress={() => setShowPass(!showPass)} style={{ paddingRight: 14 }}>
                       <FontAwesome5 name={showPass ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
                     </TouchableOpacity>
                   </View>
 
+                  <Text style={s.label}>Confirm Password</Text>
+                  <View style={s.inputWrap}>
+                    <FontAwesome5 name="lock" size={14} color={C.g400} style={s.inputIcon} />
+                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Re-enter your password" placeholderTextColor={C.g400}
+                      value={officeConfirmPass} onChangeText={setOfficeConfirmPass} secureTextEntry={!showOfficeConfirmPass} />
+                    <TouchableOpacity onPress={() => setShowOfficeConfirmPass(!showOfficeConfirmPass)} style={{ paddingRight: 14 }}>
+                      <FontAwesome5 name={showOfficeConfirmPass ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
+                    </TouchableOpacity>
+                  </View>
+
                   <TouchableOpacity style={s.btnPrimary} onPress={handleValidateOfficeCode} activeOpacity={0.85} disabled={loading}>
                     {loading ? <ActivityIndicator color={C.white} /> : <>
-                      <Text style={s.btnPrimaryTxt}>Rejoindre le Cabinet</Text>
+                      <Text style={s.btnPrimaryTxt}>Join the Firm</Text>
                       <FontAwesome5 name="sign-in-alt" size={14} color={C.white} style={{ marginLeft: 8 }} />
                     </>}
                   </TouchableOpacity>
                 </View>
               )}
 
-              {/* ─ Formulaire Invitation ─ */}
+              {/* ─ Invitation Form ─ */}
               {lawyerInviteMode && (
                 <View>
                   <View style={[s.infoBox, { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF', borderWidth: 1, marginBottom: 16 }]}>
                     <FontAwesome5 name="envelope-open-text" size={13} color={C.purple600} style={{ marginTop: 1 }} />
                     <Text style={[s.infoTxt, { color: '#7E22CE' }]}>
-                      Entrez le token reçu par email ainsi que votre email et choisissez un nouveau mot de passe.
+                      Enter the token received by email along with your email address and choose a new password.
                     </Text>
                   </View>
 
-                  <Text style={s.label}>Token d'invitation</Text>
+                  <Text style={s.label}>Invitation Token</Text>
                   <View style={s.inputWrap}>
                     <FontAwesome5 name="key" size={14} color={C.g400} style={s.inputIcon} />
-                    <TextInput style={s.input} placeholder="Token reçu par email" placeholderTextColor={C.g400}
+                    <TextInput style={s.input} placeholder="Token received by email" placeholderTextColor={C.g400}
                       value={lawyerInvToken} onChangeText={setLawyerInvToken}
                       autoCapitalize="none" autoCorrect={false} />
                   </View>
 
-                  <Text style={s.label}>Votre email</Text>
+                  <Text style={s.label}>Your Email</Text>
                   <View style={s.inputWrap}>
                     <FontAwesome5 name="envelope" size={14} color={C.g400} style={s.inputIcon} />
-                    <TextInput style={s.input} placeholder="vous@email.com" placeholderTextColor={C.g400}
+                    <TextInput style={s.input} placeholder="you@email.com" placeholderTextColor={C.g400}
                       value={lawyerInvEmail} onChangeText={setLawyerInvEmail}
                       keyboardType="email-address" autoCapitalize="none" />
                   </View>
 
-                  <Text style={s.label}>Nouveau mot de passe</Text>
+                  <Text style={s.label}>New Password</Text>
                   <View style={s.inputWrap}>
                     <FontAwesome5 name="lock" size={14} color={C.g400} style={s.inputIcon} />
-                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Min. 8 caractères" placeholderTextColor={C.g400}
+                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Min. 8 characters" placeholderTextColor={C.g400}
                       value={lawyerInvPass} onChangeText={setLawyerInvPass} secureTextEntry={!showLawyerInvPass} />
                     <TouchableOpacity onPress={() => setShowLawyerInvPass(!showLawyerInvPass)} style={{ paddingRight: 14 }}>
                       <FontAwesome5 name={showLawyerInvPass ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
                     </TouchableOpacity>
                   </View>
 
-                  <Text style={s.label}>Confirmer le mot de passe</Text>
+                  <Text style={s.label}>Confirm Password</Text>
                   <View style={s.inputWrap}>
                     <FontAwesome5 name="lock" size={14} color={C.g400} style={s.inputIcon} />
-                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Répéter le mot de passe" placeholderTextColor={C.g400}
+                    <TextInput style={[s.input, { flex: 1 }]} placeholder="Re-enter your password" placeholderTextColor={C.g400}
                       value={lawyerInvConfirm} onChangeText={setLawyerInvConfirm} secureTextEntry={!showLawyerInvConfirm} />
                     <TouchableOpacity onPress={() => setShowLawyerInvConfirm(!showLawyerInvConfirm)} style={{ paddingRight: 14 }}>
                       <FontAwesome5 name={showLawyerInvConfirm ? 'eye-slash' : 'eye'} size={14} color={C.g400} />
@@ -717,7 +755,7 @@ export default function AuthScreen() {
 
                   <TouchableOpacity style={[s.btnPrimary, { backgroundColor: C.purple600 }]} onPress={handleAcceptLawyerInvite} activeOpacity={0.85} disabled={loading}>
                     {loading ? <ActivityIndicator color={C.white} /> : <>
-                      <Text style={s.btnPrimaryTxt}>Activer mon compte</Text>
+                      <Text style={s.btnPrimaryTxt}>Activate My Account</Text>
                       <FontAwesome5 name="check-circle" size={14} color={C.white} style={{ marginLeft: 8 }} />
                     </>}
                   </TouchableOpacity>
@@ -732,8 +770,7 @@ export default function AuthScreen() {
               <View style={[s.infoBox, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1, marginBottom: 20 }]}>
                 <FontAwesome5 name="building" size={13} color={C.green600} style={{ marginTop: 1 }} />
                 <Text style={[s.infoTxt, { color: '#15803D' }]}>
-                  This form creates a <Text style={{ fontWeight: '800' }}>new law firm account</Text>. You will be the firm administrator.{'\n'}
-                  Lawyers join via Office Code · Clients activate via invite link.
+                  This form creates a <Text style={{ fontWeight: '800' }}>new law firm account</Text>. You will be the firm administrator.
                 </Text>
               </View>
 
@@ -1223,7 +1260,7 @@ const s = StyleSheet.create({
   safe:            { flex: 1, backgroundColor: C.primary },
   scroll:          { flex: 1, backgroundColor: C.g50 },
   row:             { flexDirection: 'row', alignItems: 'center' },
-  header:          { backgroundColor: C.primary, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 30 },
+  header:          { backgroundColor: C.primary, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
   logoRow:         { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   logoCircle:      { width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   appName:         { fontSize: 20, fontWeight: '800', color: C.white },

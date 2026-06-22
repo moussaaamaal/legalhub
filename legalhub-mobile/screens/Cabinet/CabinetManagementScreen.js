@@ -708,9 +708,9 @@ function roleDescription(role) {
 
 // ─── Styles ────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe:       { flex: 1, backgroundColor: C.bg },
+  safe:       { flex: 1, backgroundColor: C.primary },
   centered:   { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg },
-  scroll:     { flex: 1 },
+  scroll:     { flex: 1, backgroundColor: C.bg },
   content:    { paddingHorizontal: 16, paddingBottom: 24 },
 
   header: {

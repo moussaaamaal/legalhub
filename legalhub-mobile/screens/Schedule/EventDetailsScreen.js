@@ -2,9 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
+  Linking, Alert,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { documentsAPI, tasksAPI, casesAPI } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 const C = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B', white: '#FFFFFF',
@@ -112,6 +114,7 @@ function TabPlaceholder({ icon, text }) {
 }
 
 export default function EventDetailsScreen({ event, navigation }) {
+  const { user } = useAuth();
   const [activeTab,  setActiveTab]  = useState('overview');
   const [documents,  setDocuments]  = useState([]);
   const [tasks,      setTasks]      = useState([]);
@@ -242,6 +245,24 @@ export default function EventDetailsScreen({ event, navigation }) {
                 {event?.is_video_call ? <InfoRow icon="video"  label="Format"   value="Video Call" /> : null}
               </View>
             </View>
+
+            {/* Join Video Call — participants only */}
+            {event?.is_video_call && event?.video_call_url &&
+             (event?.is_participant || event?.created_by === user?.id) &&
+             parseDate(event.start_datetime) >= new Date() && (
+              <TouchableOpacity
+                style={s.joinBtn}
+                activeOpacity={0.85}
+                onPress={() =>
+                  Linking.openURL(event.video_call_url).catch(() =>
+                    Alert.alert('Cannot Open Link', 'The meeting link could not be opened.')
+                  )
+                }
+              >
+                <FontAwesome5 name="video" size={15} color={C.white} style={{ marginRight: 10 }} />
+                <Text style={s.joinBtnTxt}>Join Video Call</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Notes / description */}
             {event?.description ? (
@@ -464,4 +485,7 @@ const s = StyleSheet.create({
 
   emptyState: { alignItems: 'center', paddingVertical: 40, gap: 12 },
   emptyTxt:   { fontSize: 14, color: C.g400, fontWeight: '500' },
+
+  joinBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: C.green600, borderRadius: 14, paddingVertical: 14, marginBottom: 12 },
+  joinBtnTxt: { fontSize: 15, fontWeight: '700', color: C.white },
 });

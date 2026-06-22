@@ -70,6 +70,14 @@ data_collection/
 probe_results.json
 *.json.bak
 
+# 🔹 Benchmarks
+benchmarks/
+benchmarks/results/
+bench_*.json
+*_benchmark*.json
+results/
+requirements_bench.txt
+
 # 🔹 Fichiers accidentels pip install (ex: pip install pkg=2.0 au lieu de ==)
 =*/
 =*.*
@@ -80,3 +88,7 @@ supabase_migrations/
 # 🔹 Rapports / docs générés
 LEGALHUB_RAPPORT_COMPLET.md
 REDIS_INTEGRATION.md
+RAPPORT_CONTRACT_DRAFTING.md
+
+# 🔹 PDFs de test contrats
+test_contract_*.pdf

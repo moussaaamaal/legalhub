@@ -1,8 +1,12 @@
+import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import httpx
 from app.core.security import decode_token
 from app.core.database import supabase
 from app.core.cache import sync_cache_get, sync_cache_set, sync_is_blacklisted
+
+logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer()
 
@@ -36,7 +40,14 @@ def get_current_user(
         return cached
 
     # Récupérer l'utilisateur depuis Supabase
-    result = supabase.table("app_user").select("*").eq("id", user_id).single().execute()
+    try:
+        result = supabase.table("app_user").select("*").eq("id", user_id).single().execute()
+    except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError) as exc:
+        logger.error("Supabase connection error in get_current_user: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable, please retry"
+        )
     if not result.data:
         raise HTTPException(status_code=401, detail="User not found")
 

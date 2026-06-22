@@ -86,6 +86,24 @@ def _check_and_send_reminders():
                 except Exception:
                     dt_display = ev["start_datetime"]
 
+                # Respect hearing_reminders preference (and email_notifications if set)
+                pref_r = (
+                    supabase.table("notification_preferences")
+                    .select("hearing_reminders, email_notifications")
+                    .eq("user_id", ev["created_by"])
+                    .execute()
+                )
+                if pref_r.data:
+                    prefs = pref_r.data[0]
+                    if not prefs.get("hearing_reminders", True):
+                        print(f"[scheduler] hearing_reminders disabled for user={ev['created_by']}, skipping", flush=True)
+                        _sent.add(key)
+                        continue
+                    if "email_notifications" in prefs and not prefs.get("email_notifications", True):
+                        print(f"[scheduler] email_notifications disabled for user={ev['created_by']}, skipping", flush=True)
+                        _sent.add(key)
+                        continue
+
                 print(f"[scheduler] sending reminder to {email} for '{ev['title']}' in {offset}min", flush=True)
                 send_event_reminder_email(
                     to_email=email,

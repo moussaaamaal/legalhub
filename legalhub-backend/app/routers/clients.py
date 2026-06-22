@@ -305,27 +305,53 @@ async def invite_client(client_id: str, current_user=Depends(get_lawyer)):
 # ─── GET /api/clients/:id/cases ─────────────────────────
 
 @router.get("/{client_id}/cases")
-async def get_client_cases(client_id: str, current_user=Depends(get_current_user)):
-    result = (
-        supabase.table("case_file")
+async def get_client_cases(client_id: str, current_user=Depends(get_lawyer)):
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
+    query = (
+        supabase_admin.table("case_file")
         .select("*")
         .eq("client_id", client_id)
         .eq("firm_id", current_user["firm_id"])
-        .order("created_at", desc=True)
-        .execute()
     )
-    return result.data
+
+    if not is_admin:
+        team = supabase_admin.table("case_team").select("case_id").eq("user_id", current_user["id"]).execute()
+        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
+        if not lawyer_case_ids:
+            return []
+        query = query.in_("id", lawyer_case_ids)
+
+    result = query.order("created_at", desc=True).execute()
+    return result.data or []
 
 # ─── GET /api/clients/:id/invoices ──────────────────────
 
 @router.get("/{client_id}/invoices")
 async def get_client_invoices(client_id: str, current_user=Depends(get_lawyer)):
-    result = (
-        supabase.table("invoice")
-        .select("*, invoice_item(*)")
+    is_admin = current_user["role"] in ("FIRM_ADMIN", "SUPER_ADMIN")
+
+    query = (
+        supabase_admin.table("invoice")
+        .select("*, invoice_item(*), case_file(id, title, case_number), creator:app_user!lawyer_id(full_name)")
         .eq("client_id", client_id)
         .eq("firm_id", current_user["firm_id"])
-        .order("created_at", desc=True)
-        .execute()
     )
-    return result.data
+
+    if not is_admin:
+        team = supabase_admin.table("case_team").select("case_id").eq("user_id", current_user["id"]).execute()
+        lawyer_case_ids = [r["case_id"] for r in (team.data or [])]
+
+        if not lawyer_case_ids:
+            return []
+
+        # invoices linked to known cases OR created by the lawyer with no case
+        query = query.or_(
+            f"case_id.in.({','.join(lawyer_case_ids)}),and(case_id.is.null,lawyer_id.eq.{current_user['id']})"
+        )
+
+    result = query.order("created_at", desc=True).execute()
+    data = result.data or []
+    for inv in data:
+        inv["is_mine"] = inv.get("lawyer_id") == current_user["id"]
+    return data

@@ -356,7 +356,7 @@ const rawToDetails = (raw) => {
     client: {
       name:    clientName,
       id:      raw.client?.id      || '—',
-      avatar:  null,
+      avatar:  raw.client?.app_user?.avatar_url || null,
       since:   filingLabel,
       phone:   raw.client?.phone   || '—',
       email:   raw.client?.email   || '—',

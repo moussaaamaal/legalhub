@@ -7,6 +7,7 @@ from app.services.case_ingestion import ingest_case
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
 from app.core.cache import cache_get, cache_set, cache_delete_pattern
+from app.core.notif_utils import insert_notification
 from pydantic import BaseModel
 from typing import Optional
 from app.models.enums import CaseStatus, CasePriority, CaseType
@@ -21,12 +22,7 @@ def _notify_case_client(case_data: dict, title: str, message: str):
         client = supabase.table("client").select("user_id").eq("id", client_id).maybe_single().execute()
         if not client.data or not client.data.get("user_id"):
             return
-        supabase_admin.table("notification").insert({
-            "user_id": client.data["user_id"],
-            "type":    "CASE_UPDATE",
-            "title":   title,
-            "message": message,
-        }).execute()
+        insert_notification(supabase_admin, client.data["user_id"], "CASE_UPDATE", title, message)
     except Exception as e:
         _log.warning(f"[case notification] skipped: {e}")
 
@@ -164,12 +160,11 @@ async def create_case(body: CreateCaseRequest, background_tasks: BackgroundTasks
         "performed_by": current_user["id"],
     }).execute()
 
-    supabase.table("notification").insert({
-        "user_id": current_user["id"],
-        "type":    "CASE_UPDATE",
-        "title":   "New Case Created",
-        "message": f"{body.title} ({body.case_number}) has been successfully created.",
-    }).execute()
+    insert_notification(
+        supabase, current_user["id"], "CASE_UPDATE",
+        "New Case Created",
+        f"{body.title} ({body.case_number}) has been successfully created.",
+    )
 
     await cache_delete_pattern(f"cases:list:{current_user['id']}:*")
     background_tasks.add_task(ingest_case, case_id, current_user["firm_id"])
@@ -196,7 +191,7 @@ async def get_cases_by_client(client_id: str, current_user=Depends(get_current_u
 async def get_case(case_id: str, current_user=Depends(get_current_user)):
     result = (
         supabase.table("case_file")
-        .select("*, client(id, first_name, last_name, email, phone)")
+        .select("*, client(id, first_name, last_name, email, phone, app_user(avatar_url))")
         .eq("id", case_id)
         .eq("firm_id", current_user["firm_id"])
         .single()
@@ -408,12 +403,11 @@ async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, backgr
     }).execute()
 
     case_data = result.data[0]
-    supabase.table("notification").insert({
-        "user_id": case_data.get("lawyer_id") or current_user["id"],
-        "type":    "CASE_UPDATE",
-        "title":   "Case Status Updated",
-        "message": f"'{case_data.get('title', 'A case')}' status changed to {body.status}.",
-    }).execute()
+    insert_notification(
+        supabase, case_data.get("lawyer_id") or current_user["id"], "CASE_UPDATE",
+        "Case Status Updated",
+        f"'{case_data.get('title', 'A case')}' status changed to {body.status}.",
+    )
 
     _notify_case_client(
         case_data,
@@ -534,12 +528,11 @@ async def add_team_member(case_id: str, body: AddTeamMemberRequest, current_user
         "performed_by": current_user["id"],
     }).execute()
 
-    supabase.table("notification").insert({
-        "user_id": body.user_id,
-        "type":    "TASK_ASSIGNED",
-        "title":   "You've Been Added to a Case",
-        "message": f"You were added to a case team by {current_user.get('full_name', 'a colleague')}.",
-    }).execute()
+    insert_notification(
+        supabase, body.user_id, "TASK_ASSIGNED",
+        "You've Been Added to a Case",
+        f"You were added to a case team by {current_user.get('full_name', 'a colleague')}.",
+    )
 
     await cache_delete(f"case:{case_id}:team")
     return result.data[0]

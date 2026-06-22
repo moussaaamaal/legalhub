@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, StatusBar,
-  Alert, ActivityIndicator, Linking,
+  Alert, ActivityIndicator, Linking, Image,
 } from 'react-native';
 import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
 import { billingAPI } from '../../services/api';
@@ -41,9 +41,12 @@ function getInitials(name) {
   return (name || '?').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
 }
 
-function AvatarInitials({ name, size = 48 }) {
+function AvatarInitials({ name, avatarUrl, size = 48 }) {
   const colors = [C.primary, C.purple600, C.green600, C.amber600, C.red600];
   const bg = colors[Math.abs((name?.charCodeAt(0) || 65) - 65) % colors.length];
+  if (avatarUrl) {
+    return <Image source={{ uri: avatarUrl }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+  }
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ color: C.white, fontWeight: '800', fontSize: size * 0.35 }}>{getInitials(name)}</Text>
@@ -158,7 +161,7 @@ export default function InvoiceDetailsScreen({ navigation, route }) {
         <View style={s.section}>
           <Text style={s.sectionTitle}>Client</Text>
           <View style={s.clientCard}>
-            <AvatarInitials name={clientName} size={48} />
+            <AvatarInitials name={clientName} avatarUrl={client?.avatar_url} size={48} />
             <View style={{ marginLeft: 14, flex: 1 }}>
               <Text style={s.clientName}>{clientName}</Text>
               {!!client?.email && (
@@ -260,7 +263,7 @@ export default function InvoiceDetailsScreen({ navigation, route }) {
         )}
 
         {/* ACTIONS */}
-        {(status === 'OVERDUE' || status === 'PENDING') && (
+        {inv?.is_mine !== false && (status === 'OVERDUE' || status === 'PENDING') && (
           <View style={s.section}>
             <TouchableOpacity
               style={[s.actionBtn, { backgroundColor: status === 'OVERDUE' ? C.red600 : C.amber600 }]}

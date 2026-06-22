@@ -6,6 +6,33 @@ import {
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { clientsAPI } from '../../services/api';
+import CaseDetailsScreen from '../Cases/CaseDetailsScreen';
+import InvoiceDetailsScreen from '../Invoices/InvoiceDetailsScreen';
+
+const toCaseDetails = (raw) => ({
+  _id:         raw.id,
+  id:          raw.case_number || raw.id,
+  title:       raw.title || 'Case',
+  subtitle:    `${raw.case_type || ''} — ${(raw.status || '').replace(/_/g, ' ')}`,
+  type:        raw.case_type || '',
+  phase:       (raw.status || '').replace(/_/g, ' '),
+  priority:    (raw.priority || 'NORMAL').toLowerCase(),
+  status:      raw.status || '',
+  filingDate:  raw.filing_date || '',
+  court:       raw.court_name || '',
+  judge:       raw.judge_name || '',
+  prosecutor:  raw.opposing_counsel || '',
+  attorney:    '',
+  caseValue:   raw.estimated_value ? `$${Number(raw.estimated_value).toLocaleString()}` : '',
+  description: raw.description || '',
+  tags:        [raw.case_type, (raw.status || '').replace(/_/g, ' ')].filter(Boolean),
+  nextHearing: raw.first_hearing_date
+    ? { label: new Date(raw.first_hearing_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), time: '—', room: '—', countdown: '—' }
+    : null,
+  stats:        { docs: 0, tasks: 0, events: 0, notes: 0 },
+  timeTracking: { billable: 0, nonBillable: 0 },
+  client:       { name: '', id: raw.client_id || '—', avatar: null, since: '', phone: '—', email: '—', address: '—', status: 'Active', tier: 'Standard' },
+});
 
 const C = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B', white: '#FFFFFF',
@@ -45,35 +72,96 @@ function InfoRow({ icon, label, value }) {
   );
 }
 
+const STATUS_COLORS = {
+  NEW:          { bg: C.blue50,   color: C.blue600   },
+  INVESTIGATION:{ bg: C.amber50,  color: C.amber600  },
+  PRE_TRIAL:    { bg: '#FFF7ED',  color: '#C2410C'   },
+  TRIAL:        { bg: C.purple50, color: C.purple600 },
+  APPEAL:       { bg: '#F0FDF4',  color: '#15803D'   },
+  SETTLED:      { bg: C.green50,  color: C.green600  },
+  CLOSED:       { bg: C.g100,     color: C.g500      },
+  OPEN:         { bg: C.blue50,   color: C.blue600   },
+  IN_PROGRESS:  { bg: C.amber50,  color: C.amber600  },
+  WON:          { bg: C.green50,  color: C.green600  },
+  LOST:         { bg: C.red50,    color: C.red600    },
+};
+
+const PRIORITY_COLORS = {
+  URGENT: { bg: C.red50,    color: C.red600    },
+  HIGH:   { bg: '#FFF7ED',  color: '#C2410C'   },
+  MEDIUM: { bg: C.amber50,  color: C.amber600  },
+  NORMAL: { bg: C.blue50,   color: C.blue600   },
+  LOW:    { bg: C.g100,     color: C.g500      },
+};
+
 function CaseRow({ item }) {
-  const statusColors = {
-    OPEN:        { bg: C.blue50,   color: C.blue600   },
-    IN_PROGRESS: { bg: C.amber50,  color: C.amber600  },
-    CLOSED:      { bg: C.g100,     color: C.g500      },
-    WON:         { bg: C.green50,  color: C.green600  },
-    LOST:        { bg: C.red50,    color: C.red600    },
-  };
-  const sc = statusColors[item.status] || statusColors.OPEN;
+  const sc = STATUS_COLORS[item.status] || STATUS_COLORS.OPEN;
+  const pc = item.priority ? (PRIORITY_COLORS[item.priority] || PRIORITY_COLORS.NORMAL) : null;
+  const progress = typeof item.progress_percent === 'number' ? item.progress_percent : null;
+
   return (
-    <View style={s.caseRow}>
-      <View style={{ flex: 1 }}>
-        <Text style={s.caseName} numberOfLines={1}>{item.title || item.case_number || 'Case'}</Text>
-        <Text style={s.caseSub}>{item.case_number || ''}</Text>
+    <View style={s.caseCard}>
+      {/* Row 1 : title + status */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.caseName} numberOfLines={2}>{item.title || 'Case'}</Text>
+        </View>
+        <View style={[s.statusPill, { backgroundColor: sc.bg }]}>
+          <Text style={[s.statusPillTxt, { color: sc.color }]}>{item.status || 'OPEN'}</Text>
+        </View>
       </View>
-      <View style={[s.statusPill, { backgroundColor: sc.bg }]}>
-        <Text style={[s.statusPillTxt, { color: sc.color }]}>{item.status || 'OPEN'}</Text>
-      </View>
+
+      {/* Row 2 : type + priority */}
+      {(!!item.case_type || !!item.priority) && (
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          {!!item.case_type && (
+            <View style={s.metaChip}>
+              <FontAwesome5 name="balance-scale" size={9} color={C.g500} style={{ marginRight: 4 }} />
+              <Text style={s.metaChipTxt}>{item.case_type.replace(/_/g, ' ')}</Text>
+            </View>
+          )}
+          {!!item.practice_area && (
+            <View style={s.metaChip}>
+              <FontAwesome5 name="tag" size={9} color={C.g500} style={{ marginRight: 4 }} />
+              <Text style={s.metaChipTxt}>{item.practice_area}</Text>
+            </View>
+          )}
+          {pc && (
+            <View style={[s.metaChip, { backgroundColor: pc.bg }]}>
+              <FontAwesome5 name="flag" size={9} color={pc.color} style={{ marginRight: 4 }} />
+              <Text style={[s.metaChipTxt, { color: pc.color }]}>{item.priority}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Row 3 : progress bar */}
+      {progress !== null && (
+        <View style={{ marginTop: 10 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text style={[s.caseSub, { fontSize: 10 }]}>Progress</Text>
+            <Text style={[s.caseSub, { fontSize: 10, fontWeight: '700', color: C.primary }]}>{progress}%</Text>
+          </View>
+          <View style={s.progressTrack}>
+            <View style={[s.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
-function InvoiceRow({ item }) {
+function InvoiceRow({ item, showCreator }) {
   const paid = item.status === 'PAID';
+  const creatorName = item.creator?.full_name;
   return (
     <View style={s.caseRow}>
       <View style={{ flex: 1 }}>
         <Text style={s.caseName} numberOfLines={1}>{item.invoice_number || 'Invoice'}</Text>
         <Text style={s.caseSub}>{item.due_date ? `Due: ${item.due_date.slice(0, 10)}` : ''}</Text>
+        {showCreator && !!creatorName && (
+          <Text style={[s.caseSub, { color: C.purple600, marginTop: 1 }]}>{creatorName}</Text>
+        )}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 4 }}>
         <Text style={[s.invoiceAmt, { color: paid ? C.green600 : C.amber600 }]}>
@@ -87,13 +175,65 @@ function InvoiceRow({ item }) {
   );
 }
 
+function groupByCase(invoices) {
+  const map = {};
+  const order = [];
+  for (const inv of invoices) {
+    const key = inv.case_id || '__none__';
+    if (!map[key]) {
+      const cf = inv.case_file;
+      map[key] = { caseTitle: cf?.title || cf?.case_number || null, items: [] };
+      order.push(key);
+    }
+    map[key].items.push(inv);
+  }
+  return order.map(k => map[k]);
+}
+
+function InvoiceSubSection({ title, invoices, showCreator, onPressInvoice }) {
+  if (invoices.length === 0) return null;
+  const groups = groupByCase(invoices);
+  return (
+    <View style={s.subSection}>
+      <View style={s.subSectionHeader}>
+        <FontAwesome5
+          name={showCreator ? 'users' : 'user-tie'}
+          size={11}
+          color={showCreator ? C.purple600 : C.primary}
+        />
+        <Text style={[s.subSectionTitle, { color: showCreator ? C.purple600 : C.primary }]}>{title}</Text>
+        <View style={[s.countBadge, { backgroundColor: showCreator ? C.purple50 : C.blue100 }]}>
+          <Text style={[s.countBadgeTxt, { color: showCreator ? C.purple600 : C.primary }]}>{invoices.length}</Text>
+        </View>
+      </View>
+      {groups.map((g, gi) => (
+        <View key={gi}>
+          {!!g.caseTitle && (
+            <View style={s.caseGroupLabel}>
+              <FontAwesome5 name="folder-open" size={10} color={C.g500} />
+              <Text style={s.caseGroupLabelTxt} numberOfLines={1}>{g.caseTitle}</Text>
+            </View>
+          )}
+          {g.items.map(inv => (
+            <TouchableOpacity key={inv.id} onPress={() => onPressInvoice(inv)} activeOpacity={0.75}>
+              <InvoiceRow item={inv} showCreator={showCreator} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function ClientDetailsScreen({ navigation, route }) {
   const clientId = route?.params?.clientId;
 
-  const [client,   setClient]   = useState(null);
-  const [cases,    setCases]    = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [loading,  setLoading]  = useState(true);
+  const [client,       setClient]       = useState(null);
+  const [cases,        setCases]        = useState([]);
+  const [invoices,     setInvoices]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [selectedCase,    setSelectedCase]    = useState(null);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [updatingVip, setUpdatingVip] = useState(false);
   const [emailModal,   setEmailModal]   = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
@@ -247,6 +387,24 @@ export default function ClientDetailsScreen({ navigation, route }) {
     );
   }
 
+  if (selectedInvoice) {
+    return (
+      <InvoiceDetailsScreen
+        navigation={{ goBack: () => setSelectedInvoice(null), navigate: () => {} }}
+        route={{ params: { invoice: selectedInvoice } }}
+      />
+    );
+  }
+
+  if (selectedCase) {
+    return (
+      <CaseDetailsScreen
+        navigation={{ goBack: () => setSelectedCase(null), navigate: () => {} }}
+        route={{ params: { caseData: selectedCase } }}
+      />
+    );
+  }
+
   const fullName = `${client.first_name || ''} ${client.last_name || ''}`.trim();
   const tag      = (client.tag || 'ACTIVE').toUpperCase();
   const tagMeta  = TAG_META[tag] || TAG_META.ACTIVE;
@@ -364,7 +522,11 @@ export default function ClientDetailsScreen({ navigation, route }) {
           {cases.length === 0 ? (
             <Text style={s.emptyTxt}>No cases found</Text>
           ) : (
-            cases.map((c) => <CaseRow key={c.id} item={c} />)
+            cases.map((c) => (
+              <TouchableOpacity key={c.id} onPress={() => setSelectedCase(toCaseDetails(c))} activeOpacity={0.75}>
+                <CaseRow item={c} />
+              </TouchableOpacity>
+            ))
           )}
         </View>
 
@@ -379,7 +541,20 @@ export default function ClientDetailsScreen({ navigation, route }) {
           {invoices.length === 0 ? (
             <Text style={s.emptyTxt}>No invoices found</Text>
           ) : (
-            invoices.map((inv) => <InvoiceRow key={inv.id} item={inv} />)
+            <>
+              <InvoiceSubSection
+                title="My Invoices"
+                invoices={invoices.filter(i => i.is_mine)}
+                showCreator={false}
+                onPressInvoice={(inv) => setSelectedInvoice({ ...inv, client })}
+              />
+              <InvoiceSubSection
+                title="Colleagues"
+                invoices={invoices.filter(i => !i.is_mine)}
+                showCreator={true}
+                onPressInvoice={(inv) => setSelectedInvoice({ ...inv, client })}
+              />
+            </>
           )}
         </View>
 
@@ -576,13 +751,26 @@ const s = StyleSheet.create({
   notesText:  { fontSize: 14, color: C.g600, lineHeight: 20 },
 
   caseRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: C.g100 },
+  caseCard:   { paddingVertical: 12, paddingHorizontal: 2, borderTopWidth: 1, borderTopColor: C.g100 },
   caseName:   { fontSize: 13, fontWeight: '700', color: C.dark },
   caseSub:    { fontSize: 11, color: C.g400, marginTop: 2 },
+  metaChip:   { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g100, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  metaChipTxt:{ fontSize: 10, fontWeight: '600', color: C.g500 },
+  caseDetail: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
+  caseDetailTxt: { fontSize: 11, color: C.g500, flex: 1 },
+  progressTrack: { height: 5, backgroundColor: C.g100, borderRadius: 4, overflow: 'hidden' },
+  progressFill:  { height: 5, backgroundColor: C.primary, borderRadius: 4 },
   invoiceAmt: { fontSize: 13, fontWeight: '700' },
   statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
   statusPillTxt: { fontSize: 11, fontWeight: '600' },
 
   emptyTxt:   { fontSize: 13, color: C.g400, textAlign: 'center', paddingVertical: 12 },
+
+  subSection:      { marginTop: 4, marginBottom: 4 },
+  subSectionHeader:{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: 8 },
+  subSectionTitle: { fontSize: 12, fontWeight: '700', flex: 1 },
+  caseGroupLabel:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5, paddingHorizontal: 4, backgroundColor: C.g50, borderRadius: 6, marginBottom: 2, marginTop: 4 },
+  caseGroupLabelTxt: { fontSize: 11, color: C.g500, fontWeight: '600', flex: 1 },
 });
 
 const ed = StyleSheet.create({

@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
 from app.core.email import send_invoice_email, send_payment_reminder_email
+from app.core.notif_utils import insert_notification
 
 _log = logging.getLogger(__name__)
 from pydantic import BaseModel, field_validator
@@ -380,12 +381,11 @@ async def create_invoice(body: CreateInvoiceRequest, background_tasks: Backgroun
             "total":       item.quantity * item.unit_price,
         }).execute()
 
-    supabase.table("notification").insert({
-        "user_id": current_user["id"],
-        "type":    "INVOICE_DUE",
-        "title":   "Invoice Created",
-        "message": f"{invoice_number} — {body.currency} {total:,.2f} due {body.due_date}.",
-    }).execute()
+    insert_notification(
+        supabase, current_user["id"], "INVOICE_DUE",
+        "Invoice Created",
+        f"{invoice_number} — {body.currency} {total:,.2f} due {body.due_date}.",
+    )
 
     if body.case_id:
         background_tasks.add_task(ingest_invoices, body.case_id, current_user["firm_id"])
@@ -560,12 +560,11 @@ async def send_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
         "status": InvoiceStatus.PENDING
     }).eq("id", invoice_id).execute()
 
-    supabase.table("notification").insert({
-        "user_id": current_user["id"],
-        "type":    "INVOICE_DUE",
-        "title":   "Invoice Sent",
-        "message": f"{inv['invoice_number']} sent to {client_name} — due {inv.get('due_date', '')}.",
-    }).execute()
+    insert_notification(
+        supabase, current_user["id"], "INVOICE_DUE",
+        "Invoice Sent",
+        f"{inv['invoice_number']} sent to {client_name} — due {inv.get('due_date', '')}.",
+    )
 
     client_user_id = client.get("user_id")
     _log.info(
@@ -580,16 +579,12 @@ async def send_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
         )
     else:
         try:
-            result = supabase_admin.table("notification").insert({
-                "user_id": client_user_id,
-                "type":    "INVOICE_DUE",
-                "title":   "New Invoice from Your Attorney",
-                "message": f"Invoice {inv['invoice_number']} — {inv.get('currency', 'USD')} {float(inv.get('total_amount', 0)):,.2f} · Due {inv.get('due_date', '')}.",
-            }).execute()
-            _log.info(
-                f"[send_invoice] ✅ Client notification inserted — "
-                f"notif_id={result.data[0].get('id') if result.data else 'unknown'}"
+            inserted = insert_notification(
+                supabase_admin, client_user_id, "INVOICE_DUE",
+                "New Invoice from Your Attorney",
+                f"Invoice {inv['invoice_number']} — {inv.get('currency', 'USD')} {float(inv.get('total_amount', 0)):,.2f} · Due {inv.get('due_date', '')}.",
             )
+            _log.info(f"[send_invoice] {'✅ Client notification inserted' if inserted else 'ℹ️  Client notification skipped (preferences)'}")
         except Exception as e:
             _log.error(f"[send_invoice] ❌ Client notification failed: {e}")
 

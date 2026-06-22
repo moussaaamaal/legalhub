@@ -463,6 +463,8 @@ export default function ProfileScreen({ navigation }) {
   // Firm profile + branding
   const [firmProfile, setFirmProfile]   = useState(null);
   const [firmBranding, setFirmBranding] = useState(null);
+  // Firm team / staff (count only — detail handled in FirmStaffScreen)
+  const [firmTeam, setFirmTeam] = useState([]);
   // Lawyer professional info
   const [lawyerProfile,        setLawyerProfile]        = useState(null);
   const [editingPro,           setEditingPro]            = useState(false);
@@ -499,6 +501,7 @@ export default function ProfileScreen({ navigation }) {
       if (data.role === 'FIRM_ADMIN' || data.role === 'LAWYER') {
         firmAPI.getProfile().then(setFirmProfile).catch(() => {});
         firmAPI.getBranding().then(setFirmBranding).catch(() => {});
+        firmAPI.getTeam().then(t => setFirmTeam(Array.isArray(t) ? t : [])).catch(() => {});
       }
       if (data.role === 'LAWYER') {
         authAPI.getLawyerProfile().then(lp => {
@@ -893,7 +896,7 @@ export default function ProfileScreen({ navigation }) {
   ];
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+    <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.primary} />
 
       {/* HEADER */}
@@ -1193,6 +1196,28 @@ export default function ProfileScreen({ navigation }) {
                 </>
               ) : null}
 
+              {/* ── Staff navigation ── */}
+              <View style={{ height: 1, backgroundColor: C.gray100, marginVertical: 4 }} />
+              <TouchableOpacity
+                style={[s.row, { paddingVertical: 12, justifyContent: 'space-between' }]}
+                onPress={() => navigation.navigate('FirmStaff')}
+                activeOpacity={0.75}
+              >
+                <View style={s.row}>
+                  <View style={[s.iconBtn40, { backgroundColor: C.blue100 }]}>
+                    <Icon lib="FA5" name="users" size={15} color={C.primary} />
+                  </View>
+                  <View style={{ marginLeft: 12 }}>
+                    <Text style={s.smBold}>Staff</Text>
+                    {firmTeam.length > 0 && (
+                      <Text style={s.xs}>
+                        {firmTeam.filter(m => m.is_active !== false).length} active member{firmTeam.filter(m => m.is_active !== false).length !== 1 ? 's' : ''}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <Icon lib="FA5" name="chevron-right" size={13} color={C.gray400} />
+              </TouchableOpacity>
 
             </View>
           </View>
@@ -1693,4 +1718,5 @@ const s = StyleSheet.create({
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalBox: { backgroundColor: C.white, borderRadius: 24, padding: 24, width: '100%' },
   pwdInput: { borderWidth: 1.5, borderColor: C.gray200, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: C.dark },
+
 });

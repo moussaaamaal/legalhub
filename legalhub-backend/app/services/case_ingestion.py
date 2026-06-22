@@ -158,28 +158,52 @@ def _parse_storage_url(url: str) -> tuple[str, str]:
 # ─── People text builders ────────────────────────────────────────────────────
 
 def _lawyer_text(lawyer: dict, is_self: bool = False) -> str:
-    name = f"{lawyer.get('first_name', '')} {lawyer.get('last_name', '')}".strip()
+    # app_user stores full_name, not first_name/last_name
+    name = lawyer.get('full_name', '').strip()
     label = "YOUR PROFILE (you are this lawyer)" if is_self else "COLLEAGUE / TEAM MEMBER"
-    return (
-        f"{label}: {name}\n"
-        f"Role: {lawyer.get('role', '')}\n"
-        f"Email: {lawyer.get('email', '')}\n"
-        f"Phone: {lawyer.get('phone', '') or ''}\n"
-        f"Status: {'Active' if lawyer.get('is_active') else 'Inactive'}"
-    )
+    # lawyer profile (joined from lawyer table — may be None for FIRM_ADMIN without a profile)
+    profile = lawyer.get('lawyer') or {}
+    specializations = profile.get('specializations') or []
+    lines = [
+        f"{label}: {name}",
+        f"Role: {lawyer.get('role', '')}",
+        f"Email: {lawyer.get('email', '')}",
+        f"Phone: {lawyer.get('phone', '') or ''}",
+        f"Status: {'Active' if lawyer.get('is_active') else 'Inactive'}",
+    ]
+    if profile.get('title'):
+        lines.append(f"Title: {profile['title']}")
+    if specializations:
+        lines.append(f"Specializations: {', '.join(specializations)}")
+    if profile.get('years_experience'):
+        lines.append(f"Years of Experience: {profile['years_experience']}")
+    if profile.get('office_location'):
+        lines.append(f"Office: {profile['office_location']}")
+    return "\n".join(lines)
 
 
 def _client_text(client: dict) -> str:
     name = f"{client.get('first_name', '')} {client.get('last_name', '')}".strip()
-    return (
-        f"CLIENT PROFILE: {name}\n"
-        f"Email: {client.get('email', '')}\n"
-        f"Phone: {client.get('phone', '')}\n"
-        f"Address: {client.get('address', '')}\n"
-        f"Date of Birth: {client.get('date_of_birth', '')}\n"
-        f"Status: {client.get('status', '')}\n"
-        f"Notes: {client.get('notes', '')}"
-    )
+    lines = [
+        f"CLIENT PROFILE: {name}",
+        f"Type: {client.get('client_type', '')}",
+        f"Email: {client.get('email', '')}",
+        f"Phone: {client.get('phone', '') or ''}",
+        f"Status/Tag: {client.get('tag', '')}",
+    ]
+    if client.get('company_name'):
+        lines.append(f"Company: {client['company_name']}")
+    if client.get('occupation'):
+        lines.append(f"Occupation: {client['occupation']}")
+    if client.get('address'):
+        lines.append(f"Address: {client['address']}")
+    if client.get('date_of_birth'):
+        lines.append(f"Date of Birth: {client['date_of_birth']}")
+    if client.get('nationality'):
+        lines.append(f"Nationality: {client['nationality']}")
+    if client.get('notes'):
+        lines.append(f"Notes: {client['notes']}")
+    return "\n".join(lines)
 
 
 # ─── Main ingestion ───────────────────────────────────────────────────────────
@@ -338,9 +362,10 @@ async def ingest_lawyer_scope(lawyer_id: str, firm_id: str) -> dict:
         except Exception as e:
             logger.warning(f"ingest_lawyer_scope: client_id fetch failed for case {cid}: {e}")
 
-    # Fetch ALL active firm members so the lawyer knows everyone (including admin)
-    firm_members_res = supabase_admin.table("app_user").select("*") \
-        .eq("firm_id", firm_id).eq("is_active", True).execute()
+    # Fetch all active firm members (exclude CLIENT-role users — clients are indexed separately)
+    firm_members_res = supabase_admin.table("app_user") \
+        .select("*, lawyer(title, specializations, years_experience, office_location)") \
+        .eq("firm_id", firm_id).eq("is_active", True).neq("role", "CLIENT").execute()
     firm_members = firm_members_res.data or []
 
     ids, firm_ids_col, c_ids_col, src_types, src_ids, texts = [], [], [], [], [], []
@@ -444,8 +469,9 @@ async def ingest_firm(firm_id: str) -> dict:
     except Exception as e:
         logger.warning(f"ingest_firm: could not delete old chunks: {e}")
 
-    lawyers_res = supabase_admin.table("app_user").select("*") \
-        .eq("firm_id", firm_id).eq("is_active", True).execute()
+    lawyers_res = supabase_admin.table("app_user") \
+        .select("*, lawyer(title, specializations, years_experience, office_location)") \
+        .eq("firm_id", firm_id).eq("is_active", True).neq("role", "CLIENT").execute()
     lawyers = lawyers_res.data or []
 
     ids, firm_ids_col, case_ids_col, source_types_col, source_ids_col, texts = [], [], [], [], [], []
